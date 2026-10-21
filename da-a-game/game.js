@@ -632,6 +632,11 @@ if (typeof module !== 'undefined' && module.exports) {
     currentPlayer: function () { return currentPlayer; },
     doPlay: doPlay, doPass: doPass, doPushWind: doPushWind, runAI: runAI, advanceCurrentPlayer: advanceCurrentPlayer,
     checkRoundEnd: checkRoundEnd, maybeTriggerPushWindAfterRoundEnd: maybeTriggerPushWindAfterRoundEnd,
+    // [测试可及性] draw / cardDesc 原先未导出, 导致无头测试无法捕获单帧渲染内容,
+    //   从而无法验证信息边界 (他人手牌是否泄露)。本块已有 typeof module 守卫, 对微信无影响。
+    draw: draw, cardDesc: cardDesc,
+    selectedCards: function () { return selectedCards; },
+    handCardHitboxes: function () { return handCardHitboxes; },
     setHumanPlayer: function (p) { humanPlayer = p; }
   };
 }
