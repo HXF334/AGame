@@ -1,0 +1,39 @@
+{
+  "description": "内蒙古打大A 微信小游戏 (MiniMax API 独立开发)",
+  "minigameRoot": "./",
+  "projectname": "da-a-game",
+  "appid": "wx99808147273cdea1",
+  "setting": {
+    "es6": true,
+    "minified": false,
+    "newFeature": true,
+    "autoAudits": false,
+    "enhance": true,
+    "useCompilerModule": true,
+    "minifyWXSS": true,
+    "ignoreUploadUnusedFiles": true,
+    "postcss": false,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false
+  },
+  "compileType": "game",
+  "libVersion": "2.19.4",
+  "condition": {},
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "isGameTourist": false,
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  }
+}

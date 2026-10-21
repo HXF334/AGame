@@ -1,0 +1,18 @@
+# 微信小游戏本地私有配置 (文件自述: 不上传到微信)
+project.private.config.json
+
+# 依赖与构建产物
+node_modules/
+dist/
+.cache/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+
+# 审查用临时脚本 (一次性, 不入库)
+tests/_*.js
