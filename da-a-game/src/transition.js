@@ -213,6 +213,13 @@ function handleLiangA(state, payload) {
   }
 
   const newPlayers = markAllAcesAs主方大A(state.players, card.suit);
+  // [P1 修复] §4.3 直接亮双大A: 亮A 玩家若手中握有该花色的**两张** A,
+  //   即为"直接亮双大A宣告独打"。按 §4.5 该情形视为公开独打身份, 直接按 1V4明打,
+  //   无需进入 IDENTITY_CHOICE 让其再选明/暗。原实现未记录该事实,
+  //   导致 REVEAL_BOTTOM 误判为需选择明暗。
+  const 同花色A数 = player.hand.filter(function (c) {
+    return c.suit === card.suit && c.rank === 14;
+  }).length;
   return ok({
     phase: PHASES.LIANG_A_RESOLVED,
     players: newPlayers,
@@ -223,7 +230,8 @@ function handleLiangA(state, payload) {
       suit: card.suit,
       establishedBy: payload.playerId,
       viaMethod: 'LIANG_A',
-      viaCardId: card.id
+      viaCardId: card.id,
+      doubleA: 同花色A数 === 2   // §4.3 直接亮双大A宣告独打
     },
     反A: state.反A ?? null,
     次方: state.次方 ?? null,
@@ -542,8 +550,8 @@ function handleRevealBottom(state, payload) {
 
   if (ownersSet.size === 1) {
     // 1V4：两个大A 同属一人
-    if (反A已发生 || state.mode === '1V4_明打') {
-      // §4.5: 反A 成功 / 直接亮双大A 宣告独打 → 1V4 明打已锁定
+    if (反A已发生 || state.mode === '1V4_明打' || (state.主A && state.主A.doubleA === true)) {
+      // §4.5: 反A 成功 / 直接亮双大A 宣告独打 → 1V4 明打已锁定, 直接进 PLAY
       nextPhase = PHASES.PLAY;
       nextMode = '1V4_明打';
     } else {
