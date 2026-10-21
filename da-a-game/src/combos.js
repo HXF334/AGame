@@ -58,6 +58,31 @@ function candidateCombos(hand) {
     }
   }
 
+  // ---- (c) 王组合 (2026-10-21 补) ----
+  // 原实现完全跳过王, 导致双王/三王/四王这类特殊牌型**永远不会被枚举**。
+  // 后果: 玩家手持大小王面对单大A (按 §6.4 双王可管), 若直接点"出牌"而未选牌,
+  //   doPlay 的组合回退找不到双王 -> 报"手牌不可用" (用户 2026-10-21 实测报障)。
+  //   引擎侧 identifyHand/canBeat 一直正确, 只是候选枚举漏了。
+  // 合法形态: 双王=1大1小; 三王=2大1小 或 1大2小; 四王=全部 4 张。
+  var jokers = hand.filter(function (c) { return c.isBigJoker || c.isSmallJoker; });
+  if (jokers.length >= 2) {
+    var bigs = jokers.filter(function (c) { return c.isBigJoker; }).map(function (c) { return c.id; });
+    var smalls = jokers.filter(function (c) { return c.isSmallJoker; }).map(function (c) { return c.id; });
+    var mn = Math.min(bigs.length, smalls.length);
+    var mx = Math.max(bigs.length, smalls.length);
+    // 双王: 1大1小
+    if (mn >= 1) out.push([bigs[0], smalls[0]]);
+    // 三王: 2大1小 / 1大2小
+    if (mn >= 1 && mx >= 2) {
+      out.push([bigs[0], bigs[1], smalls[0]]);
+      if (smalls.length >= 2) out.push([bigs[0], smalls[0], smalls[1]]);
+    }
+    // 四王: 全部 4 张
+    if (jokers.length >= 4) {
+      out.push(bigs.concat(smalls).slice(0, 4));
+    }
+  }
+
   // ---- 排序: 张数多者优先; 同张数按首张点数高者优先 ----
   var rankById = {};
   for (i = 0; i < hand.length; i++) rankById[hand[i].id] = hand[i].rank;

@@ -127,16 +127,20 @@ function chooseAction(state, playerId) {
   });
   var following = !!(currentHand && table && table.length > 0);
   dedup.sort(function (a, b) {
-    if (following) {
-      // 跟牌: 张数少者优先 —— 同样的压制效果, 少消耗手牌
-      if (a.length !== b.length) return a.length - b.length;
-    } else {
-      // 首出: 张数多者优先 (尽快减少手牌, 避免永远只出单张导致牌局拖沓)
-      if (a.length !== b.length) return b.length - a.length;
-    }
+    // [2026-10-21 再修] 主排序键必须是**保留价值**, 而不是张数。
+    //   首版修复曾用"跟牌时张数少者优先", 结果引入了新问题:
+    //     桌面是单张时, 单K(1张) 会排在 对Q(2张) 之前 -> AI 甩出单张,
+    //     而手上明明有 QQQ/KKK/AAA 这类更大的组合可用 (用户 2026-10-21 实测报障)。
+    //   用户的原意"由小往大出"指的是**牌的保留价值**, 不是张数:
+    //     keepValue: 7=70 < K=130 < Q=120 < A=500 < 2=600 < 3=700
+    //   两个场景都验证过:
+    //     桌上有对4:  对7(70) 优于 2222(600)  -> 出对7  ✓ (张数与价值一致)
+    //     桌面是单张:  对Q(120) 优于 单K(130)  -> 出对Q  ✓ (仅价值能区分)
     var va = Math.max.apply(null, a.map(function (id) { return keepValue(byId[id] || {}); }));
     var vb = Math.max.apply(null, b.map(function (id) { return keepValue(byId[id] || {}); }));
-    if (va !== vb) return va - vb;                            // 保留价值低者优先
+    if (va !== vb) return va - vb;                            // 保留价值低者优先 (主键)
+    // 价值相同再按张数: 跟牌少消耗, 首出多减少
+    if (a.length !== b.length) return following ? (a.length - b.length) : (b.length - a.length);
     return a[0] < b[0] ? -1 : 1;
   });
 

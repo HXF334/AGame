@@ -184,14 +184,18 @@ test('C.4.3 capture 时 4s 数量从小到大尝试', function () {
   assert.strictEqual(a.cardIds.length, 2, '3 张目标用 2 个 4 即可, 不该用 4 个');
 });
 
-test('C.4.4 王的排序: 大王最大, 小王次大', function () {
+test('C.4.4 双王可压单大A (§6.4)', function () {
   const s = mk1V4('1V4_暗打');
-  // 桌上大王, B 只有大王和小王 → 出大王
+  // 桌上单大王, B 手上有大王+小王 → 双王可压单大王 (§6.4)
+  // [2026-10-21 改] 原期望 PASS("同牌不互压"), 但那是 candidateCombos 尚未
+  //   枚举王组合时的必然结果。补上王组合枚举后, 出双王合法且为唯一可行选择
+  //   —— 单王压不了同种王。测试预期过时, 随实现更新。
   s.table = [BJ()];
   s.lastPlayer = 'A';
   s.players[1].hand = [SJ(), BJ()];
   const a = chooseAction(s, 'B');
-  assert.strictEqual(a.type, 'PASS', '小王和大王都压不了表上大王 (同牌不互压)');
+  assert.strictEqual(a.type, 'PLAY', '双王应可以压表上单大王');
+  assert.strictEqual(a.cardIds.length, 2, '应出双王 2 张');
 });
 
 console.log('\n=== 总结 ===');

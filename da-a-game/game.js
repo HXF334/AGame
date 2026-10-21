@@ -211,12 +211,17 @@ function draw() {
         ctx.lineWidth = isSel ? 3 : 1;
         ctx.strokeRect(x, cardY, cardW, cardH);
         // rank + suit (一行文字一行花色)
-        ctx.fillStyle = (card.suit === 'H' || card.suit === 'D') ? '#c8102e' : '#000000';
+        // [fix] 大小王无花色 (suit=null), 原先 suitChar[null] || card.suit 会把
+        //   字面量 "null" 画到牌面上。改为显示「王」, 大王红 / 小王黑。
+        var isJoker = !!(card.isBigJoker || card.isSmallJoker);
+        ctx.fillStyle = card.isBigJoker ? '#c8102e'
+                       : (isJoker ? '#000000'
+                          : ((card.suit === 'H' || card.suit === 'D') ? '#c8102e' : '#000000'));
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(rankDesc(card), x + cardW / 2, cardY + 16);
         ctx.font = 'bold 18px sans-serif';
-        ctx.fillText(suitChar[card.suit] || card.suit, x + cardW / 2, cardY + 35);
+        ctx.fillText(isJoker ? '王' : (suitChar[card.suit] || card.suit), x + cardW / 2, cardY + 35);
       });
       // 已选张数提示
       if (selectedCards.length > 0) {

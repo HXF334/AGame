@@ -72,6 +72,20 @@ function allBeatingCombos(hand, tableCards) {
   return out;
 }
 
+
+function kvOf(cards) {
+  return Math.max.apply(null, cards.map(function (c) {
+    if (c.isBigJoker) return 1000;
+    if (c.isSmallJoker) return 900;
+    if (c.is主方大A) return 800;
+    if (c.rank === 3) return 700;
+    if (c.rank === 2) return 600;
+    if (c.rank === 14) return 500;
+    if (c.rank === 4) return 50;
+    return (c.rank || 0) * 10;
+  }));
+}
+
 // ================= 1. 核心场景: 桌上有对4, 不应直接甩 2222 =================
 section('1. 跟牌 — 桌上有对4, 应选最小可压制手牌而非 2222');
 
@@ -127,9 +141,13 @@ section('2. 跟牌 — 手上有 2222 但有更小可压制组合时, 不选 222
     check('2.2 未选择 2222', !isBigTriple, desc(played));
 
     var winners = allBeatingCombos(realHand, st.table);
-    var minLen = Math.min.apply(null, winners.map(function (w) { return w.length; }));
-    check('2.3 张数 = 最小可压制张数', played.length === minLen,
-      'played=' + played.length + ' min=' + minLen);
+    // [2026-10-21 改] 排序主键已从"张数"改为"保留价值"(keepValue 升序),
+    //   张数仅作同价值时的次键。"由小往大出"指的是保留价值, 不是张数。
+    var minKv = Math.min.apply(null, winners.map(function (w) { return kvOf(w); }));
+    check('2.3 保留价值 = 最低可压制保留价值', kvOf(played) === minKv,
+      'played kv=' + kvOf(played) + ' min kv=' + minKv);
+    console.log('   [信息] 实际出 ' + desc(played) + ' (' + played.length +
+                '张) | 最低保留价值=' + minKv);
     console.log('   [\u4fe1\u606f] \u5b9e\u9645\u51fa ' + desc(played) + ' (' + played.length +
                 '\u5f20) | \u6700\u5c0f\u53ef\u538b\u5236\u5f20\u6570=' + minLen);
   }
