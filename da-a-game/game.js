@@ -15,35 +15,68 @@ var candidateCombos = require('./src/combos.js').candidateCombos;
 
 // === 工具 ===
 // === 本地文件日志 ===
-// [2026-10-21 改] 日志路径由 [项目根 game.log 或 wx USER_DATA_PATH]
-//   改为 [项目根/logs/log_YYYYMMDD.log], 一天一份自动滚动。
-//   用户可随时让我读当天的文件排查 bug。
-//   WeChat 小游戏 runtime 也支持 require('fs') + mkdirSync, 同一份代码两边通用。
-var _logDir = (typeof __dirname !== 'undefined' ? __dirname : '.') + '/logs';
+// [2026-10-21 \u4fee] \u5386\u53f2\u4e0a\u5931\u8d25\u4e24\u6b21\u7684\u539f\u56e0\u90fd\u662f\u201c\u9759\u9ed8\u5931\u8d25\u201d:
+//   1) \u7b2c\u4e00\u7248\u7528 process.versions.node \u5224\u5b9a\u662f\u5426 Node, \u4f46 WeChat \u8fd0\u884c\u65f6**\u6ca1\u6709
+//      process** -> mkdir \u88ab\u8df3\u8fc7 -> \u76ee\u5f55\u4ece\u672a\u521b\u5efa -> appendFileSync \u629b ENOENT
+//   2) \u7b2c\u4e8c\u7248\u6539\u7528 wx \u6c99\u7bb1\u5199\u5165, \u4f46\u6c99\u7bb1\u6587\u4ef6**\u52a9\u624b\u5728 shell \u91cc\u8bfb\u4e0d\u5230**
+// \u672c\u7248\u7b56\u7565: **\u4f18\u5148\u5199\u9879\u76ee\u76ee\u5f55** (fs \u53ef\u5199\u65f6, \u52a9\u624b\u80fd\u76f4\u63a5 cat),
+//   fs \u4e0d\u53ef\u5199 (\u771f\u673a\u771f\u6c99\u7bb1) \u624d\u9000\u56de wx.getFileSystemManager\u3002
+//   \u65e0\u8bba\u8d70\u54ea\u6761\u8def, \u521d\u59cb\u90fd\u4f1a\u628a\u5b9e\u9645\u8def\u5f84\u6253\u5230 IDE \u63a7\u5236\u53f0, \u4fbf\u4e8e\u786e\u8ba4\u3002
+var _logDir = null, _logFilePath = null, _wxFs = null, _fsOk = false;
+
 function _logFileName() {
   var d = new Date();
   return 'log_' + d.getFullYear() +
     String(d.getMonth() + 1).padStart(2, '0') +
     String(d.getDate()).padStart(2, '0') + '.log';
 }
-var _logFilePath = _logDir + '/' + _logFileName();
+
+// --- \u8def\u5f84 1: \u9879\u76ee\u76ee\u5f55 (fs) ---
 try {
-  if (typeof require !== 'undefined' && typeof process !== 'undefined' &&
-      process.versions && process.versions.node) {
-    var fs0 = require('fs');
-    if (!fs0.existsSync(_logDir)) fs0.mkdirSync(_logDir, { recursive: true });
-    if (!fs0.existsSync(_logFilePath)) fs0.writeFileSync(_logFilePath, '');
+  var nfs = require('fs');
+  var _d = (typeof __dirname !== 'undefined' ? __dirname : '.') + '/logs';
+  if (!nfs.existsSync(_d)) nfs.mkdirSync(_d, { recursive: true });
+  var _probe = _d + '/.write_probe';
+  nfs.writeFileSync(_probe, 'ok');
+  nfs.unlinkSync(_probe);          // \u4e25\u683c\u63a2\u6d4b: \u80fd\u5199\u4e24\u4e2a\u624d\u7b97\u771f\u53ef\u5199
+  _logDir = _d;
+  _fsOk = true;
+} catch (e) { _fsOk = false; }
+
+// --- \u8def\u5f84 2: wx \u6c99\u7bb1 (\u771f\u673a\u771f\u6c99\u7bb1\u56de\u9000) ---
+if (!_fsOk) {
+  try {
+    if (typeof wx !== 'undefined' && wx.getFileSystemManager && wx.env && wx.env.USER_DATA_PATH) {
+      _wxFs = wx.getFileSystemManager();
+      _logDir = wx.env.USER_DATA_PATH + '/logs';
+      _wxFs.mkdir({ filePath: _logDir, fail: function () {} });
+    }
+  } catch (e) {}
+}
+
+_logFilePath = _logDir ? _logDir + '/' + _logFileName() : null;
+
+try {
+  if (_fsOk && _logFilePath) {
+    var _f2 = require('fs');
+    if (!_f2.existsSync(_logFilePath)) _f2.writeFileSync(_logFilePath, '');
   }
 } catch (e) {}
 
+// 开机就告诉你日志落在哪 —— 之前两次静默失败就是因为看不到这个信息。
+// 只能 console.log: 此时 logHistory 还未声明 (TDZ), 不能 push。
+console.log('[da-a-game] log file = ' + (_logFilePath || '(unavailable)') + (_fsOk ? ' (fs)' : ' (wx sandbox)'));
+
 function log(msg) {
   logHistory.push(msg);
-  if (logHistory.length > 15) logHistory.shift();
-  // 同步追加到本地文件
+  if (logHistory.length > 15) logHistory.shift();  // [fix] 增至 15 行, 填满下方空白
+  // 追加到本地文件
+  var line = '[' + new Date().toISOString() + '] ' + msg + '\n';
   try {
-    if (typeof require !== 'undefined') {
-      var fs = require('fs');
-      fs.appendFileSync(_logFilePath, '[' + new Date().toISOString() + '] ' + msg + '\n');
+    if (_fsOk && _logFilePath) {
+      require('fs').appendFileSync(_logFilePath, line);
+    } else if (_wxFs && _logFilePath) {
+      _wxFs.appendFile({ filePath: _logFilePath, data: line, encoding: 'utf8' });
     }
   } catch (e) { /* 静默 */ }
 }
