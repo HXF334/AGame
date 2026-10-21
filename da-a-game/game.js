@@ -78,6 +78,13 @@ function log(msg) {
   }
   logHistory.push(msg);
   if (logHistory.length > 15) logHistory.shift();  // [fix] 增至 15 行, 填满下方空白
+
+  // [2026-10-21 第三次修] wx 沙箱在 devtools 模拟器**完全不可读** (usr/ 为空),
+  //   fs 在项目目录也只在 Node 测试时有效, IDE 里走 wx 沙箱同样静默丢数据。
+  //   唯一可靠通道: **console.log**: 调试器 -> Console 里可以一次选中复制。
+  //   玩家操作后告「复制日志给我」, 我从粘贴的分析。
+  console.log('[da-a-game] ' + msg);
+
   // 追加到本地文件
   var line = '[' + new Date().toISOString() + '] ' + msg + '\n';
   try {
