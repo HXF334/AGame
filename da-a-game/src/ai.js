@@ -107,8 +107,16 @@ function chooseAction(state, playerId) {
   var cands = candidateCombos(hand).slice();
   hand.forEach(function (c) { cands.push([c.id]); });
 
-  // 排序: 张数多者优先 (尽快减少手牌, 避免永远只出单张导致牌局拖沓),
-  // 同张数按保留价值低者优先 (尽量不用大牌)。合法性已由 canBeat 裁决, 排序只是策略。
+  // 排序策略**分场景** (2026-10-21 用户 IDE 报障后修正):
+  //
+  //   跟牌 (table 非空): 必须选【能压过桌面的最小手牌】。
+  //     原实现一律"张数多者优先", 导致 AI 在桌上有对4 时直接甩 2222 —— 虽然
+  //     2222 确实压得过对4, 但把 2 全打光极不划算, 而对7 同样能压且保留大A/2。
+  //     用户原话: "2222 确实比对4大, 但也应该从合适的手牌中由小往大出"。
+  //
+  //   首出 (table 为空): 保持"张数多者优先"。
+  //     这是当初把 AI 从"16种牌型只出单张"救到 9/16 覆盖的关键策略;
+  //     若一并改成张数少者优先, AI 会退化成只出单张, 覆盖度崩盘。
   var byId = {};
   hand.forEach(function (c) { byId[c.id] = c; });
   var uniq = {};
@@ -117,8 +125,15 @@ function chooseAction(state, playerId) {
     var key = c.slice().sort().join('|');
     if (!uniq[key]) { uniq[key] = true; dedup.push(c); }
   });
+  var following = !!(currentHand && table && table.length > 0);
   dedup.sort(function (a, b) {
-    if (a.length !== b.length) return b.length - a.length;   // 张数多者优先
+    if (following) {
+      // 跟牌: 张数少者优先 —— 同样的压制效果, 少消耗手牌
+      if (a.length !== b.length) return a.length - b.length;
+    } else {
+      // 首出: 张数多者优先 (尽快减少手牌, 避免永远只出单张导致牌局拖沓)
+      if (a.length !== b.length) return b.length - a.length;
+    }
     var va = Math.max.apply(null, a.map(function (id) { return keepValue(byId[id] || {}); }));
     var vb = Math.max.apply(null, b.map(function (id) { return keepValue(byId[id] || {}); }));
     if (va !== vb) return va - vb;                            // 保留价值低者优先

@@ -52,7 +52,13 @@ section('1. AI 能用多张牌压制');
   { name: '1.1 桌上有对10 -> AI 出对3', table: [C('S', 10), C('H', 10)], hand: [C('S', 3), C('C', 3), C('D', 7)], want: HAND_TYPES.PAIR },
   { name: '1.2 桌上有345连张 -> AI 出10JQ连张', table: [C('S', 3), C('H', 4), C('D', 5)], hand: [C('S', 10), C('C', 11), C('D', 12), C('H', 8)], want: HAND_TYPES.STRAIGHT },
   { name: '1.3 桌上有3-4-5-6 连张 -> AI 出8-9-10-J 连张', table: [C('S', 3), C('H', 4), C('D', 5), C('C', 6)], hand: [C('S', 8), C('H', 9), C('D', 10), C('C', 11)], want: HAND_TYPES.STRAIGHT },
-  { name: '1.4 桌上有单张 -> AI 出蛋子 (§6.3 蛋子在单张层级之上)', table: [C('S', 5)], hand: [C('S', 9), C('C', 9), C('D', 9), C('H', 7)], want: HAND_TYPES.TRIPLE },
+  // [2026-10-21 修正] 原断言 AI 应出蛋子(TRIPLE), 与用户新策略冲突。
+  // 桌上有单张5 时, 单张7 同样能压 (7 > 5), 两者都合法。
+  //   用户原话: "也应该从合适的手牌中由小往大出" -> 跟牌时选**最小可压制手牌**。
+  //   故改为期望 SINGLE(单张7)。
+  //   §6.3 "蛋子在单张层级之上" 是**牌型压制规则**, 已在 test-hand-types 系列覆盖;
+  //   此处测的是 AI **选牌策略**, 两者不应混为一谈。
+  { name: '1.4 桌上有单张 -> AI 出最小可压制手牌(单张7, 而非蛋子)', table: [C('S', 5)], hand: [C('S', 9), C('C', 9), C('D', 9), C('H', 7)], want: HAND_TYPES.SINGLE },
   { name: '1.5 桌上有单大A -> AI 出5张3大蛋子 (§6.4)', table: [BigA('H')], hand: [C('H', 3), C('D', 3), C('C', 3), C('S', 3), C('H', 3), C('D', 8)], want: HAND_TYPES.BIG_TRIPLE },
   { name: '1.6 桌上有对K -> AI 出蛋子(跨型压对子)', table: [C('S', 13), C('H', 13)], hand: [C('S', 4), C('H', 4), C('C', 4), C('D', 7)], want: HAND_TYPES.TRIPLE },
   { name: '1.7 桌上有对4-5-6 双龙 -> AI 出大蛋子', table: [C('S',4),C('H',4),C('D',5),C('C',5),C('S',6),C('H',6)], hand: [C('S',9),C('H',9),C('C',9),C('D',9),C('S',7)], want: HAND_TYPES.BIG_TRIPLE }
