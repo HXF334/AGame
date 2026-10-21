@@ -23,6 +23,7 @@ var candidateCombos = require('./src/combos.js').candidateCombos;
 //   fs \u4e0d\u53ef\u5199 (\u771f\u673a\u771f\u6c99\u7bb1) \u624d\u9000\u56de wx.getFileSystemManager\u3002
 //   \u65e0\u8bba\u8d70\u54ea\u6761\u8def, \u521d\u59cb\u90fd\u4f1a\u628a\u5b9e\u9645\u8def\u5f84\u6253\u5230 IDE \u63a7\u5236\u53f0, \u4fbf\u4e8e\u786e\u8ba4\u3002
 var _logDir = null, _logFilePath = null, _wxFs = null, _fsOk = false;
+var _logPathAnnounced = false;   // 首次 log() 时把路径推到屏 (避免控制台看不到)
 
 function _logFileName() {
   var d = new Date();
@@ -63,11 +64,18 @@ try {
   }
 } catch (e) {}
 
-// 开机就告诉你日志落在哪 —— 之前两次静默失败就是因为看不到这个信息。
-// 只能 console.log: 此时 logHistory 还未声明 (TDZ), 不能 push。
+// 开机第一屏就告诉你日志落在哪 (屏显, 在 _logPathAnnounced 块里执行后这里会被覆盖)
 console.log('[da-a-game] log file = ' + (_logFilePath || '(unavailable)') + (_fsOk ? ' (fs)' : ' (wx sandbox)'));
 
 function log(msg) {
+  // 首次调用: 先把日志路径推到 logHistory, 这样玩家在游戏画面底部
+  //   能直接看到「日志写到了哪里」(避免再依赖控制台)。
+  if (!_logPathAnnounced) {
+    _logPathAnnounced = true;
+    var banner = '[日志路径] ' + (_logFilePath || '(不可用)') + (_fsOk ? '' : ' [wx沙箱]');
+    logHistory.push(banner);
+    console.log('[da-a-game] ' + banner);   // 控制台也带上, 双保险
+  }
   logHistory.push(msg);
   if (logHistory.length > 15) logHistory.shift();  // [fix] 增至 15 行, 填满下方空白
   // 追加到本地文件
