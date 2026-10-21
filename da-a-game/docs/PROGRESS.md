@@ -15,24 +15,12 @@
 
 ---
 
-## 批次 1：基础设施（已完成）
+## 批次 1-2-3：规则引擎全章节实现（已完成 2026-10-19-20）
 
-- **阶段路线 C-6 → C-4 → C-1 → C-2 全部完成**
-- 实现 §3 状态机 + §4.1 亮A + §4.2 强制排查（不含反A/底牌翻开/身份选择/出牌/AI/界面）
-- 业务级拒绝优先级：`主A != null`、`底牌公开 === true`、反A 已发生等检查先于 phase 检查
-- 失败时 `transition()` 返回 `{ok:false, error:{type,message}, state:原state}`（state 引用相同）
-- `state` 字段 `反A / 次方 / mode / 底牌公开` 用 `?? null` 在所有 handler 链中传透
-- 反A 后强制 `mode = '1V4_明打'`（§4.4）
-- REVEAL_BOTTOM 判定：1 个大A 持有者 = 1V4；2 个持有者 = 2V3，次方 = 非主方的那位
-
-## 批次 2：牌型识别（已完成）
-
-- §6 牌型识别分 3 批完成（16 种牌型）
-- POWER 等级表 + 4 个特殊列表（单大A / 4-张大蛋子 / 双王 / 三王 / 四王）
-
-## 批次 3：取牌、出牌、推风、胜负、计分（已完成）
-
+- §3 状态机 + §4.1 亮A + §4.2 强制排查（不含反A/底牌翻开/身份选择/出牌/AI/界面）
+- §6 牌型识别（16 种，分 3 批）
 - §7 → §8 → §9 → §10 → §11 一次性完成
+- 业务级拒绝优先级：`主A != null`、`底牌公开 === true`、反A 已发生等检查先于 phase 检查
 
 ---
 
@@ -47,8 +35,6 @@
 | E | 加更多集成测试（边界场景）|
 | F | 清理临时文件 |
 
----
-
 ## 任务 G-K：完成度冲刺（已完成 2026-10-20 12:33）
 
 | 任务 | 描述 |
@@ -59,81 +45,74 @@
 | J | AI 模块扩展（对子压）|
 | K | 性能测试（1000 局，99.8% 完成率, 0.69 ms/局）|
 
+## 任务 A-C 第二轮 / B 第三轮：A3 加固（已完成 2026-10-20 13:02-18:30）
+
+- transition.js 字段丢失（`Object.assign({}, state, _r.state)` + `ensureState`）
+- 双路径推导 `camps()` 抽到 `src/util.js`
+- N 自动推导 `autoDeriveN(state, winner)`
+- D 任务：tap-to-select（selectedCards + handCardHitboxes + onTouchStart 命中检测）
+- AI 压对子
+- UI bug #1 `cardDescFull_cardDesc`（局部 const 屏蔽外层函数 → 改名 `cardText`）
+- UI bug #2 `state is not defined` at runAI（`state` → `gameState`）
+
+**关键学习**：发现 bug 模式时，应 grep 全仓库同类依赖点 —— A 任务只修了 win-loss / push-wind / transition，**漏了 scoring.js**，被后续 test-scoring-deep.js 挖出。
+
 ---
 
-## 任务 A-C 第二轮：根因修复（已完成 2026-10-20 13:02）
+## 批次 4：自主全面审查 + 大规模修复（已完成 2026-10-20 22:40 - 2026-10-21 13:15）
 
-| 任务 | 描述 |
+### 阶段 A：git 基础设施 + SKILL 逐节审计
+- 22:40 `git init -b main` + 首次提交 `6cb0985`（69 文件）
+- 23:30 自审 SKILL 15 章，加 8 套审查测试，发现 7 个隐藏 bug
+
+### 阶段 B：9 项修复（详见 `KNOWN_ISSUES.md` B18-B27）
+| bug | 级别 | 概要 |
+|---|---|---|
+| **B18 [P0]** | 引擎 + 真实玩家 | 连张/双龙识别依赖牌序（`handlePlay` 按手牌存储顺序重排） |
+| B19 [P1] | 引擎 | POWER 表压平 §6.3 末档，蛋子无法跳型压制 |
+| B20 [P1] | 引擎 | PAIR/TRIPLE 比较泄露大A 加成 |
+| B21 [P1] | 引擎 | 推风跳阵营（分支条件误用 mode）|
+| B22 [P1] | 引擎 | 单大A 压制张数写反（4‖6 → 5‖6）|
+| B23 [P1] | 引擎 | `isValidStraight` 循环起点错误（4-4-5 被误判为连张）|
+| B24 [P1] | 引擎 | §4.3 直接亮双大A 未按 1V4明打 处理（代码注释写了意图但条件没实现）|
+| B25 | AI | AI 重写：玩家 16 种牌型只出 SINGLE（100%），改后 9/16 |
+| B26 | UI | game.js 对子回退声称修复但未落盘 |
+| B27 | UI | 15 项 UI 修复汇总（详见 `KNOWN_ISSUES.md`）|
+
+### 阶段 C：AI 能力实测 + 大规模压测
+- **AI 40 局实测**：牌型覆盖 1/16 → 9/16，过牌率 49% → 49%（不变，取牌合法导致必然较高）
+- **300 局压测**：300/300 正常结束、0 卡死、0 非法行动、0 牌张不守恒
+- **D4「AI 死循环」已解决** —— 根因即 B18 P0
+
+### 阶段 D：无头 UI 测试基建（`game.js` 此前 25KB 重建文件无任何测试）
+**核心创新：mock wx/canvas 让 `game.js` 能在 node 里跑真实代码路径**
+
+| 新增 | 用途 |
 |---|---|
-| A | 修 transition.js 字段丢失（`Object.assign({}, state, _r.state)` + 拆 dispatch bug）|
-| B | 修 perf 测试脚本 bug（运算符优先级）|
-| C | AI 压对子（`tableHandPair` + 升序对子组）|
+| `tests/mock-wx.js` | wx.createCanvas / onTouchStart + 9 ctx 方法 mock |
+| `tests/test-game-headless.js`（25 项）| 驱动 `doPlay`/`doPass`/`runAI`/绘制，验证 log 文案质量、信息边界、牌张守恒 |
+| `tests/lib/state-builder.js` | 共享局面构造器（消除测试/诊断分歧）|
+| `tests/test-game-scenarios.js`（35 项）| **把你报过的每个 bug 固化为永久回归用例**（推风/33333/乱序连张/对子/§4.3/反A）|
+| `tests/test-game-touch.js`（25 项）| 触摸坐标 → 牌 ID 映射正确性 |
+| `game.js` 新增 `__setState` 注入点 + 补导出 `draw`/`cardDesc`/`selectedCards`/`handCardHitboxes`（`typeof module` 守卫已存在，微信零影响）|
 
-**关键学习**：发现一类 bug 模式时，应 grep 全仓库同类依赖点，而非修完已知症状就收工 —— A 任务修了 win-loss / push-wind / transition，**漏了 scoring.js**，被后续 test-scoring-deep.js 挖出。
+### 阶段 E：抓到并修了一个**真实现存 UI 缺陷**
+构造态测试 S1 暴露出：`doPushWind` 没把引擎算出的 `currentPlayer` 同步回模块级变量，导致 `runAI` 拿过期值行动 —— **跨阵营推风**。
 
----
+A/B 对照（临时移除修复后跑测试）：
+- 移除 → 第一个行动者 = `AI 丙`（主方玩家）✗
+- 保留 → 第一个行动者 = `AI 戊`（抓方最近未出完者）✓
 
-## 任务 B（计分深度覆盖，已完成 2026-10-20 13:06）
+影响面：每次自动推风都触发（`maybeTriggerPushWindAfterRoundEnd → doPushWind`）。这是**此前随机局几乎撞不到**的真实 bug。
 
-- `tests/test-scoring-deep.js`（34 项）覆盖 §11.1 + §11.2
-- 暴露 scoring.js 仍硬依赖 `state.主方[0]` / `state.抓方`
-- 注入 `camps(state)` helper（双路径逻辑，与 win-loss / push-wind 一致）
-
----
-
-## 任务 A-B 第三轮：扫描 + 加固（已完成 2026-10-20 18:00-18:30）
-
-| 时间 | 任务 | 描述 |
-|---|---|---|
-| 18:06 | A 扫描 | grep 15 处未守卫 `state.X.Y` 解引用，发现 2 处真隐患 |
-| 18:06 | A 修 | `transition.js` REVEAL_BOTTOM `state.主A.suit` 加 null 守卫；`capture.js` `state.table.map` 加空守卫 |
-| 18:06 | A2 | **同类隐患广泛存在**——给 handlePass/handlePlay/chooseAction 加 player.hand / state.players guard |
-| 18:06 | A3 | `ensureState()` + `origState` 保留引用，err 路径返回原 state |
-| 18:06 | A4 | `transition(null)` 早退保留 `ILLEGAL_ACTION` 语义 |
-| 18:06 | A5 | `transition(s, null)` 早退路径不再调 `ensureState`，保留 `r.state === s` |
-| 18:06 | B | 修 test-perf.js 死循环（`!(arr).indexOf(n) >= 0` 恒为 true）|
-
-**新增 test-robustness.js**（23 项）：13 种 malformed state × 10 个模块的 fuzzer 扫描。
+### 阶段 F：修正一个 flaky 测试
+`test-game-headless.js` 1.7 原来断言"每家 ≤22 张"作为全程不变量，12 次跑挂 1 次。
+根因：**§7.1 取牌让手牌可超过 22**（实测 23 张）。22 只是发牌/翻底牌那一刻的分配值，非全程不变量。
+改为"非负且 ≤108 + 总数 ≤108"。修正后**20/20 稳定**。
 
 ---
 
-## 任务 B（计分深度覆盖 #2，已完成 2026-10-20 13:06）
-
-- 修了 2 个旧测试预期（"未传 n 默认 N=1" 是旧假设）
-
----
-
-## 任务 D-A-B：UI 可用后的并行任务（已完成 2026-10-20 18:18-18:33）
-
-| 任务 | 描述 | 测试 |
-|---|---|---|
-| **D** tap-to-select | game.js 加 selectedCards + handCardHitboxes；draw human 回合渲染可点击矩形；doPlay 用 selectedCards 多卡型优先；onTouchStart 加手牌命中检测；advance 清空选中 | 24/24 |
-| **A** camps 公共化 | 新增 src/util.js；删 3 处重复实现；scoring.js 重写；删 push-wind 死代码 | 24/24 |
-| **B** N 自动推导 | scoring.js 加 autoDeriveN(state, winner)：主方胜按抓方未出完人数；主方失败查 3 行表；n 变可选；新增 test-scoring-n-derive.js（15 项）| 25/25 |
-
----
-
-## UI bug 修复（已完成 2026-10-20 18:11-18:12）
-
-| 时间 | Bug | 修法 |
-|---|---|---|
-| 18:11 | "worker path empty" IDE 启动错 | 重写 project.config.json，清除 mojibake description |
-| 18:11 | `cardDescFull_cardDesc is not defined` | game.js doPlay 局部变量 `cardDesc` 屏蔽外层函数 → 改名 `cardText` |
-| 18:12 | `state is not defined` at runAI | game.js L516-517 `state.players` / `state.discarded` → `gameState.players` / `gameState.discarded` |
-
----
-
-## 待办（按优先级）
-
-| 优先级 | 任务 | 说明 |
-|---|---|---|
-| P0 | UI bug 修复（手牌超屏、多卡 999、AI log）| 用户 2026-10-20 20:14 反馈 |
-| P1 | game.js Node-side 集成测试 | mock wx/canvas + 验证 draw 输出 + doPlay 用选中卡路径 |
-| P2 | 持续更新 docs | 用户要求：每天 |
-
----
-
-## 里程碑
+## 全部里程碑
 
 | 日期 | 里程碑 |
 |---|---|
@@ -145,24 +124,48 @@
 | 2026-10-20 13:02 | A-C 第二轮完成 |
 | 2026-10-20 13:06 | 计分深度覆盖完成 |
 | 2026-10-20 13:07 | 第一版 docs（5 份）生成 |
-| 2026-10-20 18:00 | 第二次扫描 + 加固完成（ensureState + origState + 各种守卫）|
-| 2026-10-20 18:33 | D-A-B 完成，**25/25 套件全过** |
+| 2026-10-20 18:00 | 第二次扫描 + 加固完成 |
+| 2026-10-20 18:33 | D-A-B 完成，25/25 套件全过 |
 | 2026-10-20 18:11-18:12 | 3 个 UI runtime bug 修 |
-| 2026-10-20 20:14 | 用户开始目视验证 + 第一份 docs 刷新 |
+| 2026-10-20 20:14 | 用户开始目视验证 |
+| 2026-10-20 22:40 | **首次 git 提交 6cb0985（69 文件）** |
+| 2026-10-21 13:15 | **8 个提交全部推送，43 套件 / 700+ 项全过，43 文件无头测试基建** |
 
 ---
+
+## 当前状态摘要
+
+```
+测试  43 套件 PASS / 0 FAIL  (持续验证, 累计 400+ 次套件执行 0 失败)
+AI   牌型覆盖 1/16 → 9/16, 300 局 0 卡死 / 0 非法 / 0 牌张不守恒
+git  main == origin/main @ 1355d0e, 工作区干净, 73 文件
+doc  KNOWN_ISSUES.md 更新至 B30
+```
+
+## 待办（按优先级）
+
+| 优先级 | 事项 | 说明 |
+|---|---|---|
+| **P0** | **微信 IDE 实测** | `game.js` 是重建文件，本轮修了牌序依赖与推风同步 2 个真 bug，IDE 上未验证 |
+| P2 | 补齐 `PROGRESS.md` / `PROJECT_STATUS.md` / `TEST_REPORT.md` / `HANDOFF.md` 4 份文档（仍停在 20:14）| **本批次已完成** |
+| P3 | D7：`handlePlay`/`handlePass` 内改走 `camps()` | 防止再次出现 B19/B20 这类直接依赖阵营字段的同类 bug |
+| — | `test-audit-integration.js` 偶发 flaky | 200+ 次未复现，根因未查明（不是 § 取牌增加手牌上限那类问题）|
 
 ## 已废弃 / 取代
 
 | 旧方案 | 原因 | 新方案 |
 |---|---|---|
 | 硬依赖 `state.主方`/`抓方` | transition 丢字段时 crash | 双路径推导 `主A.establishedBy + 次方` |
-| `getCamp` 用 `state.主方`/`抓方` | 同上 | 同上 |
-| `chooseAction` 仅出第一张 | 不符合 SKILL §12 "优先选择合法可比较牌型" | 按点数升序 + 大牌保护 + 压对子 |
-| `transition()` 直接 return handler 结果 | handler 返回 ok({...}) 丢字段 | 出口统一 merge |
-| test-perf.js 用 `!(arr).indexOf(n) >= 0` | 运算符优先级 bug，已过牌玩家被重复选 | 复用 e2e 已验证的对局循环 |
-| `calculateScore(state, result, n)` 强制外部传 n | SKILL §11.2 N 应自动推导 | `autoDeriveN(state, winner)`，n 变可选 |
+| `getCamp` 用 `state.主方`/`抓方` | 同上 | `src/util.js camps()` |
+| `chooseAction` 只出第一张 | 16 种牌型只出 1 种 | candidateCombos 枚举 + 引擎 `canBeat` 裁决 |
+| `transition()` 直接 return handler 结果 | handler 返回 `ok({...})` 丢字段 | 出口统一 `Object.assign` merge |
+| test-perf.js 用 `!(arr).indexOf(n) >= 0` | 运算符优先级 bug | 复用 e2e 循环 |
+| `calculateScore(state, result, n)` 强制外部传 n | §11.2 N 应自动推导 | `autoDeriveN(state, winner)` |
 | 3 处 camps() 重复实现 | 修算法要同步 3 处 | 统一到 `src/util.js` |
-| `game.js` `state` / `gameState` 混用 | runAI 内 L516-517 引用 `state` 触发 ReferenceError | 全部 `gameState`（仅 doPlay/cardText 局部变量名 `state` 不存在）|
+| `game.js` `state` / `gameState` 混用 | runAI ReferenceError | 全部 `gameState` |
 | 局部 `const cardDesc` 屏蔽外层函数 cardDesc | L120 函数被屏蔽 → ReferenceError | 局部变量改名 `cardText` |
-| project.config.json description 是 mojibake | IDE "worker path empty" 错 | 写干净 ASCII 中文 |
+| project.config.json description 是 mojibake | IDE "worker path empty" 错 | 干净 ASCII 中文 |
+| **AI 用 `doPlay(ids)`** 形式参数 | `doPlay()` 不收参数 | 测试须 `selectedCards().push()` 后调 `doPlay()` |
+| **手牌 ≤22 张断言为全程不变量** | §7.1 取牌可超过 | "非负且 ≤108 + 总数守恒 108" |
+| **isValidStraight 依赖 cards[0]/cards[len-1]** | handlePlay 重排牌序时 fail | 排序 + 点数集合显式判定 A 形态 |
+| **PUSH_WIND 引擎算对的 currentPlayer 在 UI 被丢弃** | game.js 仅 `gameState = r.state` 未同步模块级变量 | 同步 `currentPlayer = r.state.currentPlayer` |
