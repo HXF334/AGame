@@ -460,6 +460,14 @@ function doPushWind() {
     //   拿着**过期**的 currentPlayer 行动, 推风目标被丢弃。
     //   doPlay/doPass 不受影响: 它们走 advanceCurrentPlayer() 自行维护。
     if (r.state.currentPlayer) currentPlayer = r.state.currentPlayer;
+    // [P1 修复] 推风成功后必须清空 lastEmptiedPlayer。
+    //   引擎已把 推风触发者 置为 null, 但本模块的 lastEmptiedPlayer 会一直留着旧值,
+    //   导致三处错误:
+    //     1) L164 画面显示"推风: X"是陈旧的**触发者**, 而非当前目标 -> 用户误以为推给了甲
+    //     2) L237 pushEnabled 恒为真 -> 推风按钮永远可点
+    //     3) 本函数再次被调用时会用陈旧触发者 -> 引擎 TRIGGER_NOT_OUT,
+    //        或选中错误目标, 最终 runAI 报 "lastPlayer cannot pass" 而中断自动玩法。
+    lastEmptiedPlayer = null;
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
       gameState.phase = 'GAME_END';
