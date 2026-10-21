@@ -78,7 +78,11 @@ function fmt主A(o) {
 // === 按钮 (3 个 hitboxes) ===
 let btnPlay = null;
 let btnPass = null;
-let btnPushWind = null;
+// [2026-10-21 删] btnPushWind 已移除。推风按 SKILL §9 应在"出完牌 + 其余玩家过牌 ->
+//   轮次结束"时**自动**触发 (maybeTriggerPushWindAfterRoundEnd), 无需人工干预。
+//   该按钮不仅多余, 还有害: 玩家可在轮次未结束时手动触发, 用陈旧触发者导致引擎
+//   TRIGGER_NOT_OUT, 进而让 runAI 报 "lastPlayer cannot pass" 并中断自动玩法。
+//   保留 doPushWind 函数本身 (自动触发路径调用它), 仅去掉 UI 入口。
 let btnSelectPlayers = null;
 
 // === 初始化 (START_GAME → FORCED_CHECK → ADVANCE → REVEAL_BOTTOM → CHOOSE_IDENTITY) ===
@@ -161,7 +165,15 @@ function draw() {
   // 列 3 (右)
   ctx.fillText('底牌公开: ' + (gameState['底牌公开'] ? '是' : '否'), W * 0.68, H * 0.16);
   ctx.fillText('过牌: ' + (function(){var p=gameState.passedPlayers||[]; return p.length?p.map(function(id){return names[['A','B','C','D','E'].indexOf(id)]||id;}).join(','):'-';})(), W * 0.68, H * 0.22);
-  ctx.fillText('推风: ' + (function(){ var t = gameState['推风触发者'] || lastEmptiedPlayer; return t ? (names[['A','B','C','D','E'].indexOf(t)] || t) : '-'; })(), W * 0.68, H * 0.28);
+  // [2026-10-21 改] 本字段改为显示【推风目标】而非触发者。
+  //   原实现显示 (推风触发者 || lastEmptiedPlayer) —— 那是"谁出完牌触发的",
+  //   却标成"推风: X", 极易被读成"推给了 X", 2026-10-21 已因此误判三轮。
+  //   现在语义明确: "推风给 X" 的 X 就是 currentPlayer (§9.3 同阵营最近未出完者)。
+  var pwPending = !!(gameState['推风触发者'] || lastEmptiedPlayer);
+  var pwTarget = pwPending
+    ? (currentPlayer ? (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) : '?')
+    : '-';
+  ctx.fillText('推风给: ' + pwTarget, W * 0.68, H * 0.28);
   ctx.fillText('桌牌: ' + (gameState.table ? gameState.table.length : 0) + ' 张', W * 0.68, H * 0.34);
 
   // ===== 桌牌牌面 (黄字) =====
@@ -228,13 +240,14 @@ function draw() {
 
   // ===== 按钮: 出牌 / 过牌 / 推风 (右下角) =====
   const btnW = 72, btnH = 30, gap = 6;
-  const totalBtnW = btnW * 3 + gap * 2;
+  // [2026-10-21 改] 3 个按钮 -> 2 个, 布局宽度同步收窄
+  const totalBtnW = btnW * 2 + gap;
   const btnStartX = W - totalBtnW - W * 0.02;
   const btnY = H * 0.93 - btnH;
 
   const playEnabled = currentPlayer && gameState.phase === PHASES.PLAY;
   const passEnabled = playEnabled;
-  const pushEnabled = !!(lastEmptiedPlayer || gameState['推风触发者']);
+  const pushEnabled = true;   // [2026-10-21] 推风按钮已删, 此变量仅保留兼容, 绘制端不再使用
 
   // 出牌
   ctx.fillStyle = playEnabled ? '#c8102e' : '#555';
@@ -254,16 +267,8 @@ function draw() {
   ctx.fillStyle = '#ffffff';
   ctx.fillText('过牌', btnStartX + btnW + gap + btnW / 2, btnY + btnH / 2);
 
-  // 推风
-  ctx.fillStyle = pushEnabled ? '#7b3f00' : '#555';
-  ctx.fillRect(btnStartX + (btnW + gap) * 2, btnY, btnW, btnH);
-  ctx.strokeRect(btnStartX + (btnW + gap) * 2, btnY, btnW, btnH);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('推风', btnStartX + (btnW + gap) * 2 + btnW / 2, btnY + btnH / 2);
-
   btnPlay = { x: btnStartX, y: btnY, w: btnW, h: btnH };
   btnPass = { x: btnStartX + btnW + gap, y: btnY, w: btnW, h: btnH };
-  btnPushWind = { x: btnStartX + (btnW + gap) * 2, y: btnY, w: btnW, h: btnH };
 
   // ===== 顶部 5 按钮 (选我是哪个 + 剩余张数) =====
   const meBtnW = 56, meBtnH = 32, meGap = 8;
@@ -618,10 +623,9 @@ if (typeof wx !== 'undefined') {
       doPass();
       return;
     }
-    if (btnPushWind && x >= btnPushWind.x && x <= btnPushWind.x + btnPushWind.w && y >= btnPushWind.y && y <= btnPushWind.y + btnPushWind.h) {
-      doPushWind();
-      return;
-    }
+    // [2026-10-21 删] 原此处有 btnPushWind 命中测试 -> doPushWind()。
+    //   推风按钮已移除 (自动触发, 不该由玩家手动干预), 该分支一并删除。
+    //   注意: doPushWind 函数本身保留, 自动路径 maybeTriggerPushWindAfterRoundEnd 仍调用它。
 
     // 检查 手牌 hitbox (tap-to-select)
     for (var k = 0; k < handCardHitboxes.length; k++) {
