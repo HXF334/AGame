@@ -79,79 +79,79 @@ function doubleJokerRankEncoding(cards) {
   return count;
 }
 
-// STRAIGHT 识别：根据原始牌序判断 A 在头/尾/中间
+// STRAIGHT 识别：按点数升序判断连续性
 // 返回 { length, low } 或 null
+//
+// [P0 修复] 牌是**集合**，连续性由点数决定，与传入数组的顺序无关。
+//   原实现直接读 cards[0] / cards[cards.length-1] 并逐位比较，隐含假设
+//   数组已按点数升序。而 play.js 的 handlePlay 用
+//     player.hand.filter(c => cardIds.indexOf(c.id) >= 0)
+//   取牌，会**按手牌存储顺序**重排，丢弃调用方给的顺序。
+//   于是只要玩家手牌不是点数升序，连张就永远识别失败 (INVALID_HAND)。
+//   修复：识别前先按 rank 升序排序，使识别与顺序无关。
 function isValidStraight(cards) {
   if (cards.length < 3) return null;
+  // [P0 修复] 与传入顺序解耦: 牌是集合, 连续性由点数决定。
+  //   原实现直接读 cards[0]/cards[len-1] 并逐位比较, 隐含"已按点数升序";
+  //   而 play.js handlePlay 用 player.hand.filter(...) 取牌会按手牌存储顺序重排,
+  //   手牌非升序时连张永远识别失败 (INVALID_HAND)。
+  //   注意: 不能只排序沿用旧逻辑 —— 排序会把 A-2-3 变成 [2,3,14],
+  //   使 A 落到末尾而被误当高端 A。故改用"点数集合"显式判定 A 的两种合法形态 (§6.1)。
+  cards = cards.slice().sort(function (a, b) { return a.rank - b.rank; });
 
-  const firstRank = cards[0].rank;
-  const lastRank = cards[cards.length - 1].rank;
-  const firstIsA = firstRank === 14;
-  const lastIsA = lastRank === 14;
+  const ranks = cards.map(function (c) { return c.rank; });
+  const aceCount = ranks.filter(function (r) { return r === 14; }).length;
+  if (aceCount >= 2) return null;               // 2 张 A 不能成龙 (§6.1)
 
-  if (firstIsA && lastIsA) return null;  // 2 张 A，不能成龙
+  const rest = ranks.filter(function (r) { return r !== 14; });
+  for (var i = 1; i < rest.length; i++) {
+    if (rest[i] !== rest[i - 1] + 1) return null;   // rest 必为连续段
+  }
 
-  if (firstIsA) {
-    // A-作-低端：A, 2, 3, ..., n
-    if (cards[1].rank !== 2) return null;
-    for (let i = 1; i < cards.length - 1; i++) {
-      if (cards[i+1].rank !== cards[i].rank + 1) return null;
+  if (aceCount === 1) {
+    if (rest[0] === 2) {
+      return { length: cards.length, low: 1 };    // A 作低端: A-2-3(-4-5-...) (§6.1)
     }
-    return { length: cards.length, low: 1 };
+    if (rest[rest.length - 1] !== 13) return null; // A 作高端必以 K 结尾: m..13-A (§6.1 QKA)
+    return { length: cards.length, low: rest[0] };
   }
 
-  if (lastIsA) {
-    // A-作-高端：m, m+1, ..., 13, A
-    for (let i = 0; i < cards.length - 1; i++) {
-      if (cards[i+1].rank !== cards[i].rank + 1) return null;
-    }
-    return { length: cards.length, low: firstRank };
-  }
-
-  // 无 A
-  for (let i = 0; i < cards.length - 1; i++) {
-    if (cards[i+1].rank !== cards[i].rank + 1) return null;
-  }
-  return { length: cards.length, low: firstRank };
+  return { length: cards.length, low: rest[0] };  // 无 A: 2..13 连续段
 }
 
 // DOUBLE_STRAIGHT 识别：每点 2 张，判断 A 在头/尾
 // 返回 { length, low } 或 null
 function isValidDoubleStraight(cards) {
   if (cards.length < 6 || cards.length % 2 !== 0) return null;
+  // [P0 修复] 与传入顺序解耦 (同 isValidStraight): handlePlay 会按手牌存储顺序重排。
+  //   且排序会把 A-A-2-2-3-3 变成 [2,2,3,3,14,14], 故 A 的低端形态必须用
+  //   "点数集合"显式判定, 而不能靠 A 的数组位置。
+  cards = cards.slice().sort(function (a, b) { return a.rank - b.rank; });
 
   // 每对必须同 rank
-  for (let i = 0; i < cards.length; i += 2) {
-    if (cards[i].rank !== cards[i+1].rank) return null;
+  for (var i = 0; i < cards.length; i += 2) {
+    if (cards[i].rank !== cards[i + 1].rank) return null;
   }
 
-  // 配对连续性
-  const firstRank = cards[0].rank;
-  const firstIsA = firstRank === 14;
+  const pairRanks = [];
+  for (var k = 0; k < cards.length; k += 2) pairRanks.push(cards[k].rank);
 
-  if (firstIsA) {
-    // A-作-低端：AA, 22, 33, ...
-    if (cards[2].rank !== 2) return null;
-    for (let i = 2; i < cards.length - 2; i += 2) {
-      if (cards[i+2].rank !== cards[i].rank + 1) return null;
+  const acePairs = pairRanks.filter(function (r) { return r === 14; }).length;
+  if (acePairs >= 2) return null;               // 两对 A 不构成双龙 (§6.1)
+  var rest = pairRanks.filter(function (r) { return r !== 14; });
+  for (var m = 1; m < rest.length; m++) {
+    if (rest[m] !== rest[m - 1] + 1) return null;   // 对子必须连续
+  }
+
+  if (acePairs === 1) {
+    if (rest[0] === 2) {
+      return { length: cards.length, low: 1 };    // AA-22-33 (§6.1 A 作低端)
     }
-  } else {
-    for (let i = 0; i < cards.length - 2; i += 2) {
-      if (cards[i+2].rank !== cards[i].rank + 1) return null;
-    }
+    if (rest[rest.length - 1] !== 13) return null; // m..13-AA (§6.1 A 作高端)
+    return { length: cards.length, low: rest[0] };
   }
 
-  // A 的位置
-  const lastIsA = cards[cards.length - 1].rank === 14;
-  if (firstIsA && lastIsA) return null;  // 2 张 A
-
-  if (firstIsA) {
-    return { length: cards.length, low: 1 };
-  }
-  if (lastIsA) {
-    return { length: cards.length, low: firstRank };
-  }
-  return { length: cards.length, low: firstRank };
+  return { length: cards.length, low: rest[0] };
 }
 
 // 批次 2 辅助：校验一组 unique ranks 是否构成合法连续序列（含 A-作-高端/低端处理）

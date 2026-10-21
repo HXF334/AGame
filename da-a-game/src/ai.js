@@ -68,6 +68,21 @@ function chooseAction(state, playerId) {
       if (onlyFours.length > 0) return { type: 'PLAY', playerId: playerId, cardIds: [onlyFours[0].id] };
       return { type: 'PASS', playerId: playerId };
     }
+    // [新增] 起手可打"廉价组合"(>=3 张且不含大牌)。
+    // 原因: §6.3 龙/对子/单张同层级互不压, 连张只能压等长连张。
+    //   若起手永远只出单张, 桌上永远不会出现连张, AI 就永远打不出连张 (结构性死锁)。
+    //   故允许用不含大牌的组合起手, 既减少手牌, 也让连张/双龙路径可达。
+    var leadCands = candidateCombos(hand).filter(function (c) {
+      if (c.length < 3) return false;
+      var cards = c.map(function (id) { return hand.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
+      if (!cards.length || cards.some(isFour)) return false;      // 不用 4 起手 (留给取牌)
+      if (identifyHand(cards).type === 'INVALID') return false;
+      return cards.every(function (x) { return keepValue(x) < 500; });   // 不含王/大A/2/3/A
+    });
+    if (leadCands.length > 0) {
+      var best = leadCands[0];   // candidateCombos 已按张数多者优先排序
+      return { type: 'PLAY', playerId: playerId, cardIds: best.slice() };
+    }
     // 起手出安全牌 (保留 2/3/A/王/大A)
     var safe = playable.filter(function (c) { return keepValue(c) < 500; });
     var openCard = (safe.length > 0 ? safe : playable)
