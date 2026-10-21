@@ -398,6 +398,10 @@ function doPlay() {
       runAI();
       return;
     }
+    // [fix] 记录逐张尝试的最后一个错误。
+    //   原先 lastError 仅在"已选牌"分支赋值, 未选牌直接点出牌时它始终为 null,
+    //   导致末尾汇总打出 (null && ...) -> 字面量 "null null"。
+    lastError = (r && r.error) || lastError;
   }
   // [修复] 3 张及以上组合回退: 调用已测试的 candidateCombos, 合法性交引擎裁决 (§14)
   //   原因: ai.js 的 chooseAction 不支持连张/蛋子/大蛋子, 会误报“不合法”
@@ -421,10 +425,14 @@ function doPlay() {
         runAI();
         return;
       }
+      // [fix] 同上: 组合回退也需记录错误, 供末尾汇总使用
+      lastError = (r2 && r2.error) || lastError;
     }
   })();
   log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 失败: 所有 ' + player.hand.length + ' 张手牌都不可用. 最后: ' +
-    (lastError && lastError.type) + ' ' + (lastError && lastError.message));
+    ((lastError && lastError.type)
+      ? (lastError.type + ' ' + (lastError.message || ''))
+      : '未能出牌 (引擎未返回具体原因)'));
   if (ctx) draw();
 }
 
