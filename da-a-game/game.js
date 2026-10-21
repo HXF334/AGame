@@ -15,15 +15,23 @@ var candidateCombos = require('./src/combos.js').candidateCombos;
 
 // === 工具 ===
 // === 本地文件日志 ===
-// [2026-10-21 增] 每条动作同步追加到 game.log, 方便玩家在 IDE 复现 bug 后告诉助手,
-//   助手能直接读取该文件分析。WeChat 小游戏 runtime 也支持 require('fs'),
-//   同一份代码两边通用。同步 I/O 对牌局 (50-100 条/局)  魔不可观。
-var _logFilePath = (typeof wx !== 'undefined' && wx.env && wx.env.USER_DATA_PATH)
-  ? wx.env.USER_DATA_PATH + '/game.log'
-  : (typeof __dirname !== 'undefined' ? __dirname + '/game.log' : './game.log');
+// [2026-10-21 改] 日志路径由 [项目根 game.log 或 wx USER_DATA_PATH]
+//   改为 [项目根/logs/log_YYYYMMDD.log], 一天一份自动滚动。
+//   用户可随时让我读当天的文件排查 bug。
+//   WeChat 小游戏 runtime 也支持 require('fs') + mkdirSync, 同一份代码两边通用。
+var _logDir = (typeof __dirname !== 'undefined' ? __dirname : '.') + '/logs';
+function _logFileName() {
+  var d = new Date();
+  return 'log_' + d.getFullYear() +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    String(d.getDate()).padStart(2, '0') + '.log';
+}
+var _logFilePath = _logDir + '/' + _logFileName();
 try {
-  if (typeof require !== 'undefined' && typeof process !== 'undefined' && process.versions && process.versions.node) {
+  if (typeof require !== 'undefined' && typeof process !== 'undefined' &&
+      process.versions && process.versions.node) {
     var fs0 = require('fs');
+    if (!fs0.existsSync(_logDir)) fs0.mkdirSync(_logDir, { recursive: true });
     if (!fs0.existsSync(_logFilePath)) fs0.writeFileSync(_logFilePath, '');
   }
 } catch (e) {}
