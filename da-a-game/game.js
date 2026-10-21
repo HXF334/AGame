@@ -14,9 +14,30 @@ var chooseAction = require('./src/ai.js').chooseAction;
 var candidateCombos = require('./src/combos.js').candidateCombos;
 
 // === 工具 ===
+// === 本地文件日志 ===
+// [2026-10-21 增] 每条动作同步追加到 game.log, 方便玩家在 IDE 复现 bug 后告诉助手,
+//   助手能直接读取该文件分析。WeChat 小游戏 runtime 也支持 require('fs'),
+//   同一份代码两边通用。同步 I/O 对牌局 (50-100 条/局)  魔不可观。
+var _logFilePath = (typeof wx !== 'undefined' && wx.env && wx.env.USER_DATA_PATH)
+  ? wx.env.USER_DATA_PATH + '/game.log'
+  : (typeof __dirname !== 'undefined' ? __dirname + '/game.log' : './game.log');
+try {
+  if (typeof require !== 'undefined' && typeof process !== 'undefined' && process.versions && process.versions.node) {
+    var fs0 = require('fs');
+    if (!fs0.existsSync(_logFilePath)) fs0.writeFileSync(_logFilePath, '');
+  }
+} catch (e) {}
+
 function log(msg) {
   logHistory.push(msg);
-  if (logHistory.length > 15) logHistory.shift();  // [fix] 增至 15 行, 填满下方空白
+  if (logHistory.length > 15) logHistory.shift();
+  // 同步追加到本地文件
+  try {
+    if (typeof require !== 'undefined') {
+      var fs = require('fs');
+      fs.appendFileSync(_logFilePath, '[' + new Date().toISOString() + '] ' + msg + '\n');
+    }
+  } catch (e) { /* 静默 */ }
 }
 
 // === 牌面描述 helper (在 try 块之前, 否则 suitChar TDZ) ===
