@@ -1,6 +1,6 @@
 # 已知问题与设计陷阱
 
-**更新时间**：2026-10-21 11:05
+**更新时间**：2026-10-21 13:10
 
 ---
 
@@ -174,6 +174,42 @@
 
 ---
 
+## 1c. 2026-10-21 12:30–13:10（无头 UI 测试阶段）
+
+### B28 [P1] 推风后 game.js 未同步 currentPlayer ✅ 已修
+- **症状**：推风在引擎层选对了目标（同阵营最近未出完者），但 UI 层第一个行动的玩家是**主方**玩家
+- **根因**：`push-wind.js` 在 `newState` 里设了 `currentPlayer: target`（L140），但 `game.js doPushWind()` 只做了 `gameState = r.state`，**遗漏了模块级 `currentPlayer` 的同步**。`currentPlayer` 全局仅在 init、`advanceCurrentPlayer()`、测试钩子三处赋值，均不覆盖此路径。`runAI()` 于是拿着过期值行动
+- **影响面**：每次推风都触发（`maybeTriggerPushWindAfterRoundEnd → doPushWind`）；`doPlay`/`doPass` 不受影响（走 `advanceCurrentPlayer`）
+- **修复**：`doPushWind` 中补 `if (r.state.currentPlayer) currentPlayer = r.state.currentPlayer;`
+- **A/B 验证**（临时移除该行）：
+  - 移除 → 第一个行动者 = `AI 丙`（主方玩家）✗
+  - 保留 → 第一个行动者 = `AI 戊`（抓方最近未出完者）✓
+- **回归**：`test-game-scenarios.js` S1（35 项）
+
+### B29 测试可及性改造（使 UI 可无头验证）✅
+因无法使用微信开发者工具，对 `game.js` 做如下**非功能性**改造：
+- 导出补 `draw` / `cardDesc` / `selectedCards` / `handCardHitboxes`。
+  该块原有注释即为「供 Node 测试用」，但恰恰漏了最该测的 `draw`。
+- 新增 `__setState(st, opts)` 测试注入点：注入构造好的 `gameState`，
+  并重置 `currentPlayer` / `selectedCards` / `handCardHitboxes` /
+  `lastEmptiedPlayer` / `logHistory` 等派生状态。
+- 动机：`game.js` 初始化时随机发牌并**同步**跑完 `runAI()`，测试无法控制局面，
+  导致用户报过的 bug 只能随机撞上。注入点使每个 bug 可写成**永久回归用例**。
+- 已有 `typeof module` 守卫，对微信环境零影响。
+
+### B30 game.js 踩坑记录（供后续测试参考）
+- `doPlay()` **不接受参数** —— 出牌取的是模块级 `selectedCards`。
+  测试必须 `g.selectedCards().push(id)` 后再调 `g.doPlay()`。
+- `runAI()` 是**同步** `while` 循环（非异步）；无 `ctx` 时直接 return。
+- 桌面只保留**当前最大的一手**牌，被压过的牌进入 `discarded`。
+  断言“玩家出的牌上桌”应改为“该牌既不在手上、且存在于 table 或 discarded”。
+- `doPushWind()` 的触发者是 `lastEmptiedPlayer || gameState['推风触发者']`，
+  而 `lastEmptiedPlayer` 是模块级变量，必须经 `__setState` 的 opts 传入。
+- 构造态必须牌张守恒（手牌+桌面+弃牌 = 108），否则引擎行为不可预期。
+- 21/22 张的分配只在 `REVEAL_BOTTOM` 后成立；init 末尾 `runAI()` 已可能出过牌。
+
+---
+
 ## 2. 已知设计陷阱
 
 ### D1: 反A 后 startPlayerIndex 路径
@@ -236,8 +272,15 @@ WeChat IDE 实测受限于当前用户环境。game.js 25 套件覆盖了所有�
 ### L5: game.js 视觉扑克牌未完成
 现在 draw 用文字 + Unicode 花色符号；想做真正扑克牌（白底矩形 + 红/黑花色 + 数字）需要 IDE 验证。
 
-### L6: game.js tap-to-select 无自动化测试覆盖
-D 任务加的可点击矩形全靠 IDE 验证，没 mock wx/canvas 跑集成测试。
+### L6: game.js tap-to-select 无自动化测试覆盖 ⚠️ 部分覆盖
+`tests/mock-wx.js` + `test-game-headless.js` 已能用 `fireTouch` 模拟触摸，
+覆盖“点击不崩溃 + 牌张守恒”。
+**尚未覆盖**：触摸坐标 → 牌 ID 的映射正确性（点 A 位置是否真选到 A 牌）——
+这类 bug 在 IDE 里难稳定复现但可自动化，是下一步候选。
+
+### L7: game.js 视觉表现仍未验证
+无头测试只能验证逻辑/状态同步/事件处理，**画不出像素**：
+手牌宽度、按钮位置、字体大小、帧率仍需微信 IDE 目视确认。
 
 ---
 
@@ -302,4 +345,8 @@ D 任务加的可点击矩形全靠 IDE 验证，没 mock wx/canvas 跑集成测
 2026-10-21 09:45  B24 §4.3 直接亮双大A 未按 1V4明打 处理
 2026-10-21 10:30  300 局压测：0 卡死 / 0 非法行动 / 0 牌张不守恒
 2026-10-21 11:05  本文档更新（40 套件全绿）
+2026-10-21 11:20  c1c6f7f game.js 无头测试 (25 项) — mock wx/canvas
+2026-10-21 13:00  B28 推风后 currentPlayer 未同步 (P1, A/B 验证确认为真实缺陷)
+2026-10-21 13:10  新增 test-game-scenarios.js (35 项) + tests/lib/state-builder.js
+                  全量回归: 42 套件全绿
 ```

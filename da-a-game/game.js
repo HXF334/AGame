@@ -454,6 +454,12 @@ function doPushWind() {
   var r = transition(gameState, { type: ACTIONS.PUSH_WIND, payload: { trigger: trigger } });
   if (r && r.ok) {
     gameState = r.state;
+    // [P1 修复] 必须把引擎算出的推风目标同步回模块级 currentPlayer。
+    //   push-wind.js 会在 newState 里设 currentPlayer = target (§9 目标选择结果),
+    //   但本函数原先只更新 gameState, 遗漏了 currentPlayer —— 于是 runAI()
+    //   拿着**过期**的 currentPlayer 行动, 推风目标被丢弃。
+    //   doPlay/doPass 不受影响: 它们走 advanceCurrentPlayer() 自行维护。
+    if (r.state.currentPlayer) currentPlayer = r.state.currentPlayer;
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
       gameState.phase = 'GAME_END';
@@ -637,6 +643,25 @@ if (typeof module !== 'undefined' && module.exports) {
     draw: draw, cardDesc: cardDesc,
     selectedCards: function () { return selectedCards; },
     handCardHitboxes: function () { return handCardHitboxes; },
-    setHumanPlayer: function (p) { humanPlayer = p; }
+    setHumanPlayer: function (p) { humanPlayer = p; },
+    // [测试注入] 注入构造好的 gameState, 用于**精确复现指定场景**。
+    //   背景: game.js 初始化时会随机发牌并同步跑完 AI 回合, 测试无法控制局面,
+    //   导致用户报过的 bug (推风跳阵营/单大A/连张) 只能随机撞上, 无法固化。
+    //   有了注入点就能把每个 bug 写成**永久回归用例**。
+    //   同时重置所有派生 UI 状态, 避免上一局的残留污染。
+    __setState: function (st, opts) {
+      gameState = st;
+      var o = opts || {};
+      currentPlayer = o.currentPlayer !== undefined ? o.currentPlayer
+                    : (determineFirstPlayer(st) || 'A');
+      lastEmptiedPlayer = o.lastEmptiedPlayer || null;
+      selectedCards = [];
+      handCardHitboxes = [];
+      logHistory = [];
+      if (o.human) humanPlayer = o.human;
+      if (o.clearLog !== false) logHistory = [];
+      if (ctx) draw();
+      return { phase: gameState.phase, currentPlayer: currentPlayer };
+    }
   };
 }
