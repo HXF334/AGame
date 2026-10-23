@@ -274,15 +274,6 @@ function draw() {
     handCardHitboxes = [];
     // [fix] 无条件渲染手牌 (轮到 AI 时也能看到自己的牌)
     if (sortedHand.length > 0) {
-      // [2026-10-23 修] 手牌宽度自适应: 固定 25px/张 × 22 张 = 550px,
-      //   在竖屏(375宽)会溢出画布 (startX 变负, 左侧牌跑出屏幕)。
-      //   改为按屏宽反算每张占宽, 并同步缩放牌高与字号。
-      var _n = sortedHand.length;
-      var _step = Math.min(25, (W - 16) / _n);
-      cardW = Math.max(14, Math.floor(_step - 1));
-      cardH = Math.max(24, Math.round(cardW * 1.75));
-      var _fRank = Math.max(9, Math.round(cardW * 0.5));
-      var _fSuit = Math.max(12, Math.round(cardW * 0.75));
       var totalW = sortedHand.length * cardW + (sortedHand.length - 1) * cardGap;
       var startX = (W - totalW) / 2;
       sortedHand.forEach(function (card, k) {
@@ -304,11 +295,11 @@ function draw() {
         ctx.fillStyle = card.isBigJoker ? '#c8102e'
                        : (isJoker ? '#000000'
                           : ((card.suit === 'H' || card.suit === 'D') ? '#c8102e' : '#000000'));
-        ctx.font = 'bold ' + _fRank + 'px sans-serif';
+        ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(rankDesc(card), x + cardW / 2, cardY + cardH * 0.38);
-        ctx.font = 'bold ' + _fSuit + 'px sans-serif';
-        ctx.fillText(isJoker ? '王' : (suitChar[card.suit] || card.suit), x + cardW / 2, cardY + cardH * 0.83);
+        ctx.fillText(rankDesc(card), x + cardW / 2, cardY + 16);
+        ctx.font = 'bold 18px sans-serif';
+        ctx.fillText(isJoker ? '王' : (suitChar[card.suit] || card.suit), x + cardW / 2, cardY + 35);
       });
       // 已选张数提示
       if (selectedCards.length > 0) {
