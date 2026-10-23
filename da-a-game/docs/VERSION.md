@@ -1,109 +1,169 @@
-# 版本冻结记录 · v0.9.0
+# 版本冻结记录 · v0.10.0
 
-**冻结时间**：2026-10-23 21:10 (Asia/Shanghai)
-**提交**：`4df6f27`  ·  **标签**：`v0.9.0`
+**冻结时间**：2026-10-24 01:00 (Asia/Shanghai)
+**上一版**：`v0.9.0`（2026-10-23，规则实现与代码验收基本完成）
+
+> **本版是「界面重构版」**：把开局从「一条自动跑完的直线链」改成
+> **真人逐阶段推进**，并补齐了亮/不亮、反/不反、次方身份、结算、日志、出牌失败提示。
+> 规则引擎本身**未改规则**，只新增了 4 个「资格判定纯函数」（判据从既有 handler 提取）。
+
+---
 
 ## 回退方式
 
 ```bash
-git checkout v0.9.0              # 只看这个版本，不改工作区
-git reset --hard v0.9.0           # 把本地退到这一版(会丢弃之后的本地改动)
-git reset --hard 4df6f27          # 等价(该版即标签所指提交)
+git checkout v0.10.0             # 只看这版
+git reset --hard v0.10.0         # 退到这一版
+git reset --hard v0.9.0          # 退回上一版(界面重构前)
 ```
 
-## 1. 启动方式
+---
 
-微信原生小游戏，无构建步骤、无 npm 依赖、无打包。
+## 1. 本版新增（需求二～十三）
 
-```bash
-# 1) 打开微信开发者工具 → 导入项目 → 目录选到:
-#    C:\Users\MyFirstAI\.openclaw\workspace-work\AGame\da-a-game
-# 2) 基础库版本: 3.17.5  (见 project.config.json 的 libVersion)
-# 3) 编译即可。方向建议横屏(横屏是设计目标; 竖屏不保证正确)
+### 真人默认丁位
+`DEFAULT_HUMAN = 'D'`（NAMES_MAP: D=丁）。每局重置回丁位。
+顶部 5 个按钮仍可切换。
+
+### 阶段闸门（把自动链拆开）
+原来开局是**一条自动跑完**的链：
+`START_GAME → FORCED_CHECK → ADVANCE → REVEAL_BOTTOM → CHOOSE_IDENTITY → PLAY → runAI()`，
+中间零人工闸门 —— 这就是为什么真人日志里从未出现过亮A选择。
+
+现在按既有状态机（SKILL §3，未新增任何阶段）拆成 6 档：
+
+```
+发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌
 ```
 
-**启动踩过的坑**（都在 `KNOWN_ISSUES` 有记录）：
+- **强制排查**仅在「主A 未确立」时执行（真人亮了 A 就跳过，符合 §4.2）
+- 【下】在**有待决策且资格具备**时**拒绝推进**（不许跳过真人决策）
+- 每个决策函数**先消费 gateChoice 再执行**，防止同一次决策被执行两次
+- 引擎拒绝时只记日志，**不改阵营**
+- 从发牌到出牌要点 **4 次**【下】（强制排查 → 反A → 翻底牌 → 次方身份）
 
-- `project.private.config.json` 的 `libVersion` **优先级高于** `project.config.json`。
-  它被写成 `"development"` 时基础库未就位，IDE 崩溃且堆栈全在 `app.asar` 内部(B34)。
-- 该文件在 2026-10-23 被清空过一次，现象是「重新加载还是上回的对局」，**重新导入项目即恢复**(E8)。
-  该文件在 `.gitignore` 内、由 IDE 自己管。
+### 引擎资格判定纯函数（`src/transition.js` 新增导出）
+判据**从既有 handler 提取**，不是另写一套规则：
 
-## 2. 测试方式
+```
+canLiangA         亮A资格（主A未确立 + 阶段正确 + 手牌含A，底牌不算）
+canFanA           反A资格（主A已确立 + 反A未发生 + 手牌有2张同花色A）
+canChooseIdentity 次方身份资格（授权人判定：次方优先，否则主A确立者）
+identityChooser   授权人查询
+```
 
-**53 个测试套件**，2026-10-23 全量实测 **53/53 PASS**（分 4 块前台跑：1-16 / 17-32 / 33-42 / 43-53）。
+> **注意 `canFanA` 的花色**：SKILL §4.4 原文「任意花色都可以；不要求与当前主A花色相同」。
+> 2026-10-24 实测发现初版错把花色限定成主A的花色，导致玩家持别的花色双大A时被判
+> 「无反A资格」—— 已修，并由 `tests/test-eligibility-rules.js` 锁住。
+
+### 统一按钮模型（需求八）
+按钮集合**完全由游戏状态推导**，单一来源：
+
+```
+uiButtons()      按钮集合（id / label / enabled）
+uiButtonAt(x,y)  命中判定
+uiClick(id)      按 id 分发
+```
+
+按钮：亮A·不亮 · 反A·不反 · 公开身份·隐藏身份 · 下 · 出牌·过牌 · 下一局
+资格不具备时**仍然显示但 `enabled=false`**。
+
+### 结算画面（需求十）
+GAME_END 时画：胜负标题 + 原因 + **五人得分表**（姓名·(你)·阵营·剩余张数·分数增减，增绿减红）。
+分数**由引擎 `calculateScore(state, result)` 给出**，UI 不自己算（平局返回 `{}`）。
+【下一局】会重置真人回丁位、清选牌/命中框、清日志、重新发牌并重走闸门。
+
+### UI 日志 + 【Log】开关（需求十一）
+右上角【Log】按钮切换，**默认隐藏**。**不影响日志记录**（`logHistory` 一直在记）。
+面板显示最近 11 条，含**阶段进出 / 资格判定 / 结果**三类。
+
+### 出牌失败提示（需求十二）
+按用户 00:43 的三条裁定：
+
+| 情况 | 行为 |
+|---|---|
+| 不选牌 + 有能大过桌面的牌型 | 自动出一手（逐张 → 组合）|
+| 不选牌 + 没有能大过桌面的牌型 | 提示【当前没有可用牌】 |
+| **选了但牌型非法** | **不再自动换牌**，提示 + **保留选牌状态** |
+
+---
+
+## 2. 启动 / 测试 / 构建
+
+**构建**：无构建。微信小游戏直接加载 `game.js` + `src/` 下的 CommonJS 模块。
+
+**启动**：微信开发者工具 → 导入项目 → 目录 `.../AGame/da-a-game`，基础库 3.17.5。
+
+**测试**（56 个套件）：
 
 ```bash
 cd da-a-game
 
-# 全量(必须前台分块, 后台会被会话切断并清掉临时脚本)
-$all = @(Get-ChildItem tests/test-*.js | Sort-Object Name)
-$all[0..15] | ForEach-Object { node $_.FullName }
+# 全量（大任务收尾时跑一次）
+node tests/_runall.js          # 全部
+node tests/_runall.js 3        # 3 轮
 
-# 单个套件(改了什么就跑直接覆盖它的那一两个)
-node tests/test-doplay-fallback.js
-
-# 无头对局压测: 四种模式, 结果落盘 tools/stress_result.txt
-node tools/stress-pushwind.js 24
-
-# 规则覆盖对账: 以 SKILL §13 的 20 条为锚产出排查清单(是清单, 不是判决)
-node tools/audit-skill-tests.js
-
-# 语法检查
-Get-ChildItem src/*.js, game.js | ForEach-Object { node --check $_.FullName }
+# 单个套件（改了什么就跑直接覆盖它的那一两个）
+node tests/test-ui-phase-gate.js
+node tests/test-eligibility-rules.js
+node tests/test-ui-touch-contract.js
 ```
 
-> 前一版文档写的 `node tests/_runall.js` **该文件已不存在**，不要照抄。
+> `tests/_runall.js` 每个子进程带 60s 超时 —— `test-perf.js` 跑满 1000 局会把 exec 会话拖到被切断。
 
-## 3. 构建
+---
 
-**无构建**。微信小游戏直接加载 `game.js` + `src/` 下的 CommonJS 模块。
-发布流程（若需要）走微信开发者工具的上传/发布，不在本仓库脚本范围内。
+## 3. 本版修的真实 Bug（都有真机/日志证据）
 
-## 4. 目录
+| # | 现象 | 根因 |
+|---|---|---|
+| 1 | **所有按钮都点不到** | `uiButtonAt()` 调 `uiButtons()` **重新生成了一份对象**，而 `x/y/w/h` 是 draw 时写进**另一份对象**的 → `x >= undefined` 恒 false |
+| 2 | **phase=PLAY 但按钮全灰、AI 不出手** | 引擎在 IDENTITY 阶段结束就把 phase 变成 PLAY，而 `currentPlayer` 只在 PLAY 档设置；同时 `uiButtons()` 在 PLAY 阶段**不再显示【下】** → PLAY 档永远到不了（死锁）|
+| 3 | **持双大A 却被判「无反A资格」** | `canFanA` 把花色限定成主A的花色，违反 SKILL §4.4「任意花色都可以」|
 
-```
-da-a-game/
-  game.js                  入口(状态机 + UI + 触摸)
-  src/                     规则引擎(15 模块)
-  tests/                   53 个测试套件 + mock-wx.js + lib/state-builder.js
-  tools/                   压测 / 规则对账(不计入 53)
-  skills/da-a-game-rules/   SKILL.md — 规则唯一依据
-  docs/                    本文件 / HANDOFF / PROJECT_STATUS / PROGRESS /
-                           TEST_REPORT / KNOWN_ISSUES
-```
+**Bug 2 有两条路径**，初版只修了其中一条：
+- 「不亮A」路径（转换发生在 `runGateStage()` 内）→ 正常
+- 「次方身份选择」路径（转换发生在 `humanChooseIdentity()` **内部**）→ 死锁
 
-## 5. 微信开发者工具完整对局验证状态
+修法：抽出统一入口 `enterPlayIfNeeded()`（设首出权 + 触发 AI），在 5 处都调用。
 
-**已完成（2026-10-23 20:30 用户确认「都没问题了」）**，证据来自真实对局控制台日志：
+---
 
-- 完整一局打到 `牌局结束`（GAME_END）
-- 推风触发 **3 次**，其中 **1 次由人类(甲)出完牌触发** —— 这是 B39/B40 修复后的关键路径，
-  此前只有单测、无任何真实对局证据
-- 三次推风的目标**均在同阵营内**，符合 §9.3
-- 组合回退只产生**一条**日志（修复前会多出一条假的「失败」）
+## 4. 本版遗留
 
-**仍未验证**：
+**未修 Bug：0**（本版所有 P0 均已闭环，并经**用户真机实测**确认）
 
-- 1V4 明打 / 暗打的**真实 IDE 对局**（压测已覆盖 24 局逻辑正确，但未在 IDE 人工验证）
-- 像素级表现与真机表现（`test-ui-touch-contract.js` 只锁逻辑契约）
+**测试缺口**：
+- `tests/test-ui-phase-gate.js` 第 2 节的断言是**条件分支**（真人手里有没有 A 决定走哪条），
+  所以**总断言数随牌局浮动**（43 / 55 等）。这不是 bug，但看汇总时要留意。
 
-## 6. 本版遗留
+**其他未闭环**：
+- 像素级与真机表现（`test-ui-touch-contract` 只锁逻辑契约）
+- 1V4 明打/暗打的**真机人工对局**（压测已覆盖逻辑，未在 IDE 人工验过）
 
-**未修 Bug：0**（今日修的 P0 全部闭环并经用户验证）
+---
 
-**测试缺口（非 Bug，是断言缺失）**：
+## 5. 文档状态
 
-| SKILL 条款 | 缺口 |
-|---|---|
-| §13.12 | 无「4 张 5555 被 3 个 444 取走」这个具体场景（`5555/444` 组合命中 0）|
-| §13.13 | 无「3 个以上 4 留桌面后可作为新目标」（`新目标` 命中 0）|
+- **`docs/VERSION.md`（本文件）是当前最准的入口**
+- `HANDOFF.md` / `PROJECT_STATUS.md` / `PROGRESS.md` / `TEST_REPORT.md`
+  仍截至 2026-10-21/23，**未覆盖本版改动**（只修过命令块和数字）
+- `KNOWN_ISSUES.md` 已同步本版修掉的 3 个 P0
 
-§13.14 已于本版补齐（`tests/test-capture-target-expiry.js`，6 项）。
+---
 
-**其他已知未闭环**：
+## 6. 测试纪律（本轮血泪）
 
-- `tools/audit-skill-tests.js` 的信号**粒度不足**：§13.17/13.18 命中全部 53 个文件
-  （词太泛），该粒度上无区分度。详见 `KNOWN_ISSUES` T6。
-- 4 份文档（`HANDOFF` / `PROJECT_STATUS` / `PROGRESS` / `TEST_REPORT`）内容截至 2026-10-21，
-  未覆盖今日 8 个提交。**本文件 `VERSION.md` 是当前最准的入口**。
+2026-10-24 00:04 用户再次纠正：**不要改一点就全量回归，只测改过的相关部分，
+全量留到大任务收尾时跑一次。**
+
+规则其实早就写在 `AGENTS.md` 里（"默认不跑全量"），但当晚每改一点 UI 就跑 53 套件，
+一天跑了七八遍 —— **规则写了没执行，等于没写**。已在 `AGENTS.md` 补具体违例记录与判据。
+
+**判据**：
+- 「改一个按钮」→ 只需 `test-ui-touch-contract` + `test-game-headless`
+- 「改一次 doPlay 分支」→ 只需 `test-doplay-fallback` + `test-game-headless`
+- 「改引擎某个模块」→ 该模块套件 + 1 个端到端
+- **一次全量 ≈ 一次大任务的收尾动作**
+
+**回答不了「哪个测试会因为这个 bug 而失败」= 没测**，跑全量也抓不到。

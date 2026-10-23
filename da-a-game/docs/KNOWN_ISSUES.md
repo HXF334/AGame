@@ -642,3 +642,44 @@ B32 证明：**规则合法性 ≠ 策略合理性**。AI 出的每一步都通�
 - B33 是 UX 语义歧义导致连续三轮误判
 
 这三个问题**无头测试全部无法提前发现** —— 无头测试能验证"规则是否被遵守"，不能验证"策略是否合乎玩家期待"或"UI 语义是否清晰"。
+---
+
+## 2026-10-24 界面重构版修掉的 P0（v0.10.0）
+
+### P0-A: 所有按钮都点不到
+- **现象**: 点【亮】【不亮】【下】全部无反应, 控制台报「点击未命中」
+- **根因**: `uiButtonAt()` 调 `uiButtons()` **重新生成了一份对象**, 而 x/y/w/h 是
+  draw() 时写进**另一份对象**的 -> 命中判断拿到的坐标是 undefined ->
+  `x >= undefined` 恒为 false -> 任何按钮都命不中
+- **修法**: 改用 draw/layout 时算好坐标的那一份(btnStage); 并把排版与绘制分离
+  (无 canvas 时坐标照样算, 无头测试也能验证命中区)
+- **回归**: tests/test-ui-phase-gate.js 第 5 节
+
+### P0-B: phase=PLAY 但按钮全灰、AI 不出手（死锁）
+- **现象**: 真人日志走到 `phase=PLAY` 却**没有「首出权」那行** -> PLAY 档没跑 ->
+  currentPlayer 恒为 null -> 出牌/过牌全灰, 切到任何座位都无效, AI 也不出手
+- **根因**: 引擎在 IDENTITY 阶段(次方身份)结束时就把 phase 变成 PLAY, 而
+  currentPlayer 只在闸门最后一档 PLAY 里设置; 同时 `uiButtons()` 在 PLAY 阶段
+  **不再显示【下】** -> PLAY 档永远到不了 -> 死锁
+- **有两条路径**: 「不亮A」路径(转换在 runGateStage 内)正常;
+  「次方身份选择」路径(转换在 humanChooseIdentity **内部**)死锁
+- **修法**: 抽出统一入口 `enterPlayIfNeeded()`(设首出权 + 触发 AI), 在
+  runGateStage / humanChooseIdentity / humanLiangA / humanFanA / gateNext 五处调用
+- **回归**: tests/test-ui-phase-gate.js 第 10、11 节
+
+### P0-C: 持双大A 却被判「无反A资格」
+- **现象**: 用户实测: 「我有双大A, 提示我没有反A资格」
+- **根因**: `canFanA` 把花色限定成 `state.主A.suit`, 但 SKILL §4.4 原文是
+  「玩家必须持有同一花色的两张A。**任意花色都可以；不要求与当前主A花色相同**」
+- **注意**: 引擎 `handleFanA` 本就只校验 payload.suit 的两张A(不要求与主A同花色),
+  错的是新加的 UI 层资格判定 —— 即引擎对、UI 层窄
+- **修法**: 遍历 H/D/C/S, 找到有 >=2 张A 的花色即有资格, 并返回该花色
+- **回归**: tests/test-eligibility-rules.js（23 项, 专门锁这批资格判据）
+
+### 附带: 测试自身的两个错（不是产品 bug）
+1. `test-game-headless.js` 里 `handOf('A')` 写死了甲的手牌 -> 换成丁位真人后,
+   轮到真人时它在出**别人的牌**, doPlay 必然失败, 循环空转到 900 步上限
+2. `test-doplay-fallback.js` 第 2 节断言的是**旧契约**（非法选择 -> 回退逐张试）;
+   行为契约已被用户裁定改变, 断言必须跟着改成新契约（保留选牌状态 / 不自动换牌）
+3. `test-ui-phase-gate.js` 第 10 节原用裸 `gateNext()` 循环, 而 gateNext() 在
+   **有待决策且资格具备**时返回 false（需求四的正确行为）-> 改用 __driveGateToPlay
