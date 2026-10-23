@@ -169,3 +169,46 @@ doc  KNOWN_ISSUES.md 更新至 B30
 | **手牌 ≤22 张断言为全程不变量** | §7.1 取牌可超过 | "非负且 ≤108 + 总数守恒 108" |
 | **isValidStraight 依赖 cards[0]/cards[len-1]** | handlePlay 重排牌序时 fail | 排序 + 点数集合显式判定 A 形态 |
 | **PUSH_WIND 引擎算对的 currentPlayer 在 UI 被丢弃** | game.js 仅 `gameState = r.state` 未同步模块级变量 | 同步 `currentPlayer = r.state.currentPlayer` |
+
+---
+
+## 2026-10-24 · v0.10.0 界面重构版
+
+**范围**：把开局从「一条自动跑完的直线链」改成**真人逐阶段推进**，并补齐亮/不亮、反/不反、次方身份、结算画面、UI 日志、出牌失败提示。
+**规则引擎未改规则**，只新增 4 个资格判定纯函数（判据从既有 handler 提取）。
+
+### 需求逐条
+
+| 需求 | 落地 |
+|---|---|
+| 二、真人默认丁位 | DEFAULT_HUMAN='D'，每局重置 |
+| 三、阶段按钮 | 亮A·不亮 · 反A·不反 · 公开·隐藏 |
+| 四、阶段拆分 +【下】 | 6 档闸门，点 4 次进出牌；有待决策时【下】拒绝推进 |
+| 五/六/七、资格由引擎判定 | canLiangA / canFanA / canChooseIdentity / identityChooser |
+| 八、统一按钮模型 | uiButtons() 单一来源 |
+| 十、结算画面 | 胜负 + 原因 + 五人得分表（分数由引擎 calculateScore 给） |
+| 十一、UI 日志 +【Log】 | 右上角开关，默认隐藏，不影响记录 |
+| 十二、出牌失败提示 | 【当前没有可用牌】；非法选择不换牌，保留选牌状态 |
+| 十三、16 类测试 | test-ui-phase-gate.js + test-eligibility-rules.js |
+
+### 修掉的 3 个真 P0（真机/日志证据）
+
+1. **所有按钮都点不到** —— uiButtonAt() 拿的是 uiButtons() 新生成的对象，
+   而 x/y/w/h 写在 draw 时的另一份对象上 → x >= undefined 恒 false
+2. **phase=PLAY 但按钮全灰 + AI 不出手** —— 引擎在 IDENTITY 阶段结束就把 phase 变 PLAY，
+   而 currentPlayer 只在 PLAY 档设置；同时 PLAY 阶段【下】消失 → 闸门最后一档
+   永远到不了。**有两条路径**，第一版只修了「不亮A」那条 → 抽出统一入口
+   enterPlayIfNeeded() 才根治
+3. **持双大A 却被判无反A资格** —— canFanA 把花色限定成主A的花色，
+   违反 SKILL §4.4「任意花色都可以；不要求与当前主A花色相同」
+
+### 回归
+
+55 个套件全绿（大任务收尾跑一次全量）。
+
+### 顺带修的工具缺口
+
+- 补上 tests/_runall.js（HANDOFF/TEST_REPORT 一直引用，但文件从不存在）
+- 修 _runall.js 区间参数 off-by-one（1-based 闭区间传 0 → files[-1]）
+
+---

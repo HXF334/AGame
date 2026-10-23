@@ -1,190 +1,126 @@
 # 测试报告
 
-**更新时间**：2026-10-21 13:15
-**总测试套件**：**43**
-**总测试项**：**700+**
-**通过率**：**100%** ✅
-**累计验证**：分批 + 多轮跑累计 **400+ 次套件执行 0 失败**（修复 flaky 后）
+**更新时间**：2026-10-24 01:20 (Asia/Shanghai) · 版本 **v0.10.0**
+**总测试套件**：**55** · 全量回归 **55/55 PASS**
+**入口**：`docs/VERSION.md` §2（启动/测试/构建）
 
 ---
 
-## 1. 套件清单
-
-### 1.1 引擎层（36 套件，按 SKILL 章节排序）
-
-| # | 套件 | 测试项 | 覆盖 SKILL |
-|---|---|---:|---|
-| 1 | test-deal.js | 12 | §2.1, §2.2 |
-| 2 | test-phase2.js | 37 | §3 状态机 |
-| 3 | test-fan-a.js | 23 | §4.1, §4.2, §4.4 |
-| 4 | test-fan-a-e2e.js | 13 | §4.4 反A 完整流程 |
-| 5 | **test-liang-double-a.js** | 16 | **§4.3 直接亮双大A 独打（B24）** |
-| 6 | test-first-player.js | 14 | §5 首轮出牌权 |
-| 7 | test-hand-types.js | 111 | §6.1, §6.2 单牌 |
-| 8 | test-hand-types-batch2.js | 78 | §6.3, §6.4 龙/双龙/连珠 |
-| 9 | test-hand-types-batch3.js | 70 | §6.4 真七/真八/假八/三连假八/双王/三王/四王/单大A/双大A |
-| 10 | **test-order-independence.js** | 13 | **§6.1 连张/双龙与牌序解耦（B18 P0）** |
-| 11 | test-capture.js | 25 | §7 [4] 取牌 |
-| 12 | test-play.js | 19 | §8 出牌轮次/过牌 |
-| 13 | test-push-wind.js | 9 | §9 推风 |
-| 14 | **test-push-wind-camp.js** | 13 | **§9 推风同阵营（B21）** |
-| 15 | test-reveal-bottom.js | 30 | §4.5 底牌翻开/身份选择 |
-| 16 | test-scoring.js | 14 | §11.1, §11.2 基本 |
-| 17 | test-scoring-deep.js | 34 | §11 计分深度（双路径 / 总分池守恒 / 非法输入） |
-| 18 | test-scoring-n-derive.js | 15 | §11.2 N 自动推导 |
-| 19 | test-win-loss.js | 17 | §10 基本 |
-| 20 | test-win-loss-boundary.js | 16 | §10 胜负边界 |
-| 21 | test-edge-cases.js | 15 | 边界场景 |
-| 22 | test-ai.js | 9 | §12 AI 基本 |
-| 23 | test-ai-integration.js | 16 | §12 AI + game.js 集成（含 flaky）|
-| 24 | test-ai-modes.js | 16 | §12 AI 在 1V4 明打/暗打 |
-| 25 | **test-ai-capability.js** | 26 | **§12 AI 能力（B25）—— 多张牌型 + 每个行动经引擎校验** |
-| 26 | **test-ai-lead-combo.js** | 8 | **§12 起手可打廉价组合（解除连张结构性死锁）** |
-| 27 | **test-pair-bigA-not-boost.js** | 19 | **§6.2 B20 对子不含大A加成** |
-| 28 | **test-straight-invalid.js** | 16 | **§6.1 B23 连张循环起点** |
-| 29 | test-robustness.js | 23 | 畸形 state fuzzer（A3 加固后加） |
-| 30 | test-e2e-full-game.js | 10 | §3-§11 端到端 |
-| 31 | test-perf.js | 1（性能断言）| 性能 |
-| 32-36 | 22 套件（其余已记录于 `KNOWN_ISSUES.md` 时间线）| ... | ... |
-
-### 1.2 UI 层（3 套件，新增）—— `game.js` 无头测试基建
-
-| # | 套件 | 测试项 | 覆盖 |
-|---|---|---:|---|
-| 37 | **test-game-headless.js** | **25** | **加载/初始化/log 文案质量/完整对局/牌张守恒/阶段流转/doPushWind/触摸/信息边界（fillText 实参比对他人手牌文案防泄露）** |
-| 38 | **test-game-scenarios.js** | **35** | **把你报过的每个 bug 固化为永久回归**：S1 推风同阵营 / S2 33333管单大A / S3 10JQ乱序连张 / S4 对子出牌 / S5 §4.3 双大A独打 / S6 反A |
-| 39 | **test-game-touch.js** | **25** | **触摸坐标 → 牌 ID 映射正确性**：hitbox 几何 / 命中测试（点中心/边缘）/ 间隙与区外不选中 / 选中取消与多选 / 完整链路（点两张 3 → doPlay → PAIR）/ 仅人类回合注入 |
-
-### 1.3 基础设施
-
-| 文件 | 用途 |
-|---|---|
-| `tests/mock-wx.js` | wx 运行时 mock：覆盖游戏对 wx 的全部依赖（wx.createCanvas / onTouchStart / onTouchMove / onTouchEnd / getSystemInfoSync 等），canvas ctx 9 方法 |
-| `tests/lib/state-builder.js` | 共享确定性局面构造器：保持 108 张牌守恒，支持 `emptyPlayers`、`handMap`、`table`、`discarded` 等选项 |
-
----
-
-## 2. 关键覆盖维度
-
-### §6 牌型识别 + 牌序解耦（test-hand-types × 3 + test-order-independence）
-- 16 种牌型全覆盖
-- 任何排列都能正确识别 / 非法组合在任意排列下仍非法 / 端到端乱序手牌出连张被引擎接受
-- **B18 修复后** `isValidStraight` / `isValidDoubleStraight` 与传入数组顺序解耦
-
-### §9 推风两层（引擎 + UI）= test-push-wind + test-push-wind-camp + test-game-scenarios
-- 引擎层：分支条件 mode → 次方公开（B21 修）
-- UI 层：doPushWind 同步 currentPlayer（B28 修）
-- 覆盖 1V4/2V3 明/暗打全部组合
-
-### §12 AI（B25 重写）
-- test-ai-capability 26 项：能出 16 种中 9 种牌型，每个行动都经引擎校验
-- test-ai-lead-combo 8 项：起手可打廉价组合以解除连张结构性死锁
-- 40 局实测：覆盖 1/16 → 9/16
-- 300 局压测：0 卡死 / 0 非法 / 0 不守恒
-
-### §14 完成标准 —— 无头验证
-- 验证逻辑/状态同步/事件处理/信息边界/触摸映射
-- **未验证**：像素、手牌宽度自适应、按钮位置、帧率
-
-### 错误/畸形输入容错（test-robustness.js + 防回归）
-- 13 种 malformed state × 10 个模块（fuzzer 扫描）
-- A3/A4/A5 加固：`ensureState()` + `origState` + `transition(null)` 早退保留语义 + `transition(s, null)` 不调 `ensureState`
-
----
-
-## 3. 性能测试
-
-### 引擎（test-perf.js 1000 局 2026-10-20）
-```
-总局数:     1000
-成功结束:   998 (99.8%)
-总步数:     207611
-平均步数:   207.6 步/局
-最大步数:   259 步
-总耗时:     690.7 ms
-单局耗时:   0.691 ms
-吞吐:       300,569 ops/sec
-```
-剩余 2 局未完成（**D4**「AI 死循环」）—— **B18 P0 修复后 300 局压测已不再复现**。
-
-### AI 可靠性（300 局压测 2026-10-21）
-```
-正常结束: 300/300
-卡死: 0
-引擎拒绝非法行动: 0
-牌张不守恒违规: 0
-平均步数: 142
-最大步数: 195 (远低于 400 阈值)
-```
-
-### AI 牌型分布（40 局实测 2026-10-21）
-| 牌型 | 占比 |
-|---|---|
-| SINGLE | 72.1% |
-| TRIPLE | 14.3% |
-| BIG_TRIPLE | 7.9% |
-| PAIR | 3.2% |
-| STRAIGHT | 1.7% |
-| DOUBLE_STRAIGHT | 0.8% |
-| TRUE_SEVEN / STRAIGHT_TRIPLE / FAKE_EIGHT | 各 ≤0.1% |
-
----
-
-## 4. 跑测命令
+## 1. 怎么跑
 
 ```bash
-cd "C:\Users\MyFirstAI\.openclaw\workspace-work\AGame\da-a-game"
+cd da-a-game
 
-# 单个套件
-node tests/test-deal.js
-node tests/test-game-scenarios.js     # 你报过的每个 bug 的回归测试
+node tests/_runall.js            # 全量（55 套件）
+node tests/_runall.js 3          # 3 轮
+node tests/_runall.js 10 20      # 只跑第 11~20 个（1-based 闭区间）
+node tests/test-ui-phase-gate.js # 单个套件
+```
 
-# 全部 43 个套件（PowerShell 管道版，可能受会话超时影响）
-foreach ($f in Get-ChildItem tests/test-*.js) { node $f.FullName }
+> `tests/_runall.js` 每个子进程带 **60s 超时** —— `test-perf.js` 跑满 1000 局
+> 会把 exec 会话拖到被切断。**它曾经不存在**（文档引用了但文件缺失），
+> 2026-10-23 补上，2026-10-24 修了区间参数 off-by-one。
 
-# 全部 43 个套件（Node 版批量器，更可靠，能捕获失败输出）
+---
 
-# 性能
-node tests/test-perf.js 1000
+## 2. 测试纪律（硬要求，2026-10-24 00:04 用户纠正）
 
-# 语法检查
-foreach ($f in Get-ChildItem src/*.js) { node --check $f.FullName }
+| 改动范围 | 跑什么 |
+|---|---|
+| 单个函数内部 | 直接覆盖它的 1~2 个套件 |
+| `game.js` 流程控制 | 该流程涉及的套件 |
+| `src/` 某个模块 | 该模块的套件 + 1 个端到端 |
+| 一次改多条 / 改公共契约 / **大任务收尾** | **全量** |
+
+**答不出「哪个测试会因为这个 bug 而失败」= 没测**，跑全量也抓不到。
+
+> 违规记录：2026-10-24 当晚每改一点 UI 就跑全量 55 套件，一天跑了七八遍。
+> 规则早写在 `AGENTS.md`，**写了没执行等于没写**。
+
+---
+
+## 3. 本版新增的套件
+
+### `tests/test-ui-phase-gate.js`（55 项）
+阶段闸门 / 统一按钮 / 结算画面 / UI 日志 / 出牌失败提示，8+2 个小节：
+
+| 小节 | 覆盖 |
+|---|---|
+| 1 | 真人默认丁位 |
+| 2 | 阶段拆分与【下】推进（含「有资格时【下】被阻止」）|
+| 3 | 逐档推进到 PLAY（阶段/资格日志/首出权）|
+| 4 | 出牌阶段按钮（无阶段按钮残留 + 可用性随轮次）|
+| 5 | 统一按钮模型与命中（含「禁用按钮不可命中」）|
+| 6 | 出牌失败提示（提示出现 / 不再回退逐张试 / 未自动换牌 / 选牌被保留）|
+| 7 | UI 日志与 Log 开关（默认隐藏 / 切换不影响记录 / 面板有内容）|
+| 8 | 结算画面（五人姓名 / 下一局按钮）+【下一局】重置 |
+| 10 | **死锁回归**：`phase=PLAY ⟹ currentPlayer 非 null` |
+| 11 | **不变量回归**：跨 8 个独立 module 实例（不同随机牌）|
+
+> ⚠️ **总断言数随牌局浮动**（43 / 55 等）—— 第 2 节是**条件分支**
+> （真人手里有没有 A 决定走哪条）。不是 bug，但看汇总时要留意。
+
+### `tests/test-eligibility-rules.js`（23 项）
+**专门锁资格判据**。2026-10-24 用户实测抓到 `canFanA` 把反A花色判窄
+（违反 SKILL §4.4「任意花色都可以；不要求与当前主A花色相同」），
+这类「判据抄错规则」的 bug 最需要专门锁：
+
+```
+2.1 主A=红桃, 玩家持两张黑桃A -> 有资格, suit='S'   ← 关键回归
+2.5 两张A花色不同 -> 无资格(必须同一花色)
+2.11 底牌不参与反A资格判断
 ```
 
 ---
 
-## 5. 已知测试局限
+## 4. 全量回归（2026-10-24 收尾）
 
-| 编号 | 局限 | 影响 | 缓解 |
-|---|---|---|---|
-| T1 [已解决] | game.js 无法在 WeChat IDE 之外实测 | UI 集成路径仅逻辑覆盖 | **`tests/mock-wx.js` 实现无头测试（3 套件 85 项）** |
-| T2 | AI ≥3 张牌型（蛋子/龙）原决策未实现 | §12 AI 部分 | **B25 重写后 9/16 覆盖（参见 §3 AI 分布）** |
-| T3 | 反A 后 `startPlayerIndex` 完整流程验证缺失 | 真实流程可能漏字段 | test-game-scenarios S6 端到端覆盖 |
-| **T4 [已部分解决]** | game.js tap-to-select 无自动化测试覆盖 | UI 交互靠 IDE 验证 | **test-game-touch.js (25 项) 几何/命中/链路全覆盖** |
-| T5 | 项目配置 (game.json / project.config.json) 无测试覆盖 | 项目配置变更靠 IDE 验证 | 未缓解 |
-| **T6 [新增]** | 像素/手牌宽度/按钮位置/帧率无法在 node 验证 | §14 完成标准部分 | 待微信 IDE 实测 |
-| **T7 [新增]** | `test-audit-integration.js` 间歇失败 | 200+ 次执行未复现，根因未查明 | 用 Node 版批量器能在失败时捕获输出；下次复现请把输出交我定位 |
+```
+套件 55 个, 范围 1-55, 共执行 55 次; 失败 0 次
+```
+
+本轮多次交叉确认全绿：`1-53` 一次跑完 / `1-27` / `15-27` / `28-33` / `31-42` /
+`34-42` / `35-53` 均为 0 fail。`test-perf.js` 跑 100 局断言全过（单局 ~14ms）。
 
 ---
 
-## 6. 测试添加历史
+## 5. 无头测试验不到什么（报告口径）
 
-| 日期 | 新增 | 触发原因 |
-|---|---|---|
-| 2026-10-19 | 22 套件 | 初始 TDD（§1-§11 + §13） |
-| 2026-10-20 | +4 套件（G 任务 / B 任务 / K 任务）| 反A + 计分深度 + N 推导 + 性能 |
-| 2026-10-21 | **+17 套件** | 自主全面审查：8 项修复对应 8 套件 + 9 项新增 AI/UI/规则审查套件 |
-| 2026-10-21 | **+3 套件 test-game-headless/scenarios/touch + mock-wx + state-builder** | UI 无头验证基建 |
-
----
-
-## 7. 修复质量度量
-
-| 维度 | 数值 |
+| 验得到 | 验不到 |
 |---|---|
-| 修复总数 | **11 个 bug（B18 P0 + B19-B28 P1 + B25 AI + B26-27 UI）** |
-| A/B 对照验证修复真伪 | **1 次**（B28 push-wind currentPlayer sync）|
-| 修复后跑过的对局数 | 1300+（500 实测 + 800 回归）|
-| 累计套件执行次数 | 400+，0 失败（修复最后一个 flaky 后）|
-| flaky 根因查明次数 | 1（B22 取牌让手牌 > 22，我的断言错）|
-| flaky 根因待查 | 1（T7 test-audit-integration）|
+| 作用域错误 / 未定义符号 | 像素级视觉（手牌宽度、按钮位置）|
+| 状态同步断裂 | 真机触摸坐标精度 |
+| 牌张守恒 / 阶段错乱 | 帧率 / 性能 |
+| 驱动循环死锁 / 非法行动 | 未 mock 的宿主 API 的真实行为 |
+| 信息边界泄露 | **触达性**（按钮能否被点到）|
+| 事件处理抛异常 | **判据本身对不对**（测试可能照抄了错判据）|
+| 触摸坐标 → 命中 → 出牌 端到端映射 | |
+
+> **说**「无头测试 55/55 通过，IDE 目视已做」**不要说**「画面正常」。
+> 2026-10-24 三个 P0 里有两个**只有真机能发现**。
+
+---
+
+## 6. 套件清单
+
+引擎 39 · 界面/驱动 16（55 总）
+
+```
+test-ai-*.js            test-play.js               test-scoring-deep.js
+test-capture.js         test-push-wind*.js         test-state-immutability.js
+test-double-bigA.js     test-pushwind-*.js         test-ui-phase-gate.js
+test-eligibility-rules.js  test-reveal-bottom.js   test-ui-touch-contract.js
+test-forced-check-establishedby.js  test-robustness.js
+test-game-headless.js   test-scoring.js            test-liang-double-a.js
+test-game-scenarios.js  test-order-independence.js
+test-pair-bigA-not-boost.js  test-phase2.js
+test-perf.js            test-push-wind-camp.js
+```
+
+---
+
+## 7. 尚未覆盖
+
+- 像素级真机表现（`test-ui-touch-contract` 只锁逻辑契约）
+- IDE 人工对局的完整录像级回归
+- 长时间运行的内存/性能曲线（`test-perf.js` 只跑局数与吞吐）
