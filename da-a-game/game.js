@@ -428,7 +428,14 @@ function doPlay() {
       gameState = r0.state;
       log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + cardText);
       selectedCards = [];
-      var wasEmpty0 = me2 && me2.hand.length === 0;
+      // [P0 修复 2026-10-23] 原来读 me2.hand.length —— me2 是 transition **之前**
+      //   捕获的 player 引用, 而 transition 会**克隆** players 数组与 player 对象
+      //   (实测: players 换新 = true, player 对象换新 = true), 于是 me2 永远停在
+      //   出牌前的手牌数 -> 玩家出完最后几张牌时 wasEmpty0 恒为 false
+      //   -> lastEmptiedPlayer 不被设置 -> 推风永不触发。
+      //   必须从**新** gameState 里重新取。
+      var _meAfter0 = gameState.players.find(function (p) { return p.id === currentPlayer; });
+      var wasEmpty0 = _meAfter0 && _meAfter0.hand.length === 0;
       if (wasEmpty0) {
         lastEmptiedPlayer = currentPlayer;
         log('  -> ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出完牌∈待轮次结束可能触发推风');
@@ -458,10 +465,11 @@ function doPlay() {
       payload: { playerId: currentPlayer, cardIds: [card.id] }
     });
     if (r && r.ok) {
-      var me3 = gameState.players.find(function (p) { return p.id === currentPlayer; });
       gameState = r.state;
       log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + cardDesc(card));
-      var wasEmpty = me3 && me3.hand.length === 0;
+      // [P0 修复 2026-10-23] 同上: me3 同样是过期引用, 从新 state 重新取。
+      var _meAfter = gameState.players.find(function (p) { return p.id === currentPlayer; });
+      var wasEmpty = _meAfter && _meAfter.hand.length === 0;
       if (wasEmpty) {
         lastEmptiedPlayer = currentPlayer;
         log('  → ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出完牌 (待轮次结束触发推风)');
