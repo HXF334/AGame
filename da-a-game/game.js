@@ -25,38 +25,46 @@ var logHistory = [];
 var NAMES_MAP = { A: '甲', B: '乙', C: '丙', D: '丁', E: '戊' };
 function pn(id) { return NAMES_MAP[id] || (id || '-'); }
 
+// 花色/方式 英文码 -> 汉字 (用户 2026-10-23 要求: 看日志要能直接读懂)
+var SUIT_CN = { H: '红桃', D: '方块', C: '梅花', S: '黑桃' };
+function psuit(s) { return SUIT_CN[s] || (s || '-'); }
+var VIA_CN = {
+  FORCED_CHECK: '强制排查',
+  LIANG_A: '主动亮A',
+  DEFAULT_HEART: '红桃A兜底',
+  FORCED_CHECK_FALLBACK: '强制排查兜底'
+};
+function pvia(v) { return VIA_CN[v] || (v || '-'); }
+
 function logState(tag) {
   var s = gameState || {};
-  var p = null;
-  for (var i = 0; i < (s.players || []).length; i++) {
-    if (s.players[i].id === currentPlayer) p = s.players[i];
-  }
   var za = s['主A'];
-  var zhu = s['主方'] || [];
-  var zhua = s['抓方'] || [];
-  log('[' + tag + '] phase=' + s.phase
+  var fan = s['反A'];
+  log('[' + tag + ']'
+    + ' phase=' + s.phase
     + ' mode=' + (s.mode || '-')
-    + ' 主A=' + (za ? za.suit + '/由' + pn(za.establishedBy) + '/' + (za.viaMethod || '?') : '-')
+    + ' 主A=' + (za ? psuit(za.suit) + '(由' + pn(za.establishedBy) + '·' + pvia(za.viaMethod) + ')' : '-')
     + ' 次A=' + (s['次方'] ? pn(s['次方']) : '-')
     + ' 次方公开=' + (s['次方公开'] ? '是' : '否')
     + ' 底牌公开=' + (s['底牌公开'] ? '是' : '否')
-    + ' 主方=[' + zhu.map(pn).join(',') + ']'
-    + ' 抓方=[' + zhua.map(pn).join(',') + ']'
-    + ' 当前=' + pn(currentPlayer) + '(' + (p ? p.hand.length : '?') + '张)'
-    + ' 桌=' + ((s.table || []).length) + '张'
-    + ' 过牌=[' + (s.passedPlayers || []).map(pn).join(',') + ']'
-    + ' lastPlayer=' + pn(s.lastPlayer));
+    + ' 反A=' + (fan ? pn(fan.by) + '·' + psuit(fan.suit) : '-')
+    + ' 主方=[' + (s['主方'] || []).map(pn).join(',') + ']'
+    + ' 抓方=[' + (s['抓方'] || []).map(pn).join(',') + ']');
 }
 
-//   同样自动捕获「出大A → 次方公开」这类身份变化, 无需逐个手写日志点。
+// 只在**静态字段**变化时打日志。
+//   签名里故意**不含** 当前玩家 / 桌牌数 / 过牌 / lastPlayer —— 它们每回合都变,
+//   混进来会导致每出一手牌就重复刷一遍相同的静态信息 (用户 2026-10-23 指出)。
+//   现在: 开局打一次完整快照; 此后仅在出大A(→次方公开)、反A(→mode 变 1V4)、
+//   阵营重算 等真实转换时补打一行。
 var _lastSig = '';
 function logStateIfChanged(tag) {
   var s = gameState || {};
   var za = s['主A'];
-  var sig = [s.phase, s.mode, s['次方'], s['次方公开'], s['底牌公开'], s['反A'],
-             za ? za.suit + '/' + za.establishedBy + '/' + za.viaMethod : '-',
-             (s['主方'] || []).join(','), (s['抓方'] || []).join(''),
-             currentPlayer, s.lastPlayer].join('|');
+  var sig = [s.phase, s.mode, s['次方'], s['次方公开'] ? '1' : '0', s['底牌公开'] ? '1' : '0',
+             s['反A'] ? s['反A'].by + s['反A'].suit : '-',
+             za ? za.suit + za.establishedBy + za.viaMethod : '-',
+             (s['主方'] || []).join(''), (s['抓方'] || []).join('')].join('|');
   if (sig === _lastSig) return;
   _lastSig = sig;
   logState(tag);
@@ -148,9 +156,9 @@ try {
   if (r && r.ok) {
     gameState = r.state;
     var _za = gameState['主A'];
-    log('FORCED_CHECK → 主A: ' + (_za ? _za.suit : '?')
+    log('FORCED_CHECK → 主A: ' + (_za ? psuit(_za.suit) : '?')
       + ' 由' + (_za ? pn(_za.establishedBy) : '?')
-      + ' 方式=' + (_za ? _za.viaMethod : '?'));
+      + ' 方式=' + (_za ? pvia(_za.viaMethod) : '?'));
     logState('强制排查后');
   }
 
