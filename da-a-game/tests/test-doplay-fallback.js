@@ -5,7 +5,7 @@
 //   今天 IDE 日志里已三次见到它在工作:
 //     选中 3 张不合法: INVALID_HAND 3 cards not same rank and not straight -> 回退逐张试
 //     选中 2 张不合法: INVALID_HAND 2 cards invalid -> 回退逐张试
-//     甲 失败: 所有 22 张手牌都不可用. 最后: CANNOT_BEAT
+//     甲 失败: 压不过桌面(单张与组合均已尝试). 最后: CANNOT_BEAT
 //   但零自动化覆盖 —— 正是今天 T4 教训(审查要看调用点而非模块)的最后一块。
 //
 // 【三个踩过的坑, 均会导致本测试完全失效】
@@ -145,7 +145,13 @@ section('4. 桌面 ♠3(第二大牌), 手上只有4 → 全都不可用, 必须
   g.doPlay();
 
   var lg = logStr();
-  check('4.1 出现「手牌都不可用」', lg.indexOf('手牌都不可用') >= 0, tail(4));
+  // [2026-10-23 文案变更] 原断言「出现『手牌都不可用』」，随 P3 修正而改为更如实��措辞。
+  //   P3 依据: 该行在**组合回退也失败之后**才打(组合回退块在 doPlay 内, 成功即 return)，
+  //   而「最后: <err>」来自组合尝试 -> 原措辞把「单张扫描」与「组合尝试」混成一句，
+  //   读起来像「一张都出不了」。故改为「压不过桌面(单张与组合均已尝试)」。
+  check('4.1 出现「压不过桌面」', lg.indexOf('压不过桌面') >= 0, tail(4));
+  check('4.1b 明确说明单张与组合均已尝试',
+    lg.indexOf('单张与组合均已尝试') >= 0, tail(4));
   check('4.2 报出最后的错误类型', /CANNOT_BEAT|INVALID_HAND/.test(lg), tail(4));
   check('4.3 手牌未减少', handOf('A').hand.length === before,
     'before=' + before + ' now=' + handOf('A').hand.length);
