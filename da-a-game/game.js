@@ -256,6 +256,10 @@ function draw() {
   // [修复] 旧的独立桌面区已删 (改到中列"当前"下边)
 
   // ===== 人手牌渲染 (humanPlayer 回合) =====
+  // [2026-10-23] 手牌几何提到 draw() 作用域: UI 日志区要据此算「手牌下沿」,
+  //   否则日志只能写死位置, 而布局一改就会压到手牌或按钮。
+  var cardW = 24, cardH = 42, cardGap = 1;
+  var cardY = H * 0.42;
   var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
   if (me && me.hand && me.hand.length > 0) {
     function cardPower(c) {
@@ -270,10 +274,17 @@ function draw() {
     handCardHitboxes = [];
     // [fix] 无条件渲染手牌 (轮到 AI 时也能看到自己的牌)
     if (sortedHand.length > 0) {
-      var cardW = 24, cardH = 42, cardGap = 1;
+      // [2026-10-23 修] 手牌宽度自适应: 固定 25px/张 × 22 张 = 550px,
+      //   在竖屏(375宽)会溢出画布 (startX 变负, 左侧牌跑出屏幕)。
+      //   改为按屏宽反算每张占宽, 并同步缩放牌高与字号。
+      var _n = sortedHand.length;
+      var _step = Math.min(25, (W - 16) / _n);
+      cardW = Math.max(14, Math.floor(_step - 1));
+      cardH = Math.max(24, Math.round(cardW * 1.75));
+      var _fRank = Math.max(9, Math.round(cardW * 0.5));
+      var _fSuit = Math.max(12, Math.round(cardW * 0.75));
       var totalW = sortedHand.length * cardW + (sortedHand.length - 1) * cardGap;
       var startX = (W - totalW) / 2;
-      var cardY = H * 0.42;
       sortedHand.forEach(function (card, k) {
         var x = startX + k * (cardW + cardGap);
         var isSel = selectedCards.indexOf(card.id) >= 0;
@@ -293,11 +304,11 @@ function draw() {
         ctx.fillStyle = card.isBigJoker ? '#c8102e'
                        : (isJoker ? '#000000'
                           : ((card.suit === 'H' || card.suit === 'D') ? '#c8102e' : '#000000'));
-        ctx.font = 'bold 12px sans-serif';
+        ctx.font = 'bold ' + _fRank + 'px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(rankDesc(card), x + cardW / 2, cardY + 16);
-        ctx.font = 'bold 18px sans-serif';
-        ctx.fillText(isJoker ? '王' : (suitChar[card.suit] || card.suit), x + cardW / 2, cardY + 35);
+        ctx.fillText(rankDesc(card), x + cardW / 2, cardY + cardH * 0.38);
+        ctx.font = 'bold ' + _fSuit + 'px sans-serif';
+        ctx.fillText(isJoker ? '王' : (suitChar[card.suit] || card.suit), x + cardW / 2, cardY + cardH * 0.83);
       });
       // 已选张数提示
       if (selectedCards.length > 0) {
@@ -341,6 +352,39 @@ function draw() {
 
   btnPlay = { x: btnStartX, y: btnY, w: btnW, h: btnH };
   btnPass = { x: btnStartX + btnW + gap, y: btnY, w: btnW, h: btnH };
+
+  // ===== UI 层操作日志 (用户 2026-10-23 要求加回) =====
+  //   位置: 手牌下沿 ~ 按钮上沿 之间。
+  //   行数按**可用空间**算, 不写死条数 —— skill game-ui-engine-contract §2.1:
+  //   行数×间距×起点三者联动, 只查画布高度会漏掉「压到按钮」。
+  //   (旧实现固定 15 行 × 0.029H + 起点 0.55H -> 末行 0.956H, 越过按钮行 0.93H)
+  //   文字可能很长(状态快照行), 按可用宽度截断, 避免溢出画布。
+  //   信息边界: 日志只含「已出的牌」(公开)与张数, 不含他人手牌内容, 不泄露。
+  {
+    var _logTop = cardY + cardH + 8;
+    var _logBottom = btnY - 8;
+    var _logAvail = _logBottom - _logTop;
+    if (_logAvail > 20 && logHistory.length > 0) {
+      var _fs = Math.max(9, Math.min(13, Math.floor(_logAvail / 9)));
+      var _step = _fs * 1.4;
+      var _maxLines = Math.max(1, Math.min(16, Math.floor(_logAvail / _step)));
+      var _margin = Math.max(6, W * 0.03);
+      var _maxW = W - _margin * 2;
+      var _maxChars = Math.max(10, Math.floor(_maxW / _fs));   // 中文按 1 字宽估
+      ctx.textAlign = 'left';
+      ctx.font = _fs + 'px sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(_margin - 4, _logTop - _fs - 2, _maxW + 8, _maxLines * _step + 6);
+      for (var _li = 0; _li < _maxLines; _li++) {
+        var _src = logHistory[logHistory.length - 1 - _li];   // 最新在最上
+        if (_src === undefined) break;
+        var _txt = String(_src);
+        if (_txt.length > _maxChars) _txt = _txt.slice(0, _maxChars - 1) + '…';
+        ctx.fillStyle = (_li === 0) ? '#ffd700' : '#dddddd';
+        ctx.fillText(_txt, _margin, _logTop + _li * _step);
+      }
+    }
+  }
 
   // ===== 顶部 5 按钮 (选我是哪个 + 剩余张数) =====
   const meBtnW = 56, meBtnH = 32, meGap = 8;
@@ -725,6 +769,9 @@ function advanceCurrentPlayer() {
 
 // === 触摸事件处理 (WeChat 小游戏) ===
 if (typeof wx !== 'undefined') {
+  // [2026-10-23] 点击未命中的节流记录
+  var _lastMissLog = null;
+
   wx.onTouchStart(function (e) {
     var touch = e.touches && e.touches[0];
     if (!touch) return;
@@ -765,6 +812,32 @@ if (typeof wx !== 'undefined') {
         draw();
         return;
       }
+    }
+
+    // [2026-10-23 诊断] 点击未命中任何控件。
+    //   用于定位「点了没反应」: 能记到这行 = 触摸处理本身活着(坐标也对),
+    //   只是没命中控件; 完全记不到 = 触摸事件根本没进来。
+    //   节流: 同坐标 1 秒内不重复记, 避免刷屏。
+    var _now = Date.now();
+    if (!_lastMissLog || _now - _lastMissLog.t > 1000 || _lastMissLog.x !== x || _lastMissLog.y !== y) {
+      _lastMissLog = { t: _now, x: x, y: y };
+      // [2026-10-23] 把系统信息一并打出: canvas.width/height 是**物理像素**,
+      //   而触摸 clientX/clientY 是 **CSS 像素**, 高分屏 dpr>1 时两者差一个倍数
+      //   -> hitbox(按 canvas 算) 与手指位置对不上 -> 点不到任何控件。
+      //   一行就能判定: canvas 宽 / windowWidth 约等于 dpr。
+      var _sys = '';
+      try {
+        if (typeof wx !== 'undefined' && wx.getSystemInfoSync) {
+          var _si = wx.getSystemInfoSync();
+          _sys = ' window=' + _si.windowWidth + 'x' + _si.windowHeight
+               + ' dpr=' + _si.pixelRatio
+               + ' screen=' + _si.screenWidth + 'x' + _si.screenHeight;
+        }
+      } catch (e) { _sys = ' (sysErr ' + e.message + ')'; }
+      log('点击未命中: (' + Math.round(x) + ',' + Math.round(y) + ')'
+        + ' 手牌hitbox=' + handCardHitboxes.length
+        + ' 出牌键=' + (btnPlay ? ('有@' + Math.round(btnPlay.x) + ',' + Math.round(btnPlay.y)) : '无')
+        + ' 画布=' + Math.round(W) + 'x' + Math.round(H) + _sys);
     }
   });
 }
