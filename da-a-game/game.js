@@ -143,6 +143,7 @@ function fmt主A(o) {
 
 // === 按钮 (3 个 hitboxes) ===
 let btnPlay = null;
+let btnStage = null;   // 当前阶段的按钮列表(由 uiButtons() 产生)
 let btnPass = null;
 // [2026-10-21 删] btnPushWind 已移除。推风按 SKILL §9 应在"出完牌 + 其余玩家过牌 ->
 //   轮次结束"时**自动**触发 (maybeTriggerPushWindAfterRoundEnd), 无需人工干预。
@@ -360,7 +361,91 @@ try {
   log('初始化异常: ' + (e && e.message));
 }
 
+// === 新一局（【下一局】按钮）===
+// 需求: 点击后必须重新发牌并重置真人座位为丁位, 同时重置日志与所有派生 UI 状态。
+//   漏掉任何一项都会让上一局残留污染新局(历史上出过的对局是其中一种)。
+function newGame() {
+  log('=== 点击【下一局】===');
+  humanPlayer = DEFAULT_HUMAN;      // 真人每局默认丁位
+  selectedCards = [];
+  handCardHitboxes = [];
+  lastEmptiedPlayer = null;
+  currentPlayer = null;
+  gameState = engine.newGameState();
+  logHistory = [];                   // 新局重置日志
+  initGame();                        // 重新走阶段闸门(内部会重置 gateIdx/gateChoice)
+  log('新局已开始, 真人=' + pn(humanPlayer) + '(丁位)');
+  if (ctx) draw();
+}
+
 // === 主渲染 ===
+// ===== 统一按钮模型（2026-10-23 新增，需求八）=====
+// 按钮的**可见性与可用性全部由游戏状态推导**，单一来源。
+// 之前 btnPlay/btnPass/btnSelectPlayers 三处各自判断 phase 与 currentPlayer，
+// 容易互相冲突；现在 draw() 只负责排版绘制，触摸只按 id 分发。
+function uiButtons() {
+  var out = [];
+  var ph = gameState.phase;
+  var c = gateChoice;
+  var ended = ph === PHASES.GAME_END;
+  var playing = ph === PHASES.PLAY;
+
+  if (!playing && !ended) {
+    // 阶段选择：亮A / 反A / 次方身份，按 gateChoice 的 kind 决定显示哪组
+    if (c && c.kind === 'LIANG_A') {
+      out.push({ id: 'liangA', label: '亮A', enabled: !!c.eligible });
+      out.push({ id: 'noLiangA', label: '不亮', enabled: !!c.eligible });
+    } else if (c && c.kind === 'FAN_A') {
+      out.push({ id: 'fanA', label: '反A', enabled: !!c.eligible });
+      out.push({ id: 'noFanA', label: '不反', enabled: !!c.eligible });
+    } else if (c && c.kind === 'IDENTITY') {
+      out.push({ id: 'idPublic', label: '公开身份', enabled: !!c.eligible });
+      out.push({ id: 'idHidden', label: '隐藏身份', enabled: !!c.eligible });
+    }
+    // 【下】：有待决策且资格具备时**不可用**（不能跳过真人决策）
+    out.push({ id: 'next', label: '下', enabled: !(c && c.eligible) });
+  }
+
+  if (playing) {
+    var onTurn = currentPlayer === humanPlayer;
+    out.push({ id: 'play', label: '出牌', enabled: onTurn });
+    out.push({ id: 'pass', label: '过牌', enabled: onTurn });
+  }
+
+  if (ended) {
+    out.push({ id: 'newGame', label: '下一局', enabled: true });
+  }
+  return out;
+}
+
+// 按坐标命中某个按钮；不可用的按钮返回 null（不响应）
+function uiButtonAt(x, y) {
+  var list = uiButtons();
+  for (var i = 0; i < list.length; i++) {
+    var b = list[i];
+    if (!b.enabled) continue;
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+  }
+  return null;
+}
+
+// 按 id 触发按钮动作。返回 true 表示已处理
+function uiClick(id) {
+  switch (id) {
+    case 'liangA':   return humanLiangA(true);
+    case 'noLiangA': return humanLiangA(false);
+    case 'fanA':     return humanFanA(true);
+    case 'noFanA':   return humanFanA(false);
+    case 'idPublic': return humanChooseIdentity(true);
+    case 'idHidden': return humanChooseIdentity(false);
+    case 'next':     return gateNext();
+    case 'play':     doPlay(); return true;
+    case 'pass':     doPass(); return true;
+    case 'newGame':  newGame(); return true;
+    default: return false;
+  }
+}
+
 function draw() {
   if (!ctx) return;  // node 测试模式无 canvas
   // 背景
@@ -477,37 +562,59 @@ function draw() {
   }
 
   
-  // ===== 按钮: 出牌 / 过牌 / 推风 (右下角) =====
-  const btnW = 72, btnH = 30, gap = 6;
-  // [2026-10-21 改] 3 个按钮 -> 2 个, 布局宽度同步收窄
-  const totalBtnW = btnW * 2 + gap;
-  const btnStartX = W - totalBtnW - W * 0.02;
-  const btnY = H * 0.93 - btnH;
+// ===== 按钮: 由 uiButtons() 统一排版并绘制 (需求八) =====
+// 之前这里硬编码出牌/过牌两个按钮并各自判断 phase/currentPlayer, 与阶段闸门
+// 的按钮需求完全脱节 —— 亮A/不亮/反A/不反/下/结算/下一局 全都点不到。
+// 现在: 按钮集合来自 uiButtons()（单一来源）, 这里只负责算坐标 + 画。
+(function drawUiButtons() {
+  var list = uiButtons();
+  btnPlay = null; btnPass = null; btnStage = list;
+  if (!ctx || !list.length) return;
 
-  const playEnabled = currentPlayer && gameState.phase === PHASES.PLAY;
-  const passEnabled = playEnabled;
-  const pushEnabled = true;   // [2026-10-21] 推风按钮已删, 此变量仅保留兼容, 绘制端不再使用
+  var gap = 6, h = 30, pad = W * 0.02;
+  var w = Math.max(56, Math.min(96, (W - pad * 2 - gap * (list.length - 1)) / list.length));
+  var y = H * 0.93 - h;
+  var totalW = w * list.length + gap * (list.length - 1);
+  var startX = W - totalW - pad;
 
-  // 出牌
-  ctx.fillStyle = playEnabled ? '#c8102e' : '#555';
-  ctx.fillRect(btnStartX, btnY, btnW, btnH);
-  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2;
-  ctx.strokeRect(btnStartX, btnY, btnW, btnH);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 13px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('出牌', btnStartX + btnW / 2, btnY + btnH / 2);
+  list.forEach(function (b, i) {
+    var x = startX + i * (w + gap);
+    b.x = x; b.y = y; b.w = w; b.h = h;
+    if (b.id === 'play') btnPlay = b;
+    if (b.id === 'pass') btnPass = b;
 
-  // 过牌
-  ctx.fillStyle = passEnabled ? '#1e6091' : '#555';
-  ctx.fillRect(btnStartX + btnW + gap, btnY, btnW, btnH);
-  ctx.strokeRect(btnStartX + btnW + gap, btnY, btnW, btnH);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('过牌', btnStartX + btnW + gap + btnW / 2, btnY + btnH / 2);
+    ctx.fillStyle = b.enabled ? '#1e6091' : '#555';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = b.enabled ? '#ffffff' : '#888888';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(b.label, x + w / 2, y + h / 2);
+  });
 
-  btnPlay = { x: btnStartX, y: btnY, w: btnW, h: btnH };
-  btnPass = { x: btnStartX + btnW + gap, y: btnY, w: btnW, h: btnH };
+  // 阶段提示文字: 让真人知道现在轮到哪个阶段、按钮为何不可用
+  if (list.length) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(_stageHint(), pad, y + h / 2);
+  }
+})();
+
+function _stageHint() {
+  var c = gateChoice;
+  var ph = gameState.phase;
+  if (ph === PHASES.GAME_END) return '本局结束';
+  if (ph === PHASES.PLAY) {
+    return currentPlayer === humanPlayer ? '轮到你出牌' : ('等待 ' + pn(currentPlayer) + ' 出牌');
+  }
+  var stage = gateIdx < GATE_PLAN.length ? GATE_PLAN[gateIdx].label : '准备';
+  if (c && !c.eligible) return stage + '（你无相应资格，按【下】继续）';
+  if (c && c.eligible) return stage + '（需你先选择）';
+  return stage;
+}
 
   // [2026-10-23 移除] UI 层操作日志已按用户要求去掉, 只保留控制台 log。
   //   原因: 屏幕空间宝贵; 且控制台日志已足够定位问题
@@ -934,13 +1041,12 @@ if (typeof wx !== 'undefined') {
       }
     }
 
-    // 检查 3 按钮 (出牌/过牌/推风)
-    if (btnPlay && x >= btnPlay.x && x <= btnPlay.x + btnPlay.w && y >= btnPlay.y && y <= btnPlay.y + btnPlay.h) {
-      doPlay();
-      return;
-    }
-    if (btnPass && x >= btnPass.x && x <= btnPass.x + btnPass.w && y >= btnPass.y && y <= btnPass.y + btnPass.h) {
-      doPass();
+    // 统一按钮模型（需求八）: 可用性已由 uiButtons() 判定, 这里只按 id 分发。
+    //   不可用的按钮在 uiButtonAt 里已跳过, 不会被命中。
+    var hitBtn = uiButtonAt(x, y);
+    if (hitBtn) {
+      uiClick(hitBtn.id);
+      draw();
       return;
     }
     // [2026-10-21 删] 原此处有 btnPushWind 命中测试 -> doPushWind()。
@@ -1076,6 +1182,11 @@ if (typeof module !== 'undefined' && module.exports) {
         currentPlayer = determineFirstPlayer(gameState) || currentPlayer;
       }
       return { steps: steps, phase: gameState.phase, currentPlayer: currentPlayer };
-    }
+    },
+    // ===== UI 层（2026-10-23 新增）=====
+    uiButtons: uiButtons,
+    uiButtonAt: uiButtonAt,
+    uiClick: uiClick,
+    newGame: newGame
   };
 }
