@@ -17,3 +17,5 @@ npm-debug.log*
 
 # 审查用临时脚本 (一次性, 不入库)
 tests/_*.js
+# \u56de\u5f52\u811a\u672c\u4ea7\u7269
+_reg.txt
