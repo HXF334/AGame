@@ -3,6 +3,23 @@ name: da-a-game-rules
 description: 按照已确认的《内蒙古打大A》规则，设计、实现、调试和测试微信小游戏。适用于发牌、亮A/反A、牌型识别与比较、4取牌、轮次、推风、胜负与计分，以及1真人对4个AI的第一版开发。
 ---
 
+> **副本说明（2026-10-24 审计后添加）**
+>
+> 本文件是**项目内的同源副本**，章节编号与 Workshop 版不同。
+> **权威版（唯一生效来源）是 Workshop 版**：
+> `~/.openclaw/agents/work/agent/workshop-skills/dada-a-game-rules/SKILL.md`
+> —— 那是 agent 实际会加载的那一份。**两处不一致时以 Workshop 版为准。**
+> 不要在本文件里单独改规则 —— 改了必须同步到 Workshop 版，否则又是一次分叉。
+>
+> **已经踩过的坑**：本副本 §4.4 反A条款写着「任意花色都可以；不要求与当前主A花色相同」，
+> 而 Workshop 版当时只写「持有同花色两张A」—— **没点明花色是否须与主A相同**。
+> 实现方据此把反A限定成「主A花色的两张A」，用户实测报「我有双大A，提示我没有反A资格」。
+> 该歧义已于 2026-10-24 在 Workshop 版 §3.3 补齐。
+>
+> 章节对应：本副本 §4.4 反A → Workshop §3.3；本副本 §12 AI行动与信息边界 →
+> `dada-a-game-impl` / `game-ui-engine-contract`；§13 必测用例 → `dada-a-game-impl` 验证清单；
+> §14 开发完成标准 / §15 汇报 → `senior-dev-standard`；§1 核心职责的开发约束 → `senior-dev-standard`。
+
 # 内蒙古打大A：开发与规则 Skill
 
 ## 1. 核心职责
