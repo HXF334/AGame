@@ -344,38 +344,11 @@ function draw() {
   btnPlay = { x: btnStartX, y: btnY, w: btnW, h: btnH };
   btnPass = { x: btnStartX + btnW + gap, y: btnY, w: btnW, h: btnH };
 
-  // ===== UI 层操作日志 (用户 2026-10-23 要求加回) =====
-  //   位置: 手牌下沿 ~ 按钮上沿 之间。
-  //   行数按**可用空间**算, 不写死条数 —— skill game-ui-engine-contract §2.1:
-  //   行数×间距×起点三者联动, 只查画布高度会漏掉「压到按钮」。
-  //   (旧实现固定 15 行 × 0.029H + 起点 0.55H -> 末行 0.956H, 越过按钮行 0.93H)
-  //   文字可能很长(状态快照行), 按可用宽度截断, 避免溢出画布。
-  //   信息边界: 日志只含「已出的牌」(公开)与张数, 不含他人手牌内容, 不泄露。
-  {
-    var _logTop = cardY + cardH + 8;
-    var _logBottom = btnY - 8;
-    var _logAvail = _logBottom - _logTop;
-    if (_logAvail > 20 && logHistory.length > 0) {
-      var _fs = Math.max(9, Math.min(13, Math.floor(_logAvail / 9)));
-      var _step = _fs * 1.4;
-      var _maxLines = Math.max(1, Math.min(16, Math.floor(_logAvail / _step)));
-      var _margin = Math.max(6, W * 0.03);
-      var _maxW = W - _margin * 2;
-      var _maxChars = Math.max(10, Math.floor(_maxW / _fs));   // 中文按 1 字宽估
-      ctx.textAlign = 'left';
-      ctx.font = _fs + 'px sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(_margin - 4, _logTop - _fs - 2, _maxW + 8, _maxLines * _step + 6);
-      for (var _li = 0; _li < _maxLines; _li++) {
-        var _src = logHistory[logHistory.length - 1 - _li];   // 最新在最上
-        if (_src === undefined) break;
-        var _txt = String(_src);
-        if (_txt.length > _maxChars) _txt = _txt.slice(0, _maxChars - 1) + '…';
-        ctx.fillStyle = (_li === 0) ? '#ffd700' : '#dddddd';
-        ctx.fillText(_txt, _margin, _logTop + _li * _step);
-      }
-    }
-  }
+  // [2026-10-23 移除] UI 层操作日志已按用户要求去掉, 只保留控制台 log。
+  //   原因: 屏幕空间宝贵; 且控制台日志已足够定位问题
+  //   (2026-10-23 19:52 真实对局日志即为纯控制台输出, 成功定位 dpr 猜测错误)。
+  //   历史: 该块曾放在此处, 位置为「手牌下沿 ~ 按钮上沿」, 行数按可用空间算
+  //   (skill game-ui-engine-contract §2.1: 行数×间距×起点三者联动)。
 
   // ===== 顶部 5 按钮 (选我是哪个 + 剩余张数) =====
   const meBtnW = 56, meBtnH = 32, meGap = 8;
