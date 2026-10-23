@@ -14,86 +14,16 @@ var chooseAction = require('./src/ai.js').chooseAction;
 var candidateCombos = require('./src/combos.js').candidateCombos;
 
 // === 工具 ===
-// === 本地文件日志 ===
-// [2026-10-21 \u4fee] \u5386\u53f2\u4e0a\u5931\u8d25\u4e24\u6b21\u7684\u539f\u56e0\u90fd\u662f\u201c\u9759\u9ed8\u5931\u8d25\u201d:
-//   1) \u7b2c\u4e00\u7248\u7528 process.versions.node \u5224\u5b9a\u662f\u5426 Node, \u4f46 WeChat \u8fd0\u884c\u65f6**\u6ca1\u6709
-//      process** -> mkdir \u88ab\u8df3\u8fc7 -> \u76ee\u5f55\u4ece\u672a\u521b\u5efa -> appendFileSync \u629b ENOENT
-//   2) \u7b2c\u4e8c\u7248\u6539\u7528 wx \u6c99\u7bb1\u5199\u5165, \u4f46\u6c99\u7bb1\u6587\u4ef6**\u52a9\u624b\u5728 shell \u91cc\u8bfb\u4e0d\u5230**
-// \u672c\u7248\u7b56\u7565: **\u4f18\u5148\u5199\u9879\u76ee\u76ee\u5f55** (fs \u53ef\u5199\u65f6, \u52a9\u624b\u80fd\u76f4\u63a5 cat),
-//   fs \u4e0d\u53ef\u5199 (\u771f\u673a\u771f\u6c99\u7bb1) \u624d\u9000\u56de wx.getFileSystemManager\u3002
-//   \u65e0\u8bba\u8d70\u54ea\u6761\u8def, \u521d\u59cb\u90fd\u4f1a\u628a\u5b9e\u9645\u8def\u5f84\u6253\u5230 IDE \u63a7\u5236\u53f0, \u4fbf\u4e8e\u786e\u8ba4\u3002
-var _logDir = null, _logFilePath = null, _wxFs = null, _fsOk = false;
-var _logPathAnnounced = false;   // 首次 log() 时把路径推到屏 (避免控制台看不到)
-
-function _logFileName() {
-  var d = new Date();
-  return 'log_' + d.getFullYear() +
-    String(d.getMonth() + 1).padStart(2, '0') +
-    String(d.getDate()).padStart(2, '0') + '.log';
-}
-
-// --- \u8def\u5f84 1: \u9879\u76ee\u76ee\u5f55 (fs) ---
-try {
-  var nfs = require('fs');
-  var _d = (typeof __dirname !== 'undefined' ? __dirname : '.') + '/logs';
-  if (!nfs.existsSync(_d)) nfs.mkdirSync(_d, { recursive: true });
-  var _probe = _d + '/.write_probe';
-  nfs.writeFileSync(_probe, 'ok');
-  nfs.unlinkSync(_probe);          // \u4e25\u683c\u63a2\u6d4b: \u80fd\u5199\u4e24\u4e2a\u624d\u7b97\u771f\u53ef\u5199
-  _logDir = _d;
-  _fsOk = true;
-} catch (e) { _fsOk = false; }
-
-// --- \u8def\u5f84 2: wx \u6c99\u7bb1 (\u771f\u673a\u771f\u6c99\u7bb1\u56de\u9000) ---
-if (!_fsOk) {
-  try {
-    if (typeof wx !== 'undefined' && wx.getFileSystemManager && wx.env && wx.env.USER_DATA_PATH) {
-      _wxFs = wx.getFileSystemManager();
-      _logDir = wx.env.USER_DATA_PATH + '/logs';
-      _wxFs.mkdir({ filePath: _logDir, fail: function () {} });
-    }
-  } catch (e) {}
-}
-
-_logFilePath = _logDir ? _logDir + '/' + _logFileName() : null;
-
-try {
-  if (_fsOk && _logFilePath) {
-    var _f2 = require('fs');
-    if (!_f2.existsSync(_logFilePath)) _f2.writeFileSync(_logFilePath, '');
-  }
-} catch (e) {}
-
-// 开机第一屏就告诉你日志落在哪 (屏显, 在 _logPathAnnounced 块里执行后这里会被覆盖)
-console.log('[da-a-game] log file = ' + (_logFilePath || '(unavailable)') + (_fsOk ? ' (fs)' : ' (wx sandbox)'));
-
+// 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
+var logHistory = [];
 function log(msg) {
-  // 首次调用: 先把日志路径推到 logHistory, 这样玩家在游戏画面底部
-  //   能直接看到「日志写到了哪里」(避免再依赖控制台)。
-  if (!_logPathAnnounced) {
-    _logPathAnnounced = true;
-    var banner = '[日志路径] ' + (_logFilePath || '(不可用)') + (_fsOk ? '' : ' [wx沙箱]');
-    logHistory.push(banner);
-    console.log('[da-a-game] ' + banner);   // 控制台也带上, 双保险
-  }
+  // [2026-10-23 用户要求] 只保留控制台日志: 本地文件与 UI 屏显都已移除。
+  //   本地文件通道在 WeChat 运行时三次静默失败 (无 process / wx 沙箱不可读 /
+  //   devtools 模拟器沙箱不落盘), 继续保留只会造成"以为在记日志"的错觉。
+  //   需要排查时用户从调试器 Console 复制给我。
   logHistory.push(msg);
-  if (logHistory.length > 15) logHistory.shift();  // [fix] 增至 15 行, 填满下方空白
-
-  // [2026-10-21 第三次修] wx 沙箱在 devtools 模拟器**完全不可读** (usr/ 为空),
-  //   fs 在项目目录也只在 Node 测试时有效, IDE 里走 wx 沙箱同样静默丢数据。
-  //   唯一可靠通道: **console.log**: 调试器 -> Console 里可以一次选中复制。
-  //   玩家操作后告「复制日志给我」, 我从粘贴的分析。
+  if (logHistory.length > 200) logHistory.shift();   // 内存上限, 防无限增长
   console.log('[da-a-game] ' + msg);
-
-  // 追加到本地文件
-  var line = '[' + new Date().toISOString() + '] ' + msg + '\n';
-  try {
-    if (_fsOk && _logFilePath) {
-      require('fs').appendFileSync(_logFilePath, line);
-    } else if (_wxFs && _logFilePath) {
-      _wxFs.appendFile({ filePath: _logFilePath, data: line, encoding: 'utf8' });
-    }
-  } catch (e) { /* 静默 */ }
 }
 
 // === 牌面描述 helper (在 try 块之前, 否则 suitChar TDZ) ===
@@ -127,7 +57,6 @@ function cardDesc(card) {
 let gameState = engine.newGameState();
 let currentPlayer = null;
 let lastEmptiedPlayer = null;
-let logHistory = [];
 let humanPlayer = 'A';
 let selectedCards = [];
 let handCardHitboxes = [];
@@ -310,16 +239,7 @@ function draw() {
     }
   }
 
-  // ===== 操作日志 (最近 14 条) =====
-  ctx.font = '13px monospace';
-  ctx.textAlign = 'left';
-  for (var i = 0; i < logHistory.length; i++) {
-    ctx.fillStyle = '#cccccc';
-    // [修复] 再下移 + 紧一点间距, 14 行全在屏内
-  // [fix] 留间隔: 间距 0.023 -> 0.029 (每行 15.6px, 13px 字体 有 2.6px 空购)
-  ctx.fillText(logHistory[logHistory.length - 1 - i], W * 0.04, H * 0.55 + i * 0.029 * H);
-  }
-
+  
   // ===== 按钮: 出牌 / 过牌 / 推风 (右下角) =====
   const btnW = 72, btnH = 30, gap = 6;
   // [2026-10-21 改] 3 个按钮 -> 2 个, 布局宽度同步收窄
@@ -388,12 +308,24 @@ function checkRoundEnd() {
 }
 
 // === 轮次结束触发推风 ===
-function maybeTriggerPushWindAfterRoundEnd() {
-  if (!checkRoundEnd()) return;
-  var last = gameState.lastPlayer;
-  if (!last) return;
-  var lastPlayer = gameState.players.find(function (p) { return p.id === last; });
-  if (lastPlayer && lastPlayer.hand.length === 0) doPushWind();
+// [2026-10-23 P0 修复] 原实现依赖 checkRoundEnd() 重新判断"轮次是否结束",
+//   但引擎 play.js handlePass 在轮次结束的**同一个返回里**就把 passedPlayers 清空了:
+//     table: [], passedPlayers: [], passCount: 0
+//   于是事后 checkRoundEnd() 看到 passed=[] -> every() 为 false -> 永不触发。
+//   症状: 整局 3 人出完牌, 推风一次都没触发 (用户 2026-10-23 Console 日志实证);
+//        主方全空后抓方还继续出牌 (本该立即判主方胜)。
+//
+//   改为: 由调用方在拿到 transition 结果时, 用**清桌前后对比**判定轮次是否刚结束,
+//   再显式传入。本函数只负责"该不该推风"的业务条件。
+function doPushWindIfPending(roundJustEnded) {
+  if (!roundJustEnded) return;                       // 轮次没结束 -> 不推风
+  var trigger = lastEmptiedPlayer || gameState['推风触发者'];
+  if (!trigger) return;                              // 本轮没人出完 -> 不推风
+  // 只有"出完牌的人正是本轮最后出牌的人"才推风 (否则陈旧的 lastEmptiedPlayer 会误触发)
+  if (gameState.lastPlayer && gameState.lastPlayer !== trigger) return;
+  var p = gameState.players.filter(function (x) { return x.id === trigger; })[0];
+  if (!p || p.hand.length !== 0) return;             // 触发者仍有牌 -> 不推风
+  doPushWind();
 }
 
 // === 出牌按钮 ===
@@ -436,7 +368,7 @@ function doPlay() {
         gameState.phase = 'GAME_END';
         log('牌局结束: ' + (endR0.winner || '平局') + ' 胜! reason=' + endR0.reason);
       } else {
-        maybeTriggerPushWindAfterRoundEnd();
+        doPushWindIfPending(false);
       }
       if (ctx) draw();
       runAI();
@@ -469,7 +401,7 @@ function doPlay() {
         gameState.phase = 'GAME_END';
         log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
       } else {
-        maybeTriggerPushWindAfterRoundEnd();
+        doPushWindIfPending(false);
       }
       if (ctx) draw();
       runAI();
@@ -497,7 +429,7 @@ function doPlay() {
         if (mm && mm.hand.length === 0) { lastEmptiedPlayer = currentPlayer; }
         advanceCurrentPlayer();
         var e2 = checkGameEnd(gameState);
-        if (e2.ended) { gameState.phase = 'GAME_END'; log('牌局结束: ' + (e2.winner || '平局')); } else { maybeTriggerPushWindAfterRoundEnd(); }
+        if (e2.ended) { gameState.phase = 'GAME_END'; log('牌局结束: ' + (e2.winner || '平局')); } else { doPushWindIfPending(false); }
         if (ctx) draw();
         runAI();
         return;
@@ -519,9 +451,13 @@ function doPass() {
     if (ctx) draw();
     return;
   }
+  // [P0] 轮次结束标志: 引擎 handlePass 在轮结束的同一返回里清空 table+passedPlayers,
+  //   事后用 passedPlayers 反推必然为 false -> 推风永不触发。此处用清桌前后对比取证。
+  var _hadTable = (gameState.table || []).length > 0;
   var r = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: currentPlayer } });
   if (r && r.ok) {
     gameState = r.state;
+    var _roundEnded = _hadTable && (gameState.table || []).length === 0;
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer));
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
@@ -529,7 +465,7 @@ function doPass() {
       gameState.phase = 'GAME_END';
       log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
     } else {
-      maybeTriggerPushWindAfterRoundEnd();
+      doPushWindIfPending(_roundEnded);
     }
   } else {
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 失败: ' + (r && r.error && r.error.type) + ' ' + (r && r.error && r.error.message));
@@ -568,7 +504,7 @@ function doPushWind() {
       gameState.phase = 'GAME_END';
       log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
     } else {
-      maybeTriggerPushWindAfterRoundEnd();
+      doPushWindIfPending(false);
     }
     if (ctx) draw();
     runAI();
@@ -594,7 +530,7 @@ function runAI() {
             gameState.phase = 'GAME_END';
             log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
           } else {
-            maybeTriggerPushWindAfterRoundEnd();
+            doPushWindIfPending(false);
           }
           if (ctx) draw();
         }
@@ -642,7 +578,7 @@ function runAI() {
           gameState.phase = 'GAME_END';
           log('牌局结束: ' + (endR1.winner || '平局') + ' 胜! reason=' + endR1.reason);
         } else {
-          maybeTriggerPushWindAfterRoundEnd();
+          doPushWindIfPending(false);
         }
         if (ctx) draw();
       } else {
@@ -736,10 +672,10 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     engine: engine,
     gameState: function () { return gameState; },
-    logHistory: function () { return logHistory; },
     currentPlayer: function () { return currentPlayer; },
     doPlay: doPlay, doPass: doPass, doPushWind: doPushWind, runAI: runAI, advanceCurrentPlayer: advanceCurrentPlayer,
-    checkRoundEnd: checkRoundEnd, maybeTriggerPushWindAfterRoundEnd: maybeTriggerPushWindAfterRoundEnd,
+    logHistory: function () { return logHistory; },
+    checkRoundEnd: checkRoundEnd, doPushWindIfPending: doPushWindIfPending,
     // [测试可及性] draw / cardDesc 原先未导出, 导致无头测试无法捕获单帧渲染内容,
     //   从而无法验证信息边界 (他人手牌是否泄露)。本块已有 typeof module 守卫, 对微信无影响。
     draw: draw, cardDesc: cardDesc,
@@ -757,11 +693,10 @@ if (typeof module !== 'undefined' && module.exports) {
       currentPlayer = o.currentPlayer !== undefined ? o.currentPlayer
                     : (determineFirstPlayer(st) || 'A');
       lastEmptiedPlayer = o.lastEmptiedPlayer || null;
+      if (o.clearLog !== false) logHistory = [];
       selectedCards = [];
       handCardHitboxes = [];
-      logHistory = [];
       if (o.human) humanPlayer = o.human;
-      if (o.clearLog !== false) logHistory = [];
       if (ctx) draw();
       return { phase: gameState.phase, currentPlayer: currentPlayer };
     }
