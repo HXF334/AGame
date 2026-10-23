@@ -19,3 +19,6 @@ npm-debug.log*
 tests/_*.js
 # \u56de\u5f52\u811a\u672c\u4ea7\u7269
 _reg.txt
+
+# 压测运行产物(tools/stress-pushwind.js 每次跑都会重写)
+da-a-game/tools/stress_result.txt
