@@ -16,6 +16,13 @@ var mock = require('./mock-wx.js');
 var m = mock.install({});
 var g = require('../game.js');
 
+// [2026-10-23 阶段闸门] 开局不再自动跑完整局 —— 现在停在「发牌」等真人点【下】。
+// 本测试**显式驱动闸门**(模拟真人依次点【下】), 而不是绕开它:
+//   在 node 下偷偷自动推进会让无头测试与真机行为分叉, 那正是
+//   KNOWN_ISSUES E1「测试自我污染」的形态 —— 测试必须驱动真实代码路径。
+// 默认全不主动(不亮A / 不反A / 隐藏身份), 与真人「什么都不主动」一致。
+g.__driveGateToPlay({});
+
 var passed = 0, failed = 0;
 var failures = [];
 function check(name, cond, detail) {
@@ -29,7 +36,8 @@ function cardCount(st) {
   st.players.forEach(function (p) { t += (p.hand ? p.hand.length : 0) + (p.底牌 ? 1 : 0); });
   return t + (st.table || []).length + (st.discarded || []).length;
 }
-function human() { return 'A'; }
+// [2026-10-23] 真人默认丁位(需求二), 原为 'A'
+function human() { return 'D'; }
 function handOf(pid) {
   return g.gameState().players.find(function (p) { return p.id === pid; }).hand;
 }
@@ -96,7 +104,10 @@ section('3. 完整对局 (驱动真实 UI 函数)');
       if (!cp) { g.advanceCurrentPlayer(); continue; }
       if (cp === human()) {
         // 人类回合: 优先出单张, 否则过牌
-        var h = handOf('A');
+        // [2026-10-23] 原写死 handOf('A'), 但真人默认已改为丁位 ——
+        //   轮到真人时它在出**别人的牌**, doPlay 必然失败, 循环空转到 900 步。
+        //   必须用 human() 而不是硬编码, 这样真人换座位也不用改这里。
+        var h = handOf(human());
         if (h.length > 0 && (st.table.length === 0 || canSingleBeat(st, h[0]))) {
           g.doPlay([h[0].id]);
         } else {
