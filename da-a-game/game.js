@@ -12,6 +12,11 @@ var checkGameEnd = engine.checkGameEnd;
 // [fix] ai.js 的 chooseAction 未被 index.js 转发, 直接从 ai.js 引
 var chooseAction = require('./src/ai.js').chooseAction;
 var candidateCombos = require('./src/combos.js').candidateCombos;
+// 资格判定**由引擎提供**(判据与 transition 的 handler 同一套), UI 不自行判断
+var canLiangA = engine.canLiangA;
+var canFanA = engine.canFanA;
+var canChooseIdentity = engine.canChooseIdentity;
+var calculateScore = require('./src/scoring.js').calculateScore;
 
 // === 工具 ===
 // 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
@@ -111,7 +116,8 @@ function cardDesc(card) {
 let gameState = engine.newGameState();
 let currentPlayer = null;
 let lastEmptiedPlayer = null;
-let humanPlayer = 'A';
+var DEFAULT_HUMAN = 'D';   // 需求: 真人每局默认坐丁位 (NAMES_MAP: D=丁)
+let humanPlayer = DEFAULT_HUMAN;
 let selectedCards = [];
 let handCardHitboxes = [];
 
@@ -145,52 +151,211 @@ let btnPass = null;
 //   保留 doPushWind 函数本身 (自动触发路径调用它), 仅去掉 UI 入口。
 let btnSelectPlayers = null;
 
-// === 初始化 (START_GAME → FORCED_CHECK → ADVANCE → REVEAL_BOTTOM → CHOOSE_IDENTITY) ===
-try {
-  let r;
-  r = transition(gameState, { type: ACTIONS.START_GAME, payload: { startPlayerIndex: 0 } });
-  if (r && r.ok) { gameState = r.state; log('START_GAME → 发牌'); }
-  else log('START_GAME 失败: ' + (r && r.error && r.error.message));
+// === 阶段闸门（2026-10-23 新增）===
+// 需求: 发牌后各阶段拆开, 真人点【下】才推进; 需真人决策的阶段必须先决策,
+//       【下】不得跳过。原实现是一条**自动跑完**的直线链, 中间零人工闸门。
+//
+// 阶段顺序沿用既有状态机(SKILL §3), 未新增任何阶段:
+//   发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌
+// 强制排查仅在「主A 未确立」时执行 —— 真人亮了 A 就跳过(符合 §4.2)。
+var GATE_PLAN = [
+  { id: 'DEAL',         label: '发牌' },
+  { id: 'FORCED_CHECK', label: '强制排查' },
+  { id: 'ADVANCE',      label: '进入反A阶段' },
+  { id: 'REVEAL',       label: '翻开底牌' },
+  { id: 'IDENTITY',     label: '次方身份选择' },
+  { id: 'PLAY',         label: '正式出牌' }
+];
+var gateIdx = 0;
+var gateChoice = null;   // { kind, eligible, reason, cards?, suit? } 待真人决策
 
-  r = transition(gameState, { type: ACTIONS.FORCED_CHECK, payload: {} });
+function _errOf(r) { return (r && r.error && r.error.message) || '未知错误'; }
+
+// 跑一个阶段。跑完若需真人决策, gateChoice.eligible=true —— 此时【下】必须被阻止。
+function runGateStage() {
+  if (gateIdx >= GATE_PLAN.length) return;
+  gateChoice = null;
+  var stage = GATE_PLAN[gateIdx];
+  log('【阶段】' + stage.label);
+  var r;
+  switch (stage.id) {
+    case 'DEAL':
+      r = transition(gameState, { type: ACTIONS.START_GAME, payload: { startPlayerIndex: 0 } });
+      if (r && r.ok) {
+        gameState = r.state;
+        log('  发牌完成');
+        log('  座位: ' + ['A','B','C','D','E'].map(function (id) {
+          return pn(id) + (id === humanPlayer ? '(真人)' : '(AI)');
+        }).join(' ') + '  真人=' + pn(humanPlayer) + '(丁位)');
+      } else { log('  发牌失败: ' + _errOf(r)); break; }
+      var e1 = canLiangA(gameState, humanPlayer);
+      gateChoice = { kind: 'LIANG_A', eligible: !!e1.ok, reason: e1.reason, cards: e1.cards };
+      log('  真人亮A资格: ' + (e1.ok ? '有' : '无') + ' — ' + e1.reason);
+      break;
+
+    case 'FORCED_CHECK':
+      if (gameState['主A']) { log('  跳过(主A已确立, 真人已亮A)'); gateIdx++; return runGateStage(); }
+      r = transition(gameState, { type: ACTIONS.FORCED_CHECK, payload: {} });
+      if (r && r.ok) {
+        gameState = r.state;
+        var za = gameState['主A'];
+        log('  强制排查 → 主A: ' + psuit(za && za.suit) + ' 由' + pn(za && za.establishedBy)
+          + ' 方式=' + pvia(za && za.viaMethod));
+        logState('强制排查后');
+      } else log('  强制排查失败: ' + _errOf(r));
+      break;
+
+    case 'ADVANCE':
+      r = transition(gameState, { type: ACTIONS.ADVANCE, payload: {} });
+      if (r && r.ok) {
+        gameState = r.state;
+        log('  进入反A阶段');
+        var e2 = canFanA(gameState, humanPlayer);
+        gateChoice = { kind: 'FAN_A', eligible: !!e2.ok, reason: e2.reason, cards: e2.cards, suit: e2.suit };
+        log('  真人反A资格: ' + (e2.ok ? '有' : '无') + ' — ' + e2.reason);
+      } else log('  ADVANCE 失败: ' + _errOf(r));
+      break;
+
+    case 'REVEAL':
+      r = transition(gameState, { type: ACTIONS.REVEAL_BOTTOM, payload: {} });
+      if (r && r.ok) {
+        gameState = r.state;
+        log('  底牌翻开 → ' + (gameState.mode || '?'));
+        logState('底牌翻开后');
+      } else log('  底牌翻开失败: ' + _errOf(r));
+      break;
+
+    case 'IDENTITY':
+      if (gameState.phase === PHASES.IDENTITY_CHOICE) {
+        var e3 = canChooseIdentity(gameState, humanPlayer);
+        if (e3.ok) {
+          gateChoice = { kind: 'IDENTITY', eligible: true, reason: e3.reason };
+          log('  真人次方身份资格: 有 — ' + e3.reason);
+        } else {
+          log('  真人无次方身份资格(' + e3.reason + ') → 由授权者自动 HIDDEN');
+          _autoChooseIdentity();
+        }
+      } else {
+        log('  无需身份选择(阶段=' + gameState.phase + ')');
+      }
+      break;
+
+    case 'PLAY':
+      if (gameState.phase === PHASES.PLAY) {
+        currentPlayer = determineFirstPlayer(gameState) || 'A';
+        log('  首出权 → ' + pn(currentPlayer) + ' (§5)');
+        logState('开局');
+        log('  正式出牌阶段开始');
+      }
+      break;
+  }
+  gateIdx++;
+}
+
+// 授权者自动选 HIDDEN(真人无资格时; 沿用原自动链的行为)
+function _autoChooseIdentity() {
+  var chooser = engine.identityChooser(gameState);
+  var r = transition(gameState, { type: ACTIONS.CHOOSE_IDENTITY,
+    payload: { playerId: chooser, choice: 'HIDDEN' } });
   if (r && r.ok) {
     gameState = r.state;
-    var _za = gameState['主A'];
-    log('FORCED_CHECK → 主A: ' + (_za ? psuit(_za.suit) : '?')
-      + ' 由' + (_za ? pn(_za.establishedBy) : '?')
-      + ' 方式=' + (_za ? pvia(_za.viaMethod) : '?'));
-    logState('强制排查后');
+    log('  CHOOSE_IDENTITY(自动) → ' + (gameState.mode || '?')
+      + ' (次A=' + pn(gameState['次方']) + ')');
+    logState('定身份后');
+  } else log('  CHOOSE_IDENTITY 失败: ' + _errOf(r));
+}
+
+// 【下】: 有待决策且资格具备时**拒绝推进**(防止跳过真人决策)
+function gateNext() {
+  if (gateChoice && gateChoice.eligible) {
+    log('  【下】被阻止: 需先完成「' + gateChoice.kind + '」选择');
+    return false;
   }
+  gateChoice = null;   // 无需决策, 消费后允许推进
+  runGateStage();
+  if (gameState.phase === PHASES.PLAY && gateIdx >= GATE_PLAN.length) runAI();
+  if (ctx) draw();
+  return true;
+}
 
-  r = transition(gameState, { type: ACTIONS.ADVANCE, payload: {} });
-  if (r && r.ok) { gameState = r.state; log('ADVANCE → FAN_A'); logState('进入翻底牌'); }
-
-  r = transition(gameState, { type: ACTIONS.REVEAL_BOTTOM, payload: {} });
-  if (r && r.ok) { gameState = r.state; log('REVEAL_BOTTOM → ' + (gameState.mode || '?')); logState('底牌翻开后'); }
-
-  if (gameState.phase === PHASES.IDENTITY_CHOICE) {
-    var chooser, choice;
-    if (gameState['次方']) { chooser = gameState['次方']; choice = 'HIDDEN'; }
-    else { chooser = gameState['主A'].establishedBy; choice = 'HIDDEN'; }
-    r = transition(gameState, { type: ACTIONS.CHOOSE_IDENTITY, payload: { playerId: chooser, choice: choice } });
-    if (r && r.ok) {
-      gameState = r.state;
-      log('CHOOSE_IDENTITY → ' + (gameState.mode || '?') + ' (次A=' + pn(gameState['次方']) + ')');
-      logState('定身份后');
-    }
+// 真人亮A决策。doIt=true 亮, false 不亮。返回是否消费了本次决策。
+function humanLiangA(doIt) {
+  if (!gateChoice || gateChoice.kind !== 'LIANG_A' || !gateChoice.eligible) return false;
+  var cards = gateChoice.cards;
+  gateChoice = null;              // 先消费, 防同一次决策被执行两次
+  if (!doIt) { log('  真人选择: 不亮A'); if (ctx) draw(); return true; }
+  var card = cards && cards[0];
+  if (!card) { log('  亮A失败: 无可用A牌'); return true; }
+  var r = transition(gameState, { type: ACTIONS.LIANG_A,
+    payload: { playerId: humanPlayer, cardId: card.id } });
+  if (r && r.ok) {
+    gameState = r.state;
+    log('  真人亮A: ' + psuit(card.suit) + ' (主A 由' + pn(humanPlayer) + ', 方式=主动亮)');
+    logState('亮A后');
+  } else {
+    log('  亮A失败: ' + _errOf(r));   // 引擎拒绝时不改阵营
   }
+  if (ctx) draw();
+  return true;
+}
 
-  if (gameState.phase === PHASES.PLAY) {
-    currentPlayer = determineFirstPlayer(gameState);
-    if (!currentPlayer) currentPlayer = 'A';
-    // 首出权 = 主A (暗打) / 次A (明打) / 反A成功者 (§5), 日志里必须写明,
-    // 否则无法从日志判断谁是主A。
-    log('首出权 → ' + pn(currentPlayer)
-      + ' (§5: 反A成功者优先 > 2V3明打次A先出 > 默认主A)');
-    logState('开局');
+// 真人反A决策。资格与花色均由引擎判定, UI 不自行判断
+function humanFanA(doIt) {
+  if (!gateChoice || gateChoice.kind !== 'FAN_A' || !gateChoice.eligible) return false;
+  var cards = gateChoice.cards, suit = gateChoice.suit;
+  gateChoice = null;
+  if (!doIt) { log('  真人选择: 不反A'); if (ctx) draw(); return true; }
+  var ids2 = (cards || []).slice(0, 2).map(function (c) { return c.id; });
+  if (ids2.length !== 2) { log('  反A失败: 牌数不足'); return true; }
+  var r = transition(gameState, { type: ACTIONS.FAN_A,
+    payload: { playerId: humanPlayer, suit: suit, cardIds: ids2 } });
+  if (r && r.ok) {
+    gameState = r.state;
+    log('  真人反A成功: ' + pn(humanPlayer) + ' 成为主A');
+    logState('反A后');
+  } else {
+    log('  反A失败: ' + _errOf(r));   // 失败不改阵营
   }
-  // 7) 如果轮到 AI, 立即开始自动出牌
-  runAI();
+  if (ctx) draw();
+  return true;
+}
+
+// 真人次方身份决策
+function humanChooseIdentity(publicly) {
+  if (!gateChoice || gateChoice.kind !== 'IDENTITY' || !gateChoice.eligible) return false;
+  gateChoice = null;
+  var choice = publicly ? 'PUBLIC' : 'HIDDEN';
+  var r = transition(gameState, { type: ACTIONS.CHOOSE_IDENTITY,
+    payload: { playerId: humanPlayer, choice: choice } });
+  if (r && r.ok) {
+    gameState = r.state;
+    log('  真人选择次方身份: ' + (publicly ? '公开' : '隐藏')
+      + ' → ' + (gameState.mode || '?'));
+    logState('定身份后');
+  } else {
+    log('  身份选择失败: ' + _errOf(r));
+  }
+  if (ctx) draw();
+  return true;
+}
+
+// === 初始化（由阶段闸门驱动）===
+// 原实现是一条自动跑完的直线链, 中间零人工闸门; 现在**只跑第一个阶段「发牌」**,
+// 其余阶段由真人点【下】推进(见 gateNext / runGateStage)。
+// 原来的 runAI() 调用已移除 —— 现在由 gateNext 在到达 PLAY 阶段时统一触发,
+// 否则会在发牌阶段就让 AI 开打。
+function initGame() {
+  gateIdx = 0;
+  gateChoice = null;
+  log('=== 对局初始化 ===');
+  log('真人座位: ' + pn(humanPlayer) + ' (丁位, 可用顶部 5 按钮切换)');
+  log('阶段流程: 发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌');
+  runGateStage();
+  if (ctx) draw();
+}
+
+try {
+  initGame();
 } catch (e) {
   log('初始化异常: ' + (e && e.message));
 }
@@ -857,6 +1022,60 @@ if (typeof module !== 'undefined' && module.exports) {
       if (o.human) humanPlayer = o.human;
       if (ctx) draw();
       return { phase: gameState.phase, currentPlayer: currentPlayer };
+    },
+// ===== 阶段闸门（2026-10-23 新增，供 UI 与无头测试使用）=====
+    // 需求把「自动跑完整局」改成「真人点【下】逐阶段推进」，因此无头测试
+    // **必须显式驱动闸门**才能进入 PLAY —— 不能在 node 下偷偷自动推进,
+    // 那会让无头测试与真机行为分叉(正是 KNOWN_ISSUES E1「测试自我污染」那类错)。
+    gateInfo: function () {
+      return {
+        idx: gateIdx,
+        total: GATE_PLAN.length,
+        stage: gateIdx < GATE_PLAN.length ? GATE_PLAN[gateIdx].id : null,
+        choice: gateChoice ? {
+          kind: gateChoice.kind,
+          eligible: gateChoice.eligible,
+          reason: gateChoice.reason,
+          cardCount: (gateChoice.cards || []).length
+        } : null,
+        phase: gameState.phase
+      };
+    },
+    gateNext: gateNext,
+    humanLiangA: humanLiangA,
+    humanFanA: humanFanA,
+    humanChooseIdentity: humanChooseIdentity,
+    getHumanPlayer: function () { return humanPlayer; },
+    defaultHuman: function () { return DEFAULT_HUMAN; },
+    // 无头驱动: 模拟真人依次点【下】, 遇到需要决策的阶段按 opts 决定。
+    //   opts = { liangA:bool, fanA:bool, identity:bool, maxSteps:int }
+    //   默认全部 false(不亮/不反/隐藏) —— 与真人「什么都不主动」一致。
+    __driveGateToPlay: function (opts) {
+      var o = opts || {};
+      var maxSteps = o.maxSteps || 40;
+      var steps = [];
+      for (var i = 0; i < maxSteps; i++) {
+        // [fix 2026-10-23] 终止条件必须是「闸门全部跑完」(gateIdx >= total),
+        //   不能用 phase===PLAY —— PLAY 那一档**本身还没跑**,
+        //   它才负责设 currentPlayer / 调 runAI; 提前 break 会留下 currentPlayer=null。
+        if (gateIdx >= GATE_PLAN.length) break;
+        var c = gateChoice;
+        if (c && c.eligible) {
+          if (c.kind === 'LIANG_A') humanLiangA(!!o.liangA);
+          else if (c.kind === 'FAN_A') humanFanA(!!o.fanA);
+          else if (c.kind === 'IDENTITY') humanChooseIdentity(!!o.identity);
+          steps.push('decide:' + c.kind);
+          continue;
+        }
+        var moved = gateNext();
+        steps.push('next:' + (moved ? 'ok' : 'blocked'));
+        if (!moved) break;
+      }
+      // 闸门跑完但 PLAY 还没就绪(理论不该发生) -> 兜底再推一次, 避免留下 null 首出权
+      if (gateIdx >= GATE_PLAN.length && !currentPlayer && gameState.phase === PHASES.PLAY) {
+        currentPlayer = determineFirstPlayer(gameState) || currentPlayer;
+      }
+      return { steps: steps, phase: gameState.phase, currentPlayer: currentPlayer };
     }
   };
 }

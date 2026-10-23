@@ -749,13 +749,95 @@ function handlePushWindAction(state, payload) {
   return pushWind(stateWithTrigger);
 }
 
+
+// ============================================================
+// 资格判定纯函数（2026-10-23 新增，供 UI 决定按钮可用性）
+// ------------------------------------------------------------
+// 判据与上面三个 handler **完全一致**，不是另写一套规则：
+//   canLiangA        -> handleLiangA 的前置条件 + 手牌里有 A（底牌不算）
+//   canFanA          -> handleFanA 的前置条件 + 手牌里有 2 张同花色 A（底牌不算）
+//   canChooseIdentity-> handleChooseIdentity 的授权人判定（次方优先, 否则主A 确立者）
+// 纯只读：输入 state, 返回 { ok, reason, cards? }，绝不改 state。
+// ============================================================
+
+function _findPlayer(state, pid) {
+  return state.players.find(function (p) { return p.id === pid; });
+}
+
+// 亮 A 资格（§4.1 主动亮A）：主A 未确立 + 处于 LIANG_A 阶段 + 手牌含 A
+function canLiangA(state, playerId) {
+  if (!state || !playerId) return { ok: false, reason: "缺少参数" };
+  if (state.phase !== PHASES.LIANG_A) {
+    return { ok: false, reason: "当前阶段不是亮A(" + state.phase + ")" };
+  }
+  if (state.主A !== null && state.主A !== undefined) {
+    return { ok: false, reason: "主A已确立" };
+  }
+  var p = _findPlayer(state, playerId);
+  if (!p) return { ok: false, reason: "玩家不存在" };
+  var aces = p.hand.filter(function (c) { return c.rank === 14; });
+  if (!aces.length) return { ok: false, reason: "手中没有A" };
+  return { ok: true, reason: "手中有 " + aces.length + " 张A", cards: aces };
+}
+
+// 反 A 资格（§4.4）：处于 FAN_A + 主A已确立 + 反A未发生 + 手牌含该花色 2 张 A
+function canFanA(state, playerId) {
+  if (!state || !playerId) return { ok: false, reason: "缺少参数" };
+  if (state.反A !== null && state.反A !== undefined) {
+    return { ok: false, reason: "反A已发生" };
+  }
+  if (state.phase !== PHASES.FAN_A) {
+    return { ok: false, reason: "当前阶段不是反A(" + state.phase + ")" };
+  }
+  if (state.主A === null || state.主A === undefined) {
+    return { ok: false, reason: "主A未确立" };
+  }
+  var p = _findPlayer(state, playerId);
+  if (!p) return { ok: false, reason: "玩家不存在" };
+  var suit = state.主A.suit;
+  var aces = p.hand.filter(function (c) { return c.suit === suit && c.rank === 14; });
+  if (aces.length < 2) {
+    return { ok: false, reason: "手中没有 " + suit + " 的两张A", cards: aces };
+  }
+  return { ok: true, reason: "手中有两张" + suit + "A", cards: aces, suit: suit };
+}
+
+// 身份选择授权人（§4.5）：次方优先；无次方时为主A确立者
+function identityChooser(state) {
+  if (!state) return null;
+  if (state.次方 !== null && state.次方 !== undefined) return state.次方;
+  if (state.主A) return state.主A.establishedBy;
+  return null;
+}
+
+// 次方亮身份资格：处于 IDENTITY_CHOICE + 该玩家正是授权人
+function canChooseIdentity(state, playerId) {
+  if (!state || !playerId) return { ok: false, reason: "缺少参数" };
+  if (state.phase !== PHASES.IDENTITY_CHOICE) {
+    return { ok: false, reason: "当前阶段不是身份选择(" + state.phase + ")" };
+  }
+  if (state.主A === null || state.主A === undefined) {
+    return { ok: false, reason: "主A未确立" };
+  }
+  var chooser = identityChooser(state);
+  if (chooser !== playerId) {
+    return { ok: false, reason: "不是本次身份选择的授权人(授权人=" + chooser + ")" };
+  }
+  return { ok: true, reason: "你是本次身份选择的授权人" };
+}
+
 module.exports = {
   newGameState: newGameState,
   transition: transition,
   // §5：纯函数 首轮出牌权 判定（与 transition 解耦，不动 state）
   determineFirstPlayer: determineFirstPlayer,
   // 暴露内部工具，便于测试
-  _runForcedCheck: runForcedCheck
+  _runForcedCheck: runForcedCheck,
+  // 资格判定纯函数（UI 用；判据与上面 handler 一致，非另写规则）
+  canLiangA: canLiangA,
+  canFanA: canFanA,
+  identityChooser: identityChooser,
+  canChooseIdentity: canChooseIdentity
 };
 
 // === §5 首轮出牌权 纯函数（纯只读，不改 state） ===
