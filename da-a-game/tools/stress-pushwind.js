@@ -39,12 +39,34 @@ var OUT_RE = /([甲乙丙丁戊])\s*(?:AI)?\s*出完牌/;
 var TRIGGER_RE = /推风完成: 触发=([甲乙丙丁戊])/;
 
 // 给人类 1 张强牌; 甲多余手牌 -> 弃牌堆(不喂给任何玩家); 108 张守恒
-function mkState(humanCards) {
+// 对局模式轮换: 覆盖 2V3 明打/暗打 与 1V4 明打/暗打 四条分支
+//   1V4 的主方只有独打者一人, 次方为 null (§4.5 空白: 实现按「无次方概念」处理,
+//   见 test-play.js L469 注释) —— 这条分支此前无任何压测证据。
+// 抓方必须**显式**给出: 早前一版只写主方/次方而省略抓方, SB.build 推导出
+//   垃圾(抓方=[A,D,E] 含主方成员且缺两人), 由此报出的「跳阵营推风」是
+//   **工具构造的假局面**, 不是产品 bug。教训同 KNOWN_ISSUES E10。
+var MODES = [
+  { mode: '2V3_暗打', 主方: ['A', 'D'], 抓方: ['B', 'C', 'E'], 次方: 'D', 次方公开: false },
+  { mode: '2V3_明打', 主方: ['A', 'D'], 抓方: ['B', 'C', 'E'], 次方: 'D', 次方公开: true },
+  { mode: '1V4_明打', 主方: ['A'], 抓方: ['B', 'C', 'D', 'E'], 次方: null, 次方公开: false },
+  { mode: '1V4_暗打', 主方: ['A'], 抓方: ['B', 'C', 'D', 'E'], 次方: null, 次方公开: false }
+];
+
+// 日志用中文名(甲乙丙丁戊), state.players[].id 用 ASCII(A..E)。取证时必须先映射,
+//   否则永远查不到玩家(初版就踩了, 输出一律 hand=-1, 等于取证失效)。
+var NAME2ID = { '甲': 'A', '乙': 'B', '丙': 'C', '丁': 'D', '戊': 'E' };
+var ID2NAME = { A: '甲', B: '乙', C: '丙', D: '丁', E: '戊' };
+function toIds(list) {
+  return (list || []).map(function (n) { return NAME2ID[n] || n; });
+}
+
+function mkState(humanCards, modeSpec) {
   var st = SB.build({
     handMap: {}, table: [], lastPlayer: 'C',
     主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
-    次方: 'D', 次方公开: true, 主方: ['A', 'D'], 抓方: ['B', 'C', 'E'],
-    mode: '2V3_暗打'
+    次方: modeSpec.次方, 次方公开: modeSpec.次方公开,
+    主方: modeSpec.主方, 抓方: modeSpec.抓方,
+    mode: modeSpec.mode
   });
   var A = st.players.filter(function (p) { return p.id === 'A'; })[0];
   var B = st.players.filter(function (p) { return p.id === 'B'; })[0];
@@ -75,10 +97,10 @@ function mkState(humanCards) {
   return st;
 }
 
-function runGame(seed, humanCards) {
+function runGame(seed, humanCards, modeSpec) {
   delete require.cache[require.resolve('../game.js')];
   var g = require('../game.js');
-  g.__setState(mkState(humanCards), { currentPlayer: 'A', human: 'A', clearLog: true });
+  g.__setState(mkState(humanCards, modeSpec), { currentPlayer: 'A', human: 'A', clearLog: true });
 
   var st = g.gameState();
   var HUMAN = 'A';
@@ -117,21 +139,50 @@ function runGame(seed, humanCards) {
     var m = PUSH_RE.exec(l);
     if (m) {
       var camp = m[3].split(',').filter(Boolean);
-      if (camp.indexOf(m[4]) < 0) res.campViolations.push(l);
+      if (camp.indexOf(m[4]) < 0) {
+        // 【取证】跨阵营时把上下文一并记下, 否则无法判断是产品 bug 还是场景构造问题:
+        //   - 目标是否已出完(§9: 已出完必须跳过)
+        //   - 声明的同阵营列表 vs 真实主方/抓方
+        var _st = g.gameState();
+        var _tid = NAME2ID[m[4]];
+        var _tp = _st.players.filter(function (p) { return p.id === _tid; })[0];
+        var _tHand = _tp ? _tp.hand.length : -1;
+        var _主方 = (_st['主方'] || []).join(',');
+        var _抓方 = (_st['抓方'] || []).join(',');
+        res.campViolations.push(l
+          + ' || [取证] 目标' + m[4] + '(id=' + _tid + ')手牌=' + _tHand
+          + ' 真实主方=[' + _主方 + '] 抓方=[' + _抓方 + ']'
+          + ' 声明同阵营(id)=[' + toIds(camp).join(',') + ']'
+          + ' 目标在主方=' + ((_st['主方'] || []).indexOf(_tid) >= 0)
+          + ' 在抓方=' + ((_st['抓方'] || []).indexOf(_tid) >= 0)
+          + ' mode=' + _st.mode + ' 次方=' + ID2NAME[_st['次方']] + ' 次方公开=' + _st['次方公开']);
+      }
       res.pushWinds.push({ trigger: m[1], camp: camp, target: m[4] });
     }
   });
   return res;
 }
 
-// 每局人类手牌张数轮换(1 / 2 / 3 / 全量 22), 覆盖不同出完时机
+// 人类手牌张数轮换(1 / 2 / 3 / 全量), 覆盖不同出完时机与 doPlay 三条分支
 function humanCardsFor(seed) {
   return [1, 2, 3, 22][seed % 4];
 }
 
 var results = [];
+var perMode = {};
 for (var i = 0; i < GAMES; i++) {
-  results.push(runGame(i, humanCardsFor(i)));
+  var ms = MODES[i % MODES.length];
+  var r = runGame(i, humanCardsFor(i), ms);
+  r.mode = ms.mode;
+  results.push(r);
+  if (!perMode[ms.mode]) perMode[ms.mode] = { games: 0, ended: 0, stuck: 0, push: 0, camp: 0, ruleB: 0 };
+  var pm = perMode[ms.mode];
+  pm.games++;
+  if (r.ended) pm.ended++;
+  if (r.guardHit) pm.stuck++;
+  pm.push += r.pushWinds.length;
+  pm.camp += r.campViolations.length;
+  pm.ruleB += r.ruleBViolations.length;
   if ((i + 1) % 10 === 0) process.stderr.write('  ... ' + (i + 1) + '/' + GAMES + '\n');
 }
 
@@ -152,19 +203,38 @@ out.push('推风总次数  : ' + allPush.length + '   平均每局 ' + (allPush.
 out.push('零推风局数  : ' + zeroPush);
 out.push('人类触发推风: ' + humanTrig);
 out.push('人类出完牌局: ' + humanEmptiedGames + '/' + GAMES);
-out.push('跨阵营推风  : ' + campV.length + (campV.length ? '  ✗ ' + campV[0] : '  ✓'));
+out.push('跨阵营推风  : ' + campV.length + (campV.length ? '  ✗' : '  ✓'));
+if (campV.length) {
+  out.push('');
+  out.push('--- 跨阵营取证 ---');
+  campV.slice(0, 4).forEach(function (c) { out.push('  ' + c); });
+}
 out.push('规则B违规   : ' + ruleV.length + (ruleV.length ? '  ✗ ' + ruleV[0] : '  ✓'));
 
+out.push('');
+out.push('=== 分模式 ===');
+Object.keys(perMode).forEach(function (m) {
+  var p = perMode[m];
+  out.push('  ' + m + ': 局数=' + p.games + ' 完局=' + p.ended + ' 卡死=' + p.stuck
+    + ' 推风=' + p.push + ' 跨阵营=' + p.camp + ' 规则B违规=' + p.ruleB);
+});
+
 var problems = [];
-if (ended !== GAMES) problems.push('未 100% 完局');
-if (stuck > 0) problems.push('有卡死局');
-if (allPush.length === 0) problems.push('推风一次都没触发');
-if (campV.length > 0) problems.push('存在跨阵营推风 (§9.3 违规)');
-if (ruleV.length > 0) problems.push('推风触发者非本轮最后出完者 (规则 B 违规)');
+Object.keys(perMode).forEach(function (m) {
+  var p = perMode[m];
+  if (p.ended !== p.games) problems.push(m + ' 未 100% 完局');
+  if (p.stuck > 0) problems.push(m + ' 有卡死局');
+  // §10.2: 1V4明打「第一个人先出完牌即结束」-> 牌局当场终止, 不会有下一轮需要推风。
+  //   故该模式下「推风 0 次」是**预期行为**, 不能当问题。
+  if (p.push === 0 && m !== '1V4_明打') problems.push(m + ' 推风一次都没触发');
+  if (p.push === 0 && m === '1V4_明打') out.push('  (1V4_明打 推风 0 次属预期: §10.2 第一个人出完即结束)');
+  if (p.camp > 0) problems.push(m + ' 存在跨阵营推风 (§9.3 违规)');
+  if (p.ruleB > 0) problems.push(m + ' 推风触发者非本轮最后出完者 (规则 B 违规)');
+});
 out.push('');
 out.push('=== 判定 ===');
 out.push(problems.length === 0
-  ? '✓ 全部通过: 100% 完局 / 无卡死 / 推风正常 / 无跨阵营 / 规则 B 成立'
+  ? '✓ 全部通过: 四种模式各自 100% 完局 / 无卡死 / 推风正常 / 无跨阵营 / 规则 B 成立'
   : '✗ ' + problems.join('; '));
 
 var text = out.join('\n');
