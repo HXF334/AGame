@@ -780,7 +780,12 @@ function canLiangA(state, playerId) {
   return { ok: true, reason: "手中有 " + aces.length + " 张A", cards: aces };
 }
 
-// 反 A 资格（§4.4）：处于 FAN_A + 主A已确立 + 反A未发生 + 手牌含该花色 2 张 A
+// 反 A 资格（§4.4）：处于 FAN_A + 主A已确立 + 反A未发生 + **手牌含同一花色的 2 张 A**
+// [规则修正 2026-10-24] SKILL §4.4 原文: 「玩家必须持有同一花色的两张A。
+//   **任意花色都可以；不要求与当前主A花色相同**。」
+//   我原实现错把花色限定成 state.主A.suit -> 玩家持别的花色双大A时被判「无反A资格」
+//   (用户实测: 「我有双大A, 提示我没有反A资格」)。引擎 handleFanA 本就只校验
+//   payload.suit 的两张A(不要求与主A同花色), 是这里的 UI 层判定写窄了。
 function canFanA(state, playerId) {
   if (!state || !playerId) return { ok: false, reason: "缺少参数" };
   if (state.反A !== null && state.反A !== undefined) {
@@ -794,12 +799,15 @@ function canFanA(state, playerId) {
   }
   var p = _findPlayer(state, playerId);
   if (!p) return { ok: false, reason: "玩家不存在" };
-  var suit = state.主A.suit;
-  var aces = p.hand.filter(function (c) { return c.suit === suit && c.rank === 14; });
-  if (aces.length < 2) {
-    return { ok: false, reason: "手中没有 " + suit + " 的两张A", cards: aces };
+  // 任意花色都可以, 只要**同一花色**有两张 A。底牌不在 hand 里, 天然不参与。
+  var suits = ["H", "D", "C", "S"];
+  for (var i = 0; i < suits.length; i++) {
+    var aces = p.hand.filter(function (c) { return c.suit === suits[i] && c.rank === 14; });
+    if (aces.length >= 2) {
+      return { ok: true, reason: "手中有两张" + suits[i] + "A", cards: aces, suit: suits[i] };
+    }
   }
-  return { ok: true, reason: "手中有两张" + suit + "A", cards: aces, suit: suit };
+  return { ok: false, reason: "手中没有同一花色的两张A" };
 }
 
 // 身份选择授权人（§4.5）：次方优先；无次方时为主A确立者

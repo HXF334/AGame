@@ -172,6 +172,26 @@ var gateChoice = null;   // { kind, eligible, reason, cards?, suit? } 待真人�
 
 function _errOf(r) { return (r && r.error && r.error.message) || '未知错误'; }
 
+// 进入出牌阶段的统一入口 (2026-10-24 00:22)
+// [P0 修复 - 第二条路径] 之前的修复只挂在 runGateStage() 末尾, 但**次方身份选择**
+//   这条路的 phase->PLAY 转换发生在 humanChooseIdentity() **内部**, 不经过
+//   runGateStage() -> PLAY 档跑不到 -> currentPlayer 恒为 null -> 按钮全灰 + AI 不出手。
+//   (用户实测: 「我是次方身份未亮明次方身份」那局卡在这里;
+//     而走「不亮A」那局(转换发生在 runGateStage 内) 就正常自动出牌了。)
+//   现在把「设首出权 + 触发 AI」收敛到这一个函数, 所有可能进入 PLAY 的地方都调它。
+function enterPlayIfNeeded() {
+  if (gameState.phase !== PHASES.PLAY) return false;
+  if (!currentPlayer) {
+    // 补跑 PLAY 档(设首出权)。PLAY 档跑完 currentPlayer 已有值, 递归会终止。
+    runGateStage();
+  }
+  if (!currentPlayer) return false;
+  if (currentPlayer !== humanPlayer) {
+    runAI();
+  }
+  return true;
+}
+
 // 跑一个阶段。跑完若需真人决策, gateChoice.eligible=true —— 此时【下】必须被阻止。
 function runGateStage() {
   if (gateIdx >= GATE_PLAN.length) return;
@@ -287,7 +307,7 @@ function gateNext() {
   }
   gateChoice = null;   // 无需决策, 消费后允许推进
   runGateStage();
-  if (gameState.phase === PHASES.PLAY && gateIdx >= GATE_PLAN.length) runAI();
+  enterPlayIfNeeded();   // 统一入口: 设首出权 + 触发 AI
   if (ctx) draw();
   return true;
 }
@@ -309,6 +329,7 @@ function humanLiangA(doIt) {
   } else {
     log('  亮A失败: ' + _errOf(r));   // 引擎拒绝时不改阵营
   }
+  enterPlayIfNeeded();
   if (ctx) draw();
   return true;
 }
@@ -330,6 +351,7 @@ function humanFanA(doIt) {
   } else {
     log('  反A失败: ' + _errOf(r));   // 失败不改阵营
   }
+  enterPlayIfNeeded();
   if (ctx) draw();
   return true;
 }
@@ -349,6 +371,9 @@ function humanChooseIdentity(publicly) {
   } else {
     log('  身份选择失败: ' + _errOf(r));
   }
+  // [P0 2026-10-24] 这条路的 phase->PLAY 转换就在上面这行 transition 里,
+  //   必须主动进 PLAY 阶段, 否则 currentPlayer 恒为 null(按钮全灰 + AI 不出手)。
+  enterPlayIfNeeded();
   if (ctx) draw();
   return true;
 }

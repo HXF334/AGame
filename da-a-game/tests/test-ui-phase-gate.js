@@ -203,8 +203,10 @@ section('10. 出牌阶段死锁回归');
   if (gi2.choice && gi2.choice.kind === 'LIANG_A' && gi2.choice.eligible) {
     g2.humanLiangA(false);      // 真人选择不亮A -> 强制排查由别人被动亮牌
   }
-  var guard = 0;
-  while (g2.gameState().phase !== 'PLAY' && guard++ < 12) { g2.gateNext(); }
+  // [fix 2026-10-24] 原来用裸 gateNext() 循环, 但 gateNext() 在有待决策时会返回 false
+  //   (需求四: 不许【下】跳过真人决策)。canFanA 改成「任意花色都可以」后,
+  //   真人持双大A时反A决策会正确出现 -> 裸循环卡死。改用 drive 助手(它处理决策)。
+  var drv = g2.__driveGateToPlay({});
 
   check('10.1 能进入 PLAY', g2.gameState().phase === 'PLAY', g2.gameState().phase);
   check('10.2 currentPlayer 非 null(死锁核心)', !!g2.currentPlayer(), String(g2.currentPlayer()));
@@ -237,6 +239,36 @@ section('10. 出牌阶段死锁回归');
     check('10.10 切到非行动者后按钮禁用', pb2 && pb2.enabled === false,
       'cp=' + g2.currentPlayer() + ' enabled=' + (pb2 && pb2.enabled));
   }
+})();
+
+// ============================================================
+// 11. 回归: 「phase=PLAY ⟹ currentPlayer 非 null」不变量 (跨多局)
+//     覆盖两条进入 PLAY 的路径: 真人选次方身份 / 授权者自动选身份。
+//     2026-10-24 用户实测: 走「真人选次方身份」那条路的局卡死了。
+// ============================================================
+section('11. phase=PLAY 不变量');
+(function () {
+  var N = 8;
+  var bad = [], humanChose = 0;
+  for (var it = 0; it < N; it++) {
+    delete require.cache[require.resolve('../game.js')];
+    var gi = require('../game.js');
+    gi.setHumanPlayer('D');
+    var ginfo = gi.gateInfo();
+    if (ginfo.choice && ginfo.choice.kind === 'LIANG_A' && ginfo.choice.eligible) {
+      gi.humanLiangA(false);
+    }
+    var gr = gi.__driveGateToPlay({});
+    if (gi.gameState().phase === 'PLAY' && !gi.currentPlayer()) {
+      bad.push('iter' + it + ' phase=PLAY 但 currentPlayer=null');
+    }
+    if (gi.logHistory().join('').indexOf('首出权') < 0) {
+      bad.push('iter' + it + ' 缺「首出权」日志(PLAY 档没跑)');
+    }
+  }
+  check('11.1 多局均满足 phase=PLAY ⟹ currentPlayer 非 null', bad.length === 0,
+    bad.slice(0, 3).join(' ;; '));
+  check('11.2 多局均已设首出权(PLAY 档都跑到)', bad.length === 0);
 })();
 
 console.log('\n=== 总结 ===');
