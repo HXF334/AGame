@@ -1,6 +1,6 @@
 # 已知问题与设计陷阱
 
-**更新时间**：2026-10-21 16:50
+**更新时间**：2026-10-23 16:15
 
 ---
 
@@ -251,6 +251,102 @@
   而 `lastEmptiedPlayer` 是模块级变量，必须经 `__setState` 的 opts 传入。
 - 构造态必须牌张守恒（手牌+桌面+弃牌 = 108），否则引擎行为不可预期。
 - 21/22 张的分配只在 `REVEAL_BOTTOM` 后成立；init 末尾 `runAI()` 已可能出过牌。
+
+---
+
+## 1e. 2026-10-23（IDE 实测反馈驱动的 P0 修复）
+
+### B34 [P0] FORCED_CHECK 兜底把花色名当玩家ID ✅ 已修 (ee03b0a)
+- **症状**：用户截图 —— 顶栏 `当前: DEFAULT_HEART`、日志刷屏 `PLAYER_NOT_FOUND player DEFAULT_HEART not found`、双大A 无法选牌也无法出牌
+- **根因**：`runForcedCheck` 兜底分支返回 `{suit:'H', establishedBy:'DEFAULT_HEART'}` —— **花色名**，不是合法玩家ID（`A`..`E`）
+- **故障链**：establishedBy 非法 → 主A归属错乱 → `currentPlayer='DEFAULT_HEART'` → 引擎 `PLAYER_NOT_FOUND` → 每次出牌失败 → 双大A 永远打不出
+- **修法**：兜底改为查找**实际持有红桃A** 的玩家并返回其真实 ID；再兜底取第一位有手牌者
+- **连带**：**3 处测试在维护这个 bug**（`test-phase2` ×3、`test-audit-identity` ×1）。`test-audit-identity` 那条用例的**注释本就写着**「兜底情况下 A 手里的 H-A-0/H-A-1 被标记 is主方大A」—— 逻辑知道归 A，断言却要求 `DEFAULT_HEART`
+- **回归**：`test-forced-check-establishedby.js`（11 项）
+
+### B35 [P0] 推风永不触发 —— 轮次结束标志无法事后反推 ✅ 已修 (92091d0)
+- **症状**：用户完整 Console 日志 —— 整局 3 人出完牌，推风**一次都没触发**；主方全空后抓方还继续出牌
+- **根因**：引擎 `play.js handlePass` 判定轮次结束时，在**同一个返回值里**就清空了 `passedPlayers: []`；而 game.js 事后用 `checkRoundEnd()` 重新判断 —— `every([])` 恒 `false`
+- **修法**：改由调用方显式传入轮次结束标志（transition 前后 `table` 是否从非空变空），不再事后反推
+- **教训**：引擎**原子地**清空状态，导致任何事后推断都失效
+
+### B36 [P0] 推风修复只挂了一半 —— AI 路径绕开 doPass ✅ 已修 (4798e4a)
+- **症状**：B35 修复后用户复测，推风**仍不触发**
+- **根因**：B35 的取证只挂在 `doPass()`。但 **5 人局 4 个是 AI，AI 过牌走 `runAI()` 内部的 `transition(PASS)`，完全绕开 `doPass()`**；且当时批量替换把 runAI 里 6 处调用点全写成硬编码 `false`
+- **为何没被测出来**：所有历史推风测试都**直接调 `g.doPushWind()` 绕过触发路径**；引擎 `push-wind.js` 一直是对的，错的只是「谁来触发」
+- **修法**：runAI 两处 AI 行动路径补同样取证（`_re0` / `_re1`）
+- **确认**：`handlePlay` **从不清桌**（出牌不结束一局），故 `_re1` 结构上恒为 false
+- **回归**：`test-pushwind-trigger.js`（14 项，单测）+ `test-pushwind-runai-path.js`（13 项，**变异测试验证**）
+
+### B37 日志通道三次静默失败 ✅ 已移除 (4944c01)
+- **症状**：用户反复报告「log 文件一直没更新」
+- **三次失败**：
+  1. 用 `process.versions.node` 判定是否 Node —— WeChat 运行时**没有 process** → mkdir 被跳过 → `appendFileSync` 抛 ENOENT → 被 `catch` 吞掉
+  2. 改用 `wx.getFileSystemManager` 写沙箱 —— 写进去了，但**助手在 shell 里读不到**
+  3. 期望写项目目录 + fs 写前探针 —— devtools 模拟器仍走 wx 沙箱，而 `WeappFileSystem/.../usr/` **实际为空**，文件从未落地
+- **最终方案**：按用户要求**只保留 console.log**，本地文件与 UI 屏显全部移除
+- **教训**：**静默失败比崩溃更危险** —— 用户只能靠「发现文件不更新」察觉。诊断性设施必须有可见的成功信号（当时补了开机打印路径 + 屏显横幅）
+
+### B38 [环境] IDE 启动报错 SummerCompiler ✅ 已修
+- **症状**：`Cannot convert undefined or null to object` @ `SummerCompiler.getAllPageAndComponent`，伴随 `webapi_getwxaasyncsecinfo:fail no baseresponse`
+- **真相**：堆栈全在微信开发者工具 `app.asar` 内部，**无一行是业务代码**
+- **根因**：`project.private.config.json` 的 `libVersion` 被改成 `"development"`（优先级高于 `project.config.json` 的 `2.19.4`），开发版基础库未就位
+- **修法**：改回 `3.17.5`
+- **教训**：私有配置优先级高于项目配置，**IDE 界面改设置时会静默改写它**
+
+---
+
+## 1f. 2026-10-23 过程事故（比上面的 bug 更值得记）
+
+### E1 误判「引擎跳阵营」—— 测试自我污染
+- **症状**：新写的推风测试报 `推风完成: 触发=乙 同阵营=主方[甲,丁] 目标=甲`，看似 §9.3 禁止的跨阵营
+- **真相**：引擎正确 —— `transition(PUSH_WIND, trigger='E') → currentPlayer: B`（乙在抓方）
+- **根因**：`__setState` 传了 `human: 'ZZZ'`（不存在的玩家）→ `runAI()` 判定「无人类」而**自动打完整局** → 读到的日志来自后面某一轮
+- **教训**：日志断言必须确认**当前状态**而非全局累积日志；`human` 绝不能填不存在的 id
+
+### E2 ctx 在 require 时一次性确定
+- **症状**：测试 9 项里 6 项全挂，AI 一个动作都没执行
+- **根因**：先 `require('../game.js')` 再 `mock.install()` —— `ctx` 在 require 时就由 `wx.createCanvas().getContext('2d')` 定死，恒为 null → `runAI()` 首行 `if (!ctx) return`
+- **教训**：mock 必须在被测模块 require **之前**安装
+
+### E3 连续多次误判 exec 会话「被切断」
+- **症状**：`poll` 返回 "Still running" 就重跑，导致同一批回归重复执行 3-5 次
+- **真相**：那些会话**全部完整跑完并报告了失败**（`test-phase2.js` 1 fail 出现 4 次）
+- **教训**：`poll` 超时返回 ≠ 进程结束。分块回归应**脚本落盘结果**再单读
+
+### E4 拿旧日志当新日志分析
+- **症状**：用户问「怎么识别成甲先出的」，实际用户日志里乙先出牌
+- **根因**：13:13 搜 `*1792595537727*` 命中 10/21 的旧局就直接开分析，**没核对时点**
+- **验证**：用户粘贴的片段（`丙 PLAY ♦3` / `丁 PLAY ♠4`）在旧文件里出现 **0 次**
+- **后果**：据此给出的「主方={乙,丁}、丙是头名」整份结论全错。**若用户不质疑，我会带着错误结论继续**
+- **教训**：分析外部日志前必须核对时点/文件来源
+
+### E5 知识缺口被当成引擎 bug
+- **症状**：把 `AI 丁 PLAY (3张) ♣6 ♦7 ♦8` 列为「疑似非法牌型」，并建议排查 `identifyHand`
+- **真相**：`♣6♦7♦8 => STRAIGHT`（龙牌型，连续点数、**花色可不同**）。我把「连珠蛋=同点数」当成唯一的多张牌型
+- **教训**：对规则域不熟时，先跑 `identifyHand` 求证再下结论，**不要把知识缺口包装成 bug 报告**
+
+### E6 删除了用户放进仓库的原始日志
+- **症状**：清理临时产物时 `Remove-Item -Recurse -Force logs`，把用户放在 `logs/` 的 `127.0.0.1-*.log` 一并删除
+- **教训**：清理前先列目录内容；**用户提供的证据文件永不删除**
+
+---
+
+## 3. 测试有效性判据（新增于 2026-10-23）
+
+### T1 绿灯 ≠ 测到了点
+B35/B36 两次修复期间，全量回归**始终全绿**，bug 依然存在 —— 因为所有历史推风测试都直接调 `g.doPushWind()`，**绕过了我改的那一层**。
+
+**判据**：改完必须能说出「哪个测试会因为这个 bug 而失败」。说不出 = 没测。
+
+### T2 单测测不到传参错误
+`doPushWindIfPending(roundJustEnded)` 函数本身完全正确，调用方硬编码 `false` 是**调用错误**。函数级单测 14 项全绿，无法发现。必须**真的驱动调用方**（`test-pushwind-runai-path.js` 驱动 `runAI`）。
+
+### T3 变异测试是唯一硬证据
+把修复退回（`_re0` → `false`），确认测试**精确失败**（2 项，而非全挂或误报），再恢复。T1/T2 只说明「测试存在」，T3 才说明「测试有效」。
+
+### T4 审查要看**调用点**而非模块
+`src/` 15 模块 100% 有测试，引擎层从未出问题；三次 bug 全在 `game.js`（690 行，仅 5/47 测试文件触及）。审查应针对「**我改的那一行有没有被驱动到**」。
 
 ---
 
