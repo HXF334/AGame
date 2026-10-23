@@ -26,7 +26,9 @@ var rounds = 1, from = 0, to = files.length - 1;
 if (argv.length === 1) {
   rounds = argv[0];                                  // 旧写法: _runall.js 3
 } else if (argv.length >= 2) {
-  from = argv[0] - 1; to = Math.min(argv[1] - 1, files.length - 1);
+  // 1-based 闭区间; 并做钳制, 避免传 0 时 from=-1 -> files[-1] 是 undefined
+  from = Math.max(0, argv[0] - 1);
+  to = Math.min(argv[1] - 1, files.length - 1);
   if (argv.length >= 3) rounds = argv[2];
 }
 
