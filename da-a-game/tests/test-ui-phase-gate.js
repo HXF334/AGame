@@ -185,6 +185,60 @@ check('9.4 日志已重置并重新记录', g.logHistory().length > 0 && g.logHi
 //   用 SB.countAll (它含 p.底牌) 而不是自己求和。
 check('9.5 牌张守恒 108', SB.countAll(g.gameState()) === 108, 'count=' + SB.countAll(g.gameState()));
 
+// ============================================================
+// 10. 回归: 「phase=PLAY 但 currentPlayer=null」死锁
+//    [P0 2026-10-24 00:09 用户实测] 引擎在 IDENTITY 阶段结束就把 phase 变成 PLAY,
+//    而 currentPlayer 只在 PLAY 档设置; 同时 PLAY 阶段【下】按钮消失 ->
+//    PLAY 档永远到不了 -> 按钮全灰 + AI 不出手 + 切到谁都不能出。
+//    本节用**独立 module 实例**跑, 避免与前面的用例互相污染状态。
+// ============================================================
+section('10. 出牌阶段死锁回归');
+(function () {
+  // 清掉模块缓存 -> 拿到一个全新的 game 实例(mock 已装, 故 ctx 存在, AI 会真的出手)
+  delete require.cache[require.resolve('../game.js')];
+  var g2 = require('../game.js');
+  g2.setHumanPlayer('D');
+
+  var gi2 = g2.gateInfo();
+  if (gi2.choice && gi2.choice.kind === 'LIANG_A' && gi2.choice.eligible) {
+    g2.humanLiangA(false);      // 真人选择不亮A -> 强制排查由别人被动亮牌
+  }
+  var guard = 0;
+  while (g2.gameState().phase !== 'PLAY' && guard++ < 12) { g2.gateNext(); }
+
+  check('10.1 能进入 PLAY', g2.gameState().phase === 'PLAY', g2.gameState().phase);
+  check('10.2 currentPlayer 非 null(死锁核心)', !!g2.currentPlayer(), String(g2.currentPlayer()));
+  check('10.3 闸门已跑完', g2.gateInfo().idx === g2.gateInfo().total, JSON.stringify(g2.gateInfo()));
+  check('10.4 首出权日志已出', g2.logHistory().join('').indexOf('首出权') >= 0);
+  // [fix] 不能断言「AI 一定出手」: 若真人自己就是主A(强制排查到真人),
+  //   determineFirstPlayer 直接返回真人 -> 真人先手, AI 还没轮到, 日志里自然没有 AI 动作。
+  //   真正要锁的不变量: **要么 AI 已出手, 要么已轮到真人**(两者都说明没卡死)。
+  var logs2 = g2.logHistory().join('\n');
+  var aiActed = /AI /.test(logs2);
+  var humanTurn = g2.currentPlayer() === g2.getHumanPlayer();
+  check('10.5 AI 已出手 或 已轮到真人(两者都说明没卡死)',
+    aiActed || humanTurn, 'cp=' + g2.currentPlayer() + ' aiActed=' + aiActed);
+
+  g2.draw();
+  var bs = g2.uiButtons();
+  var pb = bs.filter(function (b) { return b.id === 'play'; })[0];
+  var qb = bs.filter(function (b) { return b.id === 'pass'; })[0];
+  check('10.6 有出牌按钮', !!pb, JSON.stringify(bs.map(function (b) { return b.id; })));
+  check('10.7 有过牌按钮', !!qb);
+  var onTurn = g2.currentPlayer() === g2.getHumanPlayer();
+  check('10.8 轮到真人时出牌可用', pb && pb.enabled === onTurn,
+    'cp=' + g2.currentPlayer() + ' human=' + g2.getHumanPlayer() + ' enabled=' + (pb && pb.enabled));
+  check('10.9 轮到真人时过牌可用', qb && qb.enabled === onTurn);
+
+  // 切到非当前行动者 -> 按钮应禁用(证明可用性确实随 currentPlayer 变)
+  if (g2.currentPlayer() && g2.currentPlayer() !== 'A') {
+    g2.setHumanPlayer('A');
+    var pb2 = g2.uiButtons().filter(function (b) { return b.id === 'play'; })[0];
+    check('10.10 切到非行动者后按钮禁用', pb2 && pb2.enabled === false,
+      'cp=' + g2.currentPlayer() + ' enabled=' + (pb2 && pb2.enabled));
+  }
+})();
+
 console.log('\n=== 总结 ===');
 console.log('checks: ' + (passed + failed) + ' | passed: ' + passed + ' | failed: ' + failed);
 if (failed > 0) { console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }

@@ -251,6 +251,19 @@ function runGateStage() {
       break;
   }
   gateIdx++;
+
+  // [P0 修复 2026-10-24 00:09 用户实测] **死锁**: 引擎在 IDENTITY 阶段结束时就
+  //   把 phase 变成了 PLAY, 而 currentPlayer 只在 PLAY 档里设置; 同时
+  //   uiButtons() 在 PLAY 阶段**不再显示【下】** —— 于是:
+  //     phase=PLAY 但 currentPlayer=null -> 按钮全灰(且切到谁都不能出)
+  //     -> PLAY 档永远到不了 -> AI 也不出手
+  //   用户实测: 「真人不亮A排查到甲被动亮牌, 但出牌阶段甲没有自动出牌,
+  //   出牌过牌按钮是灰色的, 真人切换到甲也无法出牌」。
+  //   修法: 一旦进入 PLAY 就**立刻补跑 PLAY 档**(设首出权), 不必再等一次【下】。
+  //   递归安全: PLAY 档跑完 currentPlayer 已有值, 不会再进。
+  if (gameState.phase === PHASES.PLAY && !currentPlayer) {
+    runGateStage();
+  }
 }
 
 // 授权者自动选 HIDDEN(真人无资格时; 沿用原自动链的行为)
