@@ -310,12 +310,34 @@ function runForcedCheck(state) {
       // 其它（不可能有 length>2，因为只有两副牌）
     }
   }
-  // 全部查不到，兜底红桃A
-  return {
-    suit: 'H',
-    establishedBy: 'DEFAULT_HEART',
-    viaMethod: 'DEFAULT_HEART'
-  };
+  // 全部查不到（§4.2：每张牌都成双或全无）→ 兜底红桃A。
+  //
+  // [2026-10-21 P0 修复] 原实现硬编码 establishedBy: 'DEFAULT_HEART' ——
+  //   那是**花色名**，不是合法玩家ID。后果链条：
+  //     establishedBy='DEFAULT_HEART' → 主A 归属错乱
+  //     → currentPlayer='DEFAULT_HEART' → 引擎 PLAYER_NOT_FOUND
+  //     → 每次出牌都失败「手牌空, 不能出牌」，双大A 也永远打不出
+  //     → 画面顶栏显示「当前: DEFAULT_HEART」
+  //   改为：查找**实际持有红桃A** 的玩家，用他的真实 ID。
+  for (let round = 0; round < NUM_PLAYERS; round++) {
+    const playerIdx = (startIdx + round) % NUM_PLAYERS;
+    const player = state.players[playerIdx];
+    if (player && player.hand && player.hand.some(function (c) {
+      return c.suit === 'H' && c.rank === 14;
+    })) {
+      return { suit: 'H', establishedBy: player.id, viaMethod: 'FORCED_CHECK' };
+    }
+  }
+  // 极端兜底：两副牌必有两张红桃A，理论上到不了这里；若真到了，
+  //   取第一位有手牌的玩家，保证 establishedBy 始终是合法玩家ID。
+  for (let round = 0; round < NUM_PLAYERS; round++) {
+    const playerIdx = (startIdx + round) % NUM_PLAYERS;
+    const player = state.players[playerIdx];
+    if (player && player.hand && player.hand.length > 0) {
+      return { suit: 'H', establishedBy: player.id, viaMethod: 'FORCED_CHECK' };
+    }
+  }
+  return { suit: 'H', establishedBy: state.players[startIdx].id, viaMethod: 'FORCED_CHECK' };
 }
 
 // === handler: ADVANCE ===

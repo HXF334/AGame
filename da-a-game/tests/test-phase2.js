@@ -480,8 +480,10 @@ test('FORCED_CHECK 全部查不到时兜底红桃A', () => {
   const r = transition(s, { type: ACTIONS.FORCED_CHECK, payload: {} });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.state.主A.suit, 'H');
-  assert.strictEqual(r.state.主A.establishedBy, 'DEFAULT_HEART');
-  assert.strictEqual(r.state.主A.viaMethod, 'DEFAULT_HEART');
+  // [2026-10-23 修正] 原断言为 DEFAULT_HEART（花色名当玩家ID，导致
+  //   currentPlayer 非法 -> PLAYER_NOT_FOUND -> 双大A 无法选牌/出牌。现兑底返回实际持有红桃A的玩家（本例 A）。
+  assert.strictEqual(r.state.主A.establishedBy, 'A');
+  assert.strictEqual(r.state.主A.viaMethod, 'FORCED_CHECK');
 });
 
 test('FORCED_CHECK 拒：主A 已确立（FORCED_CHECK_REJECTED）', () => {
@@ -684,7 +686,8 @@ test('完整一局：START_GAME → FORCED_CHECK 全部查不到 → 红桃A兜�
   const r = transition(s, { type: ACTIONS.FORCED_CHECK, payload: {} });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.state.主A.suit, 'H');
-  assert.strictEqual(r.state.主A.establishedBy, 'DEFAULT_HEART');
+  // [2026-10-23 修正] 同上: 兑底归实际持有红桃A 的玩家。
+  assert.strictEqual(r.state.主A.establishedBy, 'A');
   // 兜底情况下，A 手里的 H-A-0 和 H-A-1 也被标记 is主方大A
   const aH0 = r.state.players[0].hand.find(function (x) { return x.id === 'H-A-0'; });
   const aH1 = r.state.players[0].hand.find(function (x) { return x.id === 'H-A-1'; });

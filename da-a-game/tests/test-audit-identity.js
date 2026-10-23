@@ -73,10 +73,18 @@ var FC = function (spec, startIdx) {
 }
 
 // 1.4 无可排查单 A → 红桃 A 兜底
+//   [2026-10-23 修正] 原断言 viaMethod === 'DEFAULT_HEART'，那是**旧 bug 行为**:
+//     兜底分支硬编码 establishedBy='DEFAULT_HEART'（花色名，非玩家ID），
+//     导致 currentPlayer='DEFAULT_HEART' → PLAYER_NOT_FOUND → 双大A 打不出。
+//   现兜底改为查找**实际持有红桃A** 的玩家：本例 A 持 H:2，故归 A。
 {
   var r = FC({ A: { H: 2 }, B: { D: 2 } });
-  check('1.4 全部同花色两张 → 红桃A 兜底',
-    r && r.suit === 'H' && r.viaMethod === 'DEFAULT_HEART', JSON.stringify(r));
+  check('1.4 全部同花色两张 → 红桃A 兜底, establishedBy 为真实玩家ID',
+    r && r.suit === 'H'
+    && r.viaMethod === 'FORCED_CHECK'
+    && r.establishedBy === 'A'
+    && r.establishedBy !== 'DEFAULT_HEART',
+    JSON.stringify(r));
 }
 
 // 1.5 玩家顺序优先于花色全局顺序
