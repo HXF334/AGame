@@ -598,9 +598,13 @@ function runAI() {
       var ai = gameState.players.find(function (p) { return p.id === currentPlayer; });
       if (!ai || ai.hand.length === 0) {
         // AI 手牌空 -> 过牌
+        // [P0 修复] 轮次结束标志: 引擎 handlePass 轮结束的同一返回里就清空 table+passedPlayers,
+        //   事后用 passedPlayers 反推必然 false。此处用清桌前后对比取证 (与 doPass 同一套)。
+        var _hadT0 = (gameState.table || []).length > 0;
         var r0 = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: currentPlayer } });
         if (r0 && r0.ok) {
           gameState = r0.state;
+          var _re0 = _hadT0 && (gameState.table || []).length === 0;
           log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
           advanceCurrentPlayer();
           var endR = checkGameEnd(gameState);
@@ -608,7 +612,7 @@ function runAI() {
             gameState.phase = 'GAME_END';
             log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
           } else {
-            doPushWindIfPending(false);
+            doPushWindIfPending(_re0);
           }
           if (ctx) draw();
         }
@@ -644,7 +648,10 @@ function runAI() {
       if (r1 && r1.ok) {
         // [fix] PASS 动作无 cardIds, 需守卫避免 TypeError
         var wasEmpty = !!(ai && ai.hand && action.cardIds && ai.hand.length === action.cardIds.length);
+        // [P0 修复] AI 出牌也可能结束轮次(所有人都过完后最后一人出牌收桌), 同上取证
+        var _hadT1 = (gameState.table || []).length > 0;
         gameState = r1.state;
+        var _re1 = _hadT1 && (gameState.table || []).length === 0;
         log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' ' + action.type + (action.cardIds ? ' (' + action.cardIds.length + '张)' + aiCardsDesc : ''));
         if (wasEmpty) {
           lastEmptiedPlayer = currentPlayer;
@@ -656,7 +663,7 @@ function runAI() {
           gameState.phase = 'GAME_END';
           log('牌局结束: ' + (endR1.winner || '平局') + ' 胜! reason=' + endR1.reason);
         } else {
-          doPushWindIfPending(false);
+          doPushWindIfPending(_re1);
         }
         if (ctx) draw();
       } else {
