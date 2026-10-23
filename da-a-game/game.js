@@ -530,6 +530,54 @@ function _drawSettlement() {
     ctx.textAlign = 'left';
   });
 }
+// ===== UI 日志 + 【Log】开关 (需求十一) =====
+// 默认**隐藏**: 不影响正常对局画面。**不影响日志记录** —— logHistory 一直在记,
+//   只是默认不显示; 点右上角【Log】切换。
+// 注意: 坐标在无 canvas 时也先算出来, 这样无头测试能验证命中区。
+var uiLogVisible = false;
+var btnLog = null;
+
+function _drawUiLog() {
+  var vw = W || 844, vh = H || 390;
+  var bw = 56, bh = 26;
+  var bx = vw - bw - vw * 0.02, by = vh * 0.01;
+  btnLog = { x: bx, y: by, w: bw, h: bh, id: 'log' };
+  if (!ctx) return;
+
+  // --- 右上角【Log】按钮 ---
+  ctx.fillStyle = uiLogVisible ? '#c8102e' : '#1e6091';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx, by, bw, bh);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Log', bx + bw / 2, by + bh / 2);
+
+  if (!uiLogVisible) return;
+
+  // --- 左侧日志面板 ---
+  var px = vw * 0.02, py = vh * 0.38, pw = vw * 0.38, ph = vh * 0.44;
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(px, py, pw, ph);
+  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1;
+  ctx.strokeRect(px, py, pw, ph);
+
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('日志 (点右上 Log 隐藏)', px + 8, py + 12);
+
+  var lines = logHistory.slice(-11);
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = '#dddddd';
+  for (var i = 0; i < lines.length; i++) {
+    var t = String(lines[i]);
+    if (t.length > 50) t = t.slice(0, 50) + '…';
+    ctx.fillText(t, px + 8, py + 26 + i * 13);
+  }
+}
+
 function draw() {
   if (!ctx) return;  // node 测试模式无 canvas
   // 背景
@@ -711,6 +759,9 @@ function draw() {
 
   // ===== 结算画面 (需求十) =====
   if (gameState.phase === PHASES.GAME_END) _drawSettlement();
+
+  // ===== UI 日志 + 【Log】开关 (需求十一) =====
+  _drawUiLog();
 })();
 
 // ===== 结算画面 (需求十) =====
@@ -1159,6 +1210,14 @@ if (typeof wx !== 'undefined') {
       }
     }
 
+    // 检查 右上角【Log】开关 (需求十一)
+    if (btnLog && x >= btnLog.x && x <= btnLog.x + btnLog.w && y >= btnLog.y && y <= btnLog.y + btnLog.h) {
+      uiLogVisible = !uiLogVisible;
+      log('UI 日志面板: ' + (uiLogVisible ? '显示' : '隐藏'));
+      draw();
+      return;
+    }
+
     // 统一按钮模型（需求八）: 可用性已由 uiButtons() 判定, 这里只按 id 分发。
     //   不可用的按钮在 uiButtonAt 里已跳过, 不会被命中。
     var hitBtn = uiButtonAt(x, y);
@@ -1283,6 +1342,10 @@ if (typeof module !== 'undefined' && module.exports) {
     newGame: newGame,
     // [测试] 最近一次 draw 算好坐标的按钮列表; 以及结算数据
     btnStage: function () { return btnStage; },
-    settlementData: _settlementData
+    settlementData: _settlementData,
+    // ===== UI 日志 (需求十一) =====
+    uiLogVisible: function () { return uiLogVisible; },
+    toggleUiLog: function () { uiLogVisible = !uiLogVisible; if (ctx) draw(); return uiLogVisible; },
+    btnLog: function () { return btnLog; }
   };
 }
