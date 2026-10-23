@@ -505,7 +505,12 @@ function doPlay() {
         }).join(' ');
         gameState = r2.state;
         log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + txt + ' (组合回退)');
-        if (mm && mm.hand.length === 0) { lastEmptiedPlayer = currentPlayer; }
+        // [P0 修复 2026-10-23] 原来读 mm.hand.length, 而 mm 是在 transition **之前**
+        //   捕获的引用(transition 会克隆 players 与 player 对象) -> 恒读到出牌前的手牌数
+        //   -> ≥3 张组合回退出完最后的手牌时 lastEmptiedPlayer 不被设置 -> 推风不触发。
+        //   与 doPlay 批量/逐张两处同源, 这是第三处。
+        var _mmAfter = gameState.players.find(function (p) { return p.id === currentPlayer; });
+        if (_mmAfter && _mmAfter.hand.length === 0) { lastEmptiedPlayer = currentPlayer; }
         advanceCurrentPlayer();
         var e2 = checkGameEnd(gameState);
         if (e2.ended) { gameState.phase = 'GAME_END'; log('牌局结束: ' + (e2.winner || '平局')); } else { doPushWindIfPending(false); }
