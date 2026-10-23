@@ -36,11 +36,19 @@
 ```bash
 cd "C:\Users\MyFirstAI\.openclaw\workspace-work\AGame\da-a-game"
 
-# 全部 43 测试 — PowerShell 管道（对话期间偶尔受会话超时干扰）
-foreach ($f in Get-ChildItem tests/test-*.js) { node $f.FullName }
+# 全部 53 个测试套件(2026-10-23 实测) — PowerShell 前台分块
+#   注意: 必须**前台分块**跑(每块 5~16 个)。后台/单次全量会被 exec 会话切断,
+#   且后台启动会连带清掉同目录临时脚本(2026-10-23 丢过三轮回归)。
+$all = @(Get-ChildItem tests/test-*.js | Sort-Object Name)
+$all[0..15] | ForEach-Object { node $_.FullName }
 
-# 全部 43 测试 — Node 版批量器（更可靠，能捕获失败输出）
-node tests/_runall.js 3               # 跑 3 轮
+# 前一版本文档写的 `node tests/_runall.js` —— **该文件已不存在**, 不要照抄
+
+# 无头对局压测(四模式: 2V3明/暗 + 1V4明/暗), 结果落盘 tools/stress_result.txt
+node tools/stress-pushwind.js 24
+
+# SKILL §13「必测用例」覆盖对账(产出排查清单, 非判决)
+node tools/audit-skill-tests.js
 
 # 性能
 node tests/test-perf.js 1000          # 引擎 1000 局耗时 ~700ms
@@ -157,7 +165,7 @@ function camps(state) {
 3. **不要删临时文件 `tests/_*.js`**（除非确认落盘成功并 `Remove-Item` 真的删了）—— 上游 gitignore 隔离
 4. **每次重大任务后刷新 5 份 docs**（用户要求：每天 / 重大更新时）
 5. **接到新指令时，先看 `docs/PROGRESS.md` 最近的里程碑 + `docs/KNOWN_ISSUES.md`** —— 不重复造轮子
-6. **遇到 flaky 测试立即用 Node 版批量器跑 10+ 轮**（参见 `tests/_runall.js`）能可靠捕获失败输出
+6. **遇到 flaky 测试就重复跑 10+ 轮**（PowerShell 前台循环 `1..10 | %{ node $f }`）。原推荐的 `tests/_runall.js` 批量器**已不存在**，改用前台循环
 
 ---
 

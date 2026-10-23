@@ -143,7 +143,6 @@ node tests/test-game-scenarios.js     # 你报过的每个 bug 的回归测试
 foreach ($f in Get-ChildItem tests/test-*.js) { node $f.FullName }
 
 # 全部 43 个套件（Node 版批量器，更可靠，能捕获失败输出）
-node tests/_runall.js 3                # 跑 3 轮
 
 # 性能
 node tests/test-perf.js 1000
