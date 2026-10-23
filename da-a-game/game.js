@@ -408,6 +408,13 @@ function doPushWindIfPending(roundJustEnded) {
 }
 
 // === 出牌按钮 ===
+// [2026-10-23 文案修正] winner 可能是 draw 或空, 原代码一律拼「 胜!」->
+//   「牌局结束: draw 胜!」自相矛盾(用户 20:02 真实日志)。
+function fmtResult(r) {
+  if (!r || !r.winner || r.winner === 'draw') return '平局';
+  return r.winner + ' 胜';
+}
+
 function doPlay() {
   if (!currentPlayer || gameState.phase !== PHASES.PLAY) {
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 手牌空, 不能出牌');
@@ -452,7 +459,7 @@ function doPlay() {
       var endR0 = checkGameEnd(gameState);
       if (endR0.ended) {
         gameState.phase = 'GAME_END';
-        log('牌局结束: ' + (endR0.winner || '平局') + ' 胜! reason=' + endR0.reason);
+        log('牌局结束: ' + fmtResult(endR0) + ' reason=' + endR0.reason);
       } else {
         doPushWindIfPending(false);
       }
@@ -486,7 +493,7 @@ function doPlay() {
       var endR = checkGameEnd(gameState);
       if (endR.ended) {
         gameState.phase = 'GAME_END';
-        log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
+        log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
       } else {
         doPushWindIfPending(false);
       }
@@ -521,7 +528,7 @@ function doPlay() {
         if (_mmAfter && _mmAfter.hand.length === 0) { lastEmptiedPlayer = currentPlayer; }
         advanceCurrentPlayer();
         var e2 = checkGameEnd(gameState);
-        if (e2.ended) { gameState.phase = 'GAME_END'; log('牌局结束: ' + (e2.winner || '平局')); } else { doPushWindIfPending(false); }
+        if (e2.ended) { gameState.phase = 'GAME_END'; log('牌局结束: ' + fmtResult(e2)); } else { doPushWindIfPending(false); }
         if (ctx) draw();
         runAI();
         return;
@@ -530,7 +537,7 @@ function doPlay() {
       lastError = (r2 && r2.error) || lastError;
     }
   })();
-  log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 失败: 所有 ' + player.hand.length + ' 张手牌都不可用. 最后: ' +
+  log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 失败: 压不过桌面(单张与组合均已尝试). 最后: ' +
     ((lastError && lastError.type)
       ? (lastError.type + ' ' + (lastError.message || ''))
       : '未能出牌 (引擎未返回具体原因)'));
@@ -550,12 +557,12 @@ function doPass() {
   if (r && r.ok) {
     gameState = r.state;
     var _roundEnded = _hadTable && (gameState.table || []).length === 0;
-    log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer));
+    log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
       gameState.phase = 'GAME_END';
-      log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
+      log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
     } else {
       doPushWindIfPending(_roundEnded);
     }
@@ -601,7 +608,7 @@ function doPushWind() {
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
       gameState.phase = 'GAME_END';
-      log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
+      log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
     } else {
       doPushWindIfPending(false);
     }
@@ -631,7 +638,7 @@ function runAI() {
           var endR = checkGameEnd(gameState);
           if (endR.ended) {
             gameState.phase = 'GAME_END';
-            log('牌局结束: ' + (endR.winner || '平局') + ' 胜! reason=' + endR.reason);
+            log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
           } else {
             doPushWindIfPending(_re0);
           }
@@ -682,7 +689,7 @@ function runAI() {
         var endR1 = checkGameEnd(gameState);
         if (endR1.ended) {
           gameState.phase = 'GAME_END';
-          log('牌局结束: ' + (endR1.winner || '平局') + ' 胜! reason=' + endR1.reason);
+          log('牌局结束: ' + fmtResult(endR1) + ' reason=' + endR1.reason);
         } else {
           doPushWindIfPending(_re1);
         }
@@ -735,6 +742,7 @@ function advanceCurrentPlayer() {
 if (typeof wx !== 'undefined') {
   // [2026-10-23] 点击未命中的节流记录
   var _lastMissLog = null;
+  var _missLogged = false;   // 已记过一次画布内未命中(节流用)
 
   wx.onTouchStart(function (e) {
     var touch = e.touches && e.touches[0];
@@ -782,8 +790,11 @@ if (typeof wx !== 'undefined') {
     //   用于定位「点了没反应」: 能记到这行 = 触摸处理本身活着(坐标也对),
     //   只是没命中控件; 完全记不到 = 触摸事件根本没进来。
     //   节流: 同坐标 1 秒内不重复记, 避免刷屏。
+    var _inCanvas = (x >= 0 && y >= 0 && x <= W && y <= H);
     var _now = Date.now();
-    if (!_lastMissLog || _now - _lastMissLog.t > 1000 || _lastMissLog.x !== x || _lastMissLog.y !== y) {
+    // [2026-10-23] 原来每点一次空处就打一行, 正式对局属噪声(用户 20:02 指出)。
+    if (_inCanvas && (!_missLogged || _now - _lastMissLog.t > 2000)) {
+      _missLogged = true;
       _lastMissLog = { t: _now, x: x, y: y };
       // [2026-10-23] 把系统信息一并打出: canvas.width/height 是**物理像素**,
       //   而触摸 clientX/clientY 是 **CSS 像素**, 高分屏 dpr>1 时两者差一个倍数
