@@ -21,7 +21,13 @@
     "localPlugins": false,
     "disableUseStrict": false,
     "useCompilerPlugins": false,
-    "condition": false
+    "condition": false,
+    "packNpmRelationList": [],
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
   },
   "compileType": "game",
   "libVersion": "2.19.4",
