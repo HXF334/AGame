@@ -431,11 +431,17 @@ function uiButtons() {
 }
 
 // 按坐标命中某个按钮；不可用的按钮返回 null（不响应）
+// [P0 修复 2026-10-23 23:56] 原来这里调 uiButtons() **重新生成了一份对象**,
+//   而 x/y/w/h 是 draw() 时写进**另一份对象**的 -> 命中判断拿到的坐标是 undefined
+//   -> `x >= undefined` 恒为 false -> **所有按钮都点不到**。
+//   用户实测: 点(783,348) 报「点击未命中」, 而该坐标其实正落在【下】上。
+//   现在必须用 draw/layout 时算好坐标的那一份(btnStage)。
 function uiButtonAt(x, y) {
-  var list = uiButtons();
+  var list = btnStage || [];
   for (var i = 0; i < list.length; i++) {
     var b = list[i];
     if (!b.enabled) continue;
+    if (b.x === undefined || b.y === undefined) continue;
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
   }
   return null;
@@ -458,6 +464,72 @@ function uiClick(id) {
   }
 }
 
+// ===== 结算画面 (需求十) =====
+// 五人得分表 + 胜负结果。分数**由引擎 calculateScore 给出**, UI 不自己算。
+// [注] 这两个函数必须在**文件作用域**, 不能落在 draw() 体内 ——
+//   否则 module.exports 里引用不到(会报 _settlementData is not defined)。
+function _settlementData() {
+  var res = null;
+  try { res = checkGameEnd(gameState); } catch (e) { res = null; }
+  if (!res || !res.winner) res = { winner: 'draw', reason: '' };
+  var scores = {};
+  try { scores = calculateScore(gameState, res) || {}; } catch (e) { scores = {}; }
+  return { res: res, scores: scores };
+}
+
+function _drawSettlement() {
+  if (!ctx) return;
+  var d = _settlementData();
+  var vw = W || 844, vh = H || 390;
+  var pw = Math.min(420, vw * 0.72), ph = Math.min(250, vh * 0.78);
+  var px = (vw - pw) / 2, py = (vh - ph) / 2 - vh * 0.04;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillRect(px, py, pw, ph);
+  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2;
+  ctx.strokeRect(px, py, pw, ph);
+
+  var title = d.res.winner === 'draw' ? '平局' : (d.res.winner + '胜');
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('本局结束 · ' + title, px + pw / 2, py + 26);
+
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#cccccc';
+  ctx.fillText(d.res.reason || '', px + pw / 2, py + 48);
+
+  // 五人得分表
+  var ids = ['A', 'B', 'C', 'D', 'E'];
+  var camps = (gameState['主方'] || []).map(function (p) { return p.id; });
+  var rowY = py + 72, rowH = 30;
+  ctx.textAlign = 'left';
+  ids.forEach(function (pid, i) {
+    var y = rowY + i * rowH;
+    var p = gameState.players.filter(function (x) { return x.id === pid; })[0];
+    var camp = camps.indexOf(pid) >= 0 ? '主方' : '抓方';
+    var isHuman = pid === humanPlayer;
+    var delta = d.scores[pid];
+    var deltaTxt = (delta === undefined) ? '—' : ((delta > 0 ? '+' : '') + delta);
+
+    ctx.fillStyle = (i % 2 === 0) ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
+    ctx.fillRect(px + 14, y - 12, pw - 28, rowH - 4);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(pn(pid) + (isHuman ? '(你)' : ''), px + 26, y);
+
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0) + ' 张', px + 108, y);
+
+    ctx.fillStyle = (delta > 0) ? '#66dd66' : (delta < 0 ? '#ff7777' : '#cccccc');
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(deltaTxt, px + pw - 26, y);
+    ctx.textAlign = 'left';
+  });
+}
 function draw() {
   if (!ctx) return;  // node 测试模式无 canvas
   // 背景
@@ -581,20 +653,28 @@ function draw() {
 (function drawUiButtons() {
   var list = uiButtons();
   btnPlay = null; btnPass = null; btnStage = list;
-  if (!ctx || !list.length) return;
+  if (!list.length) return;
 
-  var gap = 6, h = 30, pad = W * 0.02;
-  var w = Math.max(56, Math.min(96, (W - pad * 2 - gap * (list.length - 1)) / list.length));
-  var y = H * 0.93 - h;
+  var gap = 6, h = 30;
+  // 无 canvas 时用默认视口, 这样**无头测试也能验证命中区**（坐标照样算出来）
+  var vw = W || 844, vh = H || 390;
+  var pad = vw * 0.02;
+  var w = Math.max(56, Math.min(96, (vw - pad * 2 - gap * (list.length - 1)) / list.length));
+  var y = vh * 0.93 - h;
   var totalW = w * list.length + gap * (list.length - 1);
-  var startX = W - totalW - pad;
+  var startX = vw - totalW - pad;
 
   list.forEach(function (b, i) {
     var x = startX + i * (w + gap);
     b.x = x; b.y = y; b.w = w; b.h = h;
     if (b.id === 'play') btnPlay = b;
     if (b.id === 'pass') btnPass = b;
+  });
 
+  if (!ctx) return;   // 无 canvas: 只算坐标, 不绘制
+
+  list.forEach(function (b, i) {
+    var x = startX + i * (w + gap);
     ctx.fillStyle = b.enabled ? '#1e6091' : '#555';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2;
@@ -628,7 +708,13 @@ function draw() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(uiToast.text, tx + 10, ty + 13);
   }
+
+  // ===== 结算画面 (需求十) =====
+  if (gameState.phase === PHASES.GAME_END) _drawSettlement();
 })();
+
+// ===== 结算画面 (需求十) =====
+// 五人得分表 + 胜负结果。分数**由引擎 calculateScore 给出**, UI 不自己算。
 
 function _stageHint() {
   var c = gateChoice;
@@ -1056,10 +1142,6 @@ function advanceCurrentPlayer() {
 
 // === 触摸事件处理 (WeChat 小游戏) ===
 if (typeof wx !== 'undefined') {
-  // [2026-10-23] 点击未命中的节流记录
-  var _lastMissLog = null;
-  var _missLogged = false;   // 已记过一次画布内未命中(节流用)
-
   wx.onTouchStart(function (e) {
     var touch = e.touches && e.touches[0];
     if (!touch) return;
@@ -1100,35 +1182,10 @@ if (typeof wx !== 'undefined') {
         return;
       }
     }
-
-    // [2026-10-23 诊断] 点击未命中任何控件。
-    //   用于定位「点了没反应」: 能记到这行 = 触摸处理本身活着(坐标也对),
-    //   只是没命中控件; 完全记不到 = 触摸事件根本没进来。
-    //   节流: 同坐标 1 秒内不重复记, 避免刷屏。
-    var _inCanvas = (x >= 0 && y >= 0 && x <= W && y <= H);
-    var _now = Date.now();
-    // [2026-10-23] 原来每点一次空处就打一行, 正式对局属噪声(用户 20:02 指出)。
-    if (_inCanvas && (!_missLogged || _now - _lastMissLog.t > 2000)) {
-      _missLogged = true;
-      _lastMissLog = { t: _now, x: x, y: y };
-      // [2026-10-23] 把系统信息一并打出: canvas.width/height 是**物理像素**,
-      //   而触摸 clientX/clientY 是 **CSS 像素**, 高分屏 dpr>1 时两者差一个倍数
-      //   -> hitbox(按 canvas 算) 与手指位置对不上 -> 点不到任何控件。
-      //   一行就能判定: canvas 宽 / windowWidth 约等于 dpr。
-      var _sys = '';
-      try {
-        if (typeof wx !== 'undefined' && wx.getSystemInfoSync) {
-          var _si = wx.getSystemInfoSync();
-          _sys = ' window=' + _si.windowWidth + 'x' + _si.windowHeight
-               + ' dpr=' + _si.pixelRatio
-               + ' screen=' + _si.screenWidth + 'x' + _si.screenHeight;
-        }
-      } catch (e) { _sys = ' (sysErr ' + e.message + ')'; }
-      log('点击未命中: (' + Math.round(x) + ',' + Math.round(y) + ')'
-        + ' 手牌hitbox=' + handCardHitboxes.length
-        + ' 出牌键=' + (btnPlay ? ('有@' + Math.round(btnPlay.x) + ',' + Math.round(btnPlay.y)) : '无')
-        + ' 画布=' + Math.round(W) + 'x' + Math.round(H) + _sys);
-    }
+    // [2026-10-23 23:57 用户要求] 「点击未命中」诊断日志已删除。
+    //   理由: 正式对局里点空白处属正常操作, 这行日志只是噪声。
+    //   当时它确实有用 —— 正是它暴露出「所有按钮都点不到」的真 bug
+    //   (uiButtonAt 拿的是没有坐标的新对象), 那个 bug 已修。
   });
 }
 
@@ -1223,6 +1280,9 @@ if (typeof module !== 'undefined' && module.exports) {
     uiButtons: uiButtons,
     uiButtonAt: uiButtonAt,
     uiClick: uiClick,
-    newGame: newGame
+    newGame: newGame,
+    // [测试] 最近一次 draw 算好坐标的按钮列表; 以及结算数据
+    btnStage: function () { return btnStage; },
+    settlementData: _settlementData
   };
 }
