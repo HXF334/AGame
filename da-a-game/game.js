@@ -16,6 +16,52 @@ var candidateCombos = require('./src/combos.js').candidateCombos;
 // === 工具 ===
 // 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
 var logHistory = [];
+
+// [2026-10-23 新增] 关键状态快照。
+//   起因: 之前日志只有 "FORCED_CHECK → 主A: C" 这种半截信息, 事后只能从结局
+//   反推阵营 —— 而反推会出错 (我曾据此误判主方成员, 被用户纠正)。
+//   现在每次关键节点都打全量字段, 日志自身即可定案:
+//     谁是主A / 谁是次A / 主方抓方名单 / 首出权 / 推风触发者与目标。
+var NAMES_MAP = { A: '甲', B: '乙', C: '丙', D: '丁', E: '戊' };
+function pn(id) { return NAMES_MAP[id] || (id || '-'); }
+
+function logState(tag) {
+  var s = gameState || {};
+  var p = null;
+  for (var i = 0; i < (s.players || []).length; i++) {
+    if (s.players[i].id === currentPlayer) p = s.players[i];
+  }
+  var za = s['主A'];
+  var zhu = s['主方'] || [];
+  var zhua = s['抓方'] || [];
+  log('[' + tag + '] phase=' + s.phase
+    + ' mode=' + (s.mode || '-')
+    + ' 主A=' + (za ? za.suit + '/由' + pn(za.establishedBy) + '/' + (za.viaMethod || '?') : '-')
+    + ' 次A=' + (s['次方'] ? pn(s['次方']) : '-')
+    + ' 次方公开=' + (s['次方公开'] ? '是' : '否')
+    + ' 底牌公开=' + (s['底牌公开'] ? '是' : '否')
+    + ' 主方=[' + zhu.map(pn).join(',') + ']'
+    + ' 抓方=[' + zhua.map(pn).join(',') + ']'
+    + ' 当前=' + pn(currentPlayer) + '(' + (p ? p.hand.length : '?') + '张)'
+    + ' 桌=' + ((s.table || []).length) + '张'
+    + ' 过牌=[' + (s.passedPlayers || []).map(pn).join(',') + ']'
+    + ' lastPlayer=' + pn(s.lastPlayer));
+}
+
+//   同样自动捕获「出大A → 次方公开」这类身份变化, 无需逐个手写日志点。
+var _lastSig = '';
+function logStateIfChanged(tag) {
+  var s = gameState || {};
+  var za = s['主A'];
+  var sig = [s.phase, s.mode, s['次方'], s['次方公开'], s['底牌公开'], s['反A'],
+             za ? za.suit + '/' + za.establishedBy + '/' + za.viaMethod : '-',
+             (s['主方'] || []).join(','), (s['抓方'] || []).join(''),
+             currentPlayer, s.lastPlayer].join('|');
+  if (sig === _lastSig) return;
+  _lastSig = sig;
+  logState(tag);
+}
+
 function log(msg) {
   // [2026-10-23 用户要求] 只保留控制台日志: 本地文件与 UI 屏显都已移除。
   //   本地文件通道在 WeChat 运行时三次静默失败 (无 process / wx 沙箱不可读 /
@@ -99,25 +145,41 @@ try {
   else log('START_GAME 失败: ' + (r && r.error && r.error.message));
 
   r = transition(gameState, { type: ACTIONS.FORCED_CHECK, payload: {} });
-  if (r && r.ok) { gameState = r.state; log('FORCED_CHECK → 主A: ' + (gameState['主A'] ? gameState['主A'].suit : '?')); }
+  if (r && r.ok) {
+    gameState = r.state;
+    var _za = gameState['主A'];
+    log('FORCED_CHECK → 主A: ' + (_za ? _za.suit : '?')
+      + ' 由' + (_za ? pn(_za.establishedBy) : '?')
+      + ' 方式=' + (_za ? _za.viaMethod : '?'));
+    logState('强制排查后');
+  }
 
   r = transition(gameState, { type: ACTIONS.ADVANCE, payload: {} });
-  if (r && r.ok) { gameState = r.state; log('ADVANCE → FAN_A'); }
+  if (r && r.ok) { gameState = r.state; log('ADVANCE → FAN_A'); logState('进入翻底牌'); }
 
   r = transition(gameState, { type: ACTIONS.REVEAL_BOTTOM, payload: {} });
-  if (r && r.ok) { gameState = r.state; log('REVEAL_BOTTOM → ' + (gameState.mode || '?')); }
+  if (r && r.ok) { gameState = r.state; log('REVEAL_BOTTOM → ' + (gameState.mode || '?')); logState('底牌翻开后'); }
 
   if (gameState.phase === PHASES.IDENTITY_CHOICE) {
     var chooser, choice;
     if (gameState['次方']) { chooser = gameState['次方']; choice = 'HIDDEN'; }
     else { chooser = gameState['主A'].establishedBy; choice = 'HIDDEN'; }
     r = transition(gameState, { type: ACTIONS.CHOOSE_IDENTITY, payload: { playerId: chooser, choice: choice } });
-    if (r && r.ok) { gameState = r.state; log('CHOOSE_IDENTITY → 暗打'); }
+    if (r && r.ok) {
+      gameState = r.state;
+      log('CHOOSE_IDENTITY → ' + (gameState.mode || '?') + ' (次A=' + pn(gameState['次方']) + ')');
+      logState('定身份后');
+    }
   }
 
   if (gameState.phase === PHASES.PLAY) {
     currentPlayer = determineFirstPlayer(gameState);
     if (!currentPlayer) currentPlayer = 'A';
+    // 首出权 = 主A (暗打) / 次A (明打) / 反A成功者 (§5), 日志里必须写明,
+    // 否则无法从日志判断谁是主A。
+    log('首出权 → ' + pn(currentPlayer)
+      + ' (§5: 反A成功者优先 > 2V3明打次A先出 > 默认主A)');
+    logState('开局');
   }
   // 7) 如果轮到 AI, 立即开始自动出牌
   runAI();
@@ -325,6 +387,7 @@ function doPushWindIfPending(roundJustEnded) {
   if (gameState.lastPlayer && gameState.lastPlayer !== trigger) return;
   var p = gameState.players.filter(function (x) { return x.id === trigger; })[0];
   if (!p || p.hand.length !== 0) return;             // 触发者仍有牌 -> 不推风
+  log('推风触发: ' + pn(trigger) + '出完 + 本轮结束 -> 调用 PUSH_WIND');
   doPushWind();
 }
 
@@ -484,7 +547,14 @@ function doPushWind() {
   }
   var r = transition(gameState, { type: ACTIONS.PUSH_WIND, payload: { trigger: trigger } });
   if (r && r.ok) {
+    var _before = currentPlayer;
     gameState = r.state;
+    log('推风完成: 触发=' + pn(trigger)
+      + ' 同阵营=' + (gameState['主方'] && gameState['主方'].indexOf(trigger) >= 0
+          ? '主方[' + gameState['主方'].map(pn).join(',') + ']'
+          : '抓方[' + (gameState['抓方'] || []).map(pn).join(',') + ']')
+      + ' 目标=' + pn(r.state.currentPlayer)
+      + ' (§9.3 同阵营最近未出完者)');
     // [P1 修复] 必须把引擎算出的推风目标同步回模块级 currentPlayer。
     //   push-wind.js 会在 newState 里设 currentPlayer = target (§9 目标选择结果),
     //   但本函数原先只更新 gameState, 遗漏了 currentPlayer —— 于是 runAI()
@@ -616,6 +686,10 @@ function advanceCurrentPlayer() {
       currentPlayer = next;
       // 清空选中
       selectedCards = [];
+      // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
+      //   这样「出大A → 次方公开」「反A → mode 变 1V4」这类身份/阵营变化
+      //   无需逐个手写日志点, 也不会因未变化而刷屏。
+      logStateIfChanged('换手');
       return;
     }
   }
