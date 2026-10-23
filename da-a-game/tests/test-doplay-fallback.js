@@ -181,6 +181,37 @@ section('5. 出完最后一张 → lastEmptiedPlayer 被赋值(后续推风的�
   console.log('   [取证] ' + tail(3));
 }
 
+// ============ 6. 组合回退成功后**不得**再打失败日志 ============
+// [2026-10-23 20:19 用户实测] 只点一次出牌, 却出来两条日志:
+//   甲 出 ♥5 ♠5 ♦5 ♣5 (组合回退)
+//   甲 失败: 压不过桌面(单张与组合均已尝试). 最后: …
+// 根因: 组合回退块的 `return` 写在 IIFE **内部**, **只退出 IIFE 自己**,
+//   doPlay 继续往下走到末尾的失败日志 —— 而此时牌已经打出、回合已推进、AI 已行动。
+//   我一度把它误判为「两次点击」, 用户纠正: 只有一次点击。是我臆测。
+//
+// 本用例在**修复前必然失败**, 修复后通过 —— 即变异测试有效性。
+section('6. 单张压不过但组合能压 → 成功打出, 且不得再打失败日志');
+{
+  var st = build({
+    table: [SB.C('S', 3)],   // 桌面 ♠3: 打大A 中 3 次大(§6.2), 单张压不过
+    sizes: { A: 6 },
+    // 四张 5 = 蛋, 能压过单张; 另两张 4 是单张废牌, 用来坐实「逐张全败」
+    keyCards: { A: [SB.C('H', 5), SB.C('S', 5), SB.C('D', 5), SB.C('C', 5), SB.C('H', 4), SB.C('S', 4)] }
+  });
+  setup(st, 'A');
+  var before = handOf('A').hand.length;
+
+  g.doPlay();
+
+  var lg = logStr();
+  check('6.1 组合回退打出了牌', lg.indexOf('(组合回退)') >= 0, tail(5));
+  check('6.2 手牌确实减少', handOf('A').hand.length < before,
+    'before=' + before + ' now=' + handOf('A').hand.length);
+  check('6.3 **成功后不得出现「失败」日志**(IIFE return 只退出了 IIFE 的老 bug)',
+    lg.indexOf('失败') < 0, tail(6));
+  console.log('   [取证] ' + tail(5));
+}
+
 console.log('\n=== 总结 ===');
 console.log('checks: ' + (passed + failed) + ' | passed: ' + passed + ' | failed: ' + failed);
 if (failed > 0) { console.log('\nFAILED:'); fail.forEach(function (f) { console.log('  - ' + f); }); }

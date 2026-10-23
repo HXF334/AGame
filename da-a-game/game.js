@@ -508,6 +508,12 @@ function doPlay() {
   }
   // [修复] 3 张及以上组合回退: 调用已测试的 candidateCombos, 合法性交引擎裁决 (§14)
   //   原因: ai.js 的 chooseAction 不支持连张/蛋子/大蛋子, 会误报“不合法”
+  // [P3 真正修法 2026-10-23 20:19] 原先组合回退的 `return` 写在 IIFE **内部**,
+  //   只退出 IIFE 自己 -> doPlay 继续往下走, 于是组合回退**已经出牌成功**之后,
+  //   仍然会打出「失败: 压不过桌面」。用户实测: 只点一次出牌, 出来两条日志,
+  //   第二条是假的(我一度误判为「两次点击」, 那是错的)。
+  //   改用标志位把成功信号传出 IIFE, 由 doPlay 真正 return。
+  var _comboPlayed = false;
   (function () {
     var cands = candidateCombos(player.hand || []);
     for (var ci = 0; ci < cands.length; ci++) {
@@ -531,12 +537,14 @@ function doPlay() {
         if (e2.ended) { gameState.phase = 'GAME_END'; log('牌局结束: ' + fmtResult(e2)); } else { doPushWindIfPending(false); }
         if (ctx) draw();
         runAI();
+        _comboPlayed = true;   // 告诉 doPlay 已完成, 别再落到末尾的失败日志
         return;
       }
       // [fix] 同上: 组合回退也需记录错误, 供末尾汇总使用
       lastError = (r2 && r2.error) || lastError;
     }
   })();
+  if (_comboPlayed) return;
   log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 失败: 压不过桌面(单张与组合均已尝试). 最后: ' +
     ((lastError && lastError.type)
       ? (lastError.type + ' ' + (lastError.message || ''))
