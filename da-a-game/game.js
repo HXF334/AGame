@@ -379,6 +379,18 @@ function newGame() {
 }
 
 // === 主渲染 ===
+// ===== 提示条 (需求十二) =====
+// 真人出牌失败时的简短提示。文案由用户指定, 不改字。
+var uiToast = null;   // { text, until }
+var NO_PLAYABLE_TEXT = '【当前没有可用牌】';
+
+function showNoPlayableMsg(err) {
+  uiToast = { text: NO_PLAYABLE_TEXT, until: Date.now() + 2000 };
+  log('  提示: ' + NO_PLAYABLE_TEXT + (err ? ' (' + (err.type || '') + ')' : ''));
+}
+
+function uiToastNow() { return uiToast; }
+
 // ===== 统一按钮模型（2026-10-23 新增，需求八）=====
 // 按钮的**可见性与可用性全部由游戏状态推导**，单一来源。
 // 之前 btnPlay/btnPass/btnSelectPlayers 三处各自判断 phase 与 currentPlayer，
@@ -601,6 +613,21 @@ function draw() {
     ctx.textAlign = 'left';
     ctx.fillText(_stageHint(), pad, y + h / 2);
   }
+
+  // ===== 提示条 (需求十二) =====
+  // 文案固定为用户指定的「【当前没有可用牌】」, 2 秒后自动消失。
+  if (uiToast && uiToast.text && uiToast.until > Date.now()) {
+    var tw = (typeof ctx.measureText === 'function') ? ctx.measureText(uiToast.text).width : 150;
+    var tx = W / 2 - tw / 2 - 10, ty = H * 0.05;
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(tx, ty, tw + 20, 26);
+    ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(tx, ty, tw + 20, 26);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(uiToast.text, tx + 10, ty + 13);
+  }
 })();
 
 function _stageHint() {
@@ -739,9 +766,16 @@ function doPlay() {
       runAI();
       return;
     } else {
+      // [需求十二 2026-10-23 23:43 用户裁定] 选了但牌型非法 ->
+      //   **不再自动换成别的牌**, 直接提示并停下。
+      //   两条用户原话:「选了但牌型非法 → 不再自动换牌, 改为提示」。
+      //   保留 selectedCards —— 需求要求「保留当前有效手牌和必要的选牌状态」,
+      //   让真人自己调整选择(而不是被系统悄悄清空)。
       lastError = r0 && r0.error;
-      log('选中 ' + selectedCards.length + ' 张不合法: ' + (lastError && lastError.type) + ' ' + (lastError && lastError.message) + ' -> 回退逐张试');
-      selectedCards = [];
+      log('选中 ' + selectedCards.length + ' 张不合法: ' + (lastError && lastError.type) + ' ' + (lastError && lastError.message));
+      showNoPlayableMsg(lastError);
+      if (ctx) draw();
+      return;
     }
   }
   // [未选] 逐张检查手牌
@@ -821,6 +855,8 @@ function doPlay() {
     ((lastError && lastError.type)
       ? (lastError.type + ' ' + (lastError.message || ''))
       : '未能出牌 (引擎未返回具体原因)'));
+  // [需求十二] 未选牌但手中没有能大过桌面的牌型 -> 提示, 不再反复尝试。
+  showNoPlayableMsg(lastError);
   if (ctx) draw();
 }
 

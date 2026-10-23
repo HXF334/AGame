@@ -81,8 +81,12 @@ section('1. 选中合法牌型 → 整批打出, selectedCards 被清空');
   console.log('   [取证] ' + tail(3));
 }
 
-// ============ 2. 选中不合法 → 回退逐张成功 ============
-section('2. 选中不合法 → 必须记日志并回退逐张试出');
+// ============ 2. 选中不合法 → 提示, 不自动换牌 ============
+// [2026-10-23 23:43 用户裁定] 行为契约已变:
+//   「选了但牌型非法 → 不再自动换牌, 改为提示」
+//   原契约是「回退逐张试出」(自动换成别的牌), 该回退链已从 doPlay 拆掉。
+//   需求同时要求「保留当前有效手牌和必要的选牌状态」-> selectedCards 保留。
+section('2. 选中不合法 → 必须提示, 不得自动换成别的牌');
 {
   // 手牌一对9; 强行选 3 张非同点数非同连 -> INVALID_HAND
   var st = build({
@@ -101,10 +105,14 @@ section('2. 选中不合法 → 必须记日志并回退逐张试出');
 
   var lg = logStr();
   check('2.1 出现「选中 3 张不合法」', lg.indexOf('选中 3 张不合法') >= 0, tail(4));
-  check('2.2 出现「回退逐张试」', lg.indexOf('回退逐张试') >= 0, tail(4));
-  check('2.3 回退后确实出了 1 张', handOf('A').hand.length === before - 1,
+  check('2.2 出现提示「当前没有可用牌」', lg.indexOf('当前没有可用牌') >= 0, tail(4));
+  check('2.2b **不得**再出现「回退逐张试」(自动换牌已拆)',
+    lg.indexOf('回退逐张试') < 0, tail(4));
+  check('2.3 **没有**自动出牌(手牌未减少)', handOf('A').hand.length === before,
     'before=' + before + ' now=' + handOf('A').hand.length);
-  check('2.4 selectedCards 已清空', g.selectedCards().length === 0, 'sel=' + g.selectedCards().length);
+  check('2.4 selectedCards **保留**(供真人自行调整)', g.selectedCards().length === 3,
+    'sel=' + g.selectedCards().length);
+  check('2.5 回合未被推进(仍在甲)', g.currentPlayer() === 'A', g.currentPlayer());
   console.log('   [取证] ' + tail(3));
 }
 
