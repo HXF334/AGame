@@ -17,6 +17,8 @@ var canLiangA = engine.canLiangA;
 var canFanA = engine.canFanA;
 var canChooseIdentity = engine.canChooseIdentity;
 var calculateScore = require('./src/scoring.js').calculateScore;
+// [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
+var uiRender = require('./ui-render.js');
 
 // === 工具 ===
 // 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
@@ -436,6 +438,8 @@ function initGame() {
 log('真人座位: ' + pn(humanPlayer) + ' (随机, 可用顶部 5 按钮切换)');
   log('阶段流程: 发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌');
 gateAutoAdvance();   // 自动推进各阶段(遇真人决策则停下)
+  uiTurnTick();
+  uiStartTicker();
   if (ctx) draw();
 }
 
@@ -451,6 +455,9 @@ try {
 function newGame() {
   log('=== 点击【下一局】===');
 humanPlayer = _randomSeat();      // 真人每局随机座位
+  uiStopTicker();                   // 清理倒计时定时器
+  uiToast = null;                   // 清残留提示
+  uiLogVisible = false;             // 日志面板默认隐藏
   selectedCards = [];
   handCardHitboxes = [];
   lastEmptiedPlayer = null;
@@ -474,6 +481,96 @@ function showNoPlayableMsg(err) {
 }
 
 function uiToastNow() { return uiToast; }
+
+// 通用短提示(2026-10-24): 【提示】按钮与各种状态都用它。
+function showToast(txt, ms) {
+  uiToast = { text: txt, until: Date.now() + (ms || 2600) };
+}
+
+// ===== 【提示】(2026-10-24) =====
+// 按**当前规则**给出合法候选:
+//   1) 候选来自引擎 combos.candidateCombos(hand) + 全部单张;
+//   2) 每个候选用**引擎 transition** 逐个校验 —— 走的是和 doPlay **完全相同**的引擎路径,
+//      所以「能过 transition」= 「出牌会被引擎接受」。**绝不推荐非法牌型。**
+//   3) 选不出合法牌 -> 提示「当前没有可用牌」。
+function uiHintCandidates() {
+  var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
+  if (!me || !me.hand || !me.hand.length) return [];
+  var out = [], seen = {};
+  function add(ids) {
+    if (!ids || !ids.length) return;
+    var key = ids.slice().sort().join("," );
+    if (seen[key]) return;
+    seen[key] = 1;
+    var r = transition(gameState, { type: ACTIONS.PLAY,
+      payload: { playerId: humanPlayer, cardIds: ids.slice() } });
+    if (!r || !r.ok) return;
+    var cards = ids.map(function (id) {
+      return me.hand.find(function (c) { return c.id === id; });
+    }).filter(Boolean);
+    out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards) });
+  }
+  me.hand.forEach(function (c) { add([c.id]); });
+  try {
+    var combos = candidateCombos(me.hand) || [];
+    combos.forEach(function (ids) { if (ids && ids.length >= 2) add(ids); });
+  } catch (e) { }
+  return out;
+}
+
+// 候选的可读描述(不做完整牌型识别, 够用即可)
+function _uiComboLabel(cards) {
+  if (!cards || !cards.length) return "(空)";
+  if (cards.length === 1) return "单张 " + cardDesc(cards[0]);
+  var same = cards.every(function (c) { return c.rank === cards[0].rank; });
+  if (same) return cards.length + "张" + rankDesc(cards[0]);
+  return "组合 " + cards.map(cardDesc).join(" ");
+}
+
+function uiHint() {
+  if (currentPlayer !== humanPlayer || gameState.phase !== PHASES.PLAY) {
+    log("  提示: 现在不是你的回合");
+    return false;
+  }
+  var cands = uiHintCandidates();
+  if (!cands.length) {
+    showToast(NO_PLAYABLE_TEXT);
+    log("  提示: " + NO_PLAYABLE_TEXT);
+    if (ctx) draw();
+    return false;
+  }
+  var pick = cands[0];
+  selectedCards = pick.ids.slice();
+  showToast("提示: " + pick.label + "（已选中，点【出牌】确认）");
+  log("  提示: " + pick.label + " -> 已选中 " + pick.ids.length + " 张");
+  if (ctx) draw();
+  return true;
+}
+
+// ===== 回合倒计时 (2026-10-24) =====
+// **只显示, 不代替玩家操作** —— 到 0 只提示「请尽快出牌」, 不自动过牌(不发明规则)。
+var uiTurnDeadline = 0;
+var uiTurnTotal = 20000;
+var uiTicker = null;
+
+function uiTurnTick() {
+  if (currentPlayer === humanPlayer && gameState.phase === PHASES.PLAY) {
+    if (!uiTurnDeadline) uiTurnDeadline = Date.now() + uiTurnTotal;
+  } else {
+    uiTurnDeadline = 0;
+  }
+}
+
+function uiStartTicker() {
+  if (uiTicker || typeof setInterval === "undefined") return;
+  uiTicker = setInterval(function () { if (ctx && uiTurnDeadline) draw(); }, 250);
+}
+
+function uiStopTicker() {
+  if (uiTicker && typeof clearInterval !== "undefined") clearInterval(uiTicker);
+  uiTicker = null;
+  uiTurnDeadline = 0;
+}
 
 // ===== 统一按钮模型（2026-10-23 新增，需求八）=====
 // 按钮的**可见性与可用性全部由游戏状态推导**，单一来源。
@@ -505,7 +602,9 @@ function uiButtons() {
   if (playing) {
     var onTurn = currentPlayer === humanPlayer;
     out.push({ id: 'play', label: '出牌', enabled: onTurn });
-    out.push({ id: 'pass', label: '过牌', enabled: onTurn });
+    out.push({ id: 'pass', label: '不出', enabled: onTurn });
+    // [2026-10-24] 【提示】: 只给**引擎校验过的合法候选**(见 uiHintCandidates)
+    out.push({ id: 'hint', label: '提示', enabled: onTurn });
   }
 
   if (ended) {
@@ -543,6 +642,7 @@ function uiClick(id) {
 case 'next':     log('  【下】已移除(各阶段自动推进)'); return false;
     case 'play':     doPlay(); return true;
     case 'pass':     doPass(); return true;
+    case 'hint':     return uiHint();
     case 'newGame':  newGame(); return true;
     default: return false;
   }
@@ -561,59 +661,6 @@ function _settlementData() {
   return { res: res, scores: scores };
 }
 
-function _drawSettlement() {
-  if (!ctx) return;
-  var d = _settlementData();
-  var vw = W || 844, vh = H || 390;
-  var pw = Math.min(420, vw * 0.72), ph = Math.min(250, vh * 0.78);
-  var px = (vw - pw) / 2, py = (vh - ph) / 2 - vh * 0.04;
-
-  ctx.fillStyle = 'rgba(0,0,0,0.82)';
-  ctx.fillRect(px, py, pw, ph);
-  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2;
-  ctx.strokeRect(px, py, pw, ph);
-
-  var title = d.res.winner === 'draw' ? '平局' : (d.res.winner + '胜');
-  ctx.fillStyle = '#ffd700';
-  ctx.font = 'bold 20px sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('本局结束 · ' + title, px + pw / 2, py + 26);
-
-  ctx.font = '12px sans-serif';
-  ctx.fillStyle = '#cccccc';
-  ctx.fillText(d.res.reason || '', px + pw / 2, py + 48);
-
-  // 五人得分表
-  var ids = ['A', 'B', 'C', 'D', 'E'];
-  var camps = (gameState['主方'] || []).map(function (p) { return p.id; });
-  var rowY = py + 72, rowH = 30;
-  ctx.textAlign = 'left';
-  ids.forEach(function (pid, i) {
-    var y = rowY + i * rowH;
-    var p = gameState.players.filter(function (x) { return x.id === pid; })[0];
-    var camp = camps.indexOf(pid) >= 0 ? '主方' : '抓方';
-    var isHuman = pid === humanPlayer;
-    var delta = d.scores[pid];
-    var deltaTxt = (delta === undefined) ? '—' : ((delta > 0 ? '+' : '') + delta);
-
-    ctx.fillStyle = (i % 2 === 0) ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
-    ctx.fillRect(px + 14, y - 12, pw - 28, rowH - 4);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText(pn(pid) + (isHuman ? '(你)' : ''), px + 26, y);
-
-    ctx.fillStyle = '#aaaaaa';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0) + ' 张', px + 108, y);
-
-    ctx.fillStyle = (delta > 0) ? '#66dd66' : (delta < 0 ? '#ff7777' : '#cccccc');
-    ctx.font = 'bold 15px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(deltaTxt, px + pw - 26, y);
-    ctx.textAlign = 'left';
-  });
-}
 // ===== UI 日志 + 【Log】开关 (需求十一) =====
 // 默认**隐藏**: 不影响正常对局画面。**不影响日志记录** —— logHistory 一直在记,
 //   只是默认不显示; 点右上角【Log】切换。
@@ -621,282 +668,52 @@ function _drawSettlement() {
 var uiLogVisible = false;
 var btnLog = null;
 
-function _drawUiLog() {
-  var vw = W || 844, vh = H || 390;
-  var bw = 56, bh = 26;
-  var bx = vw - bw - vw * 0.02, by = vh * 0.01;
-  btnLog = { x: bx, y: by, w: bw, h: bh, id: 'log' };
-  if (!ctx) return;
 
-  // --- 右上角【Log】按钮 ---
-  ctx.fillStyle = uiLogVisible ? '#c8102e' : '#1e6091';
-  ctx.fillRect(bx, by, bw, bh);
-  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
-  ctx.strokeRect(bx, by, bw, bh);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 13px sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Log', bx + bw / 2, by + bh / 2);
-
-  if (!uiLogVisible) return;
-
-  // --- 左侧日志面板 ---
-  var px = vw * 0.02, py = vh * 0.38, pw = vw * 0.38, ph = vh * 0.44;
-  ctx.fillStyle = 'rgba(0,0,0,0.78)';
-  ctx.fillRect(px, py, pw, ph);
-  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1;
-  ctx.strokeRect(px, py, pw, ph);
-
-  ctx.fillStyle = '#ffd700';
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText('日志 (点右上 Log 隐藏)', px + 8, py + 12);
-
-  var lines = logHistory.slice(-11);
-  ctx.font = '10px sans-serif';
-  ctx.fillStyle = '#dddddd';
-  for (var i = 0; i < lines.length; i++) {
-    var t = String(lines[i]);
-    if (t.length > 50) t = t.slice(0, 50) + '…';
-    ctx.fillText(t, px + 8, py + 26 + i * 13);
-  }
-}
-
+// ===== 主渲染 (2026-10-24 交给 ui-render.js) =====
+// 布局/绘制全在 ui-render.js: 纯几何, 可无头测试。
+// **无 canvas 时仍然算几何**(ui-render 内部用 no-op ctx), 这样无头测试能验证命中区。
 function draw() {
-  if (!ctx) return;  // node 测试模式无 canvas
-  // 背景
-  ctx.fillStyle = '#0a4d2e';
-  ctx.fillRect(0, 0, W, H);
-
-  // 标题
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 32px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('内蒙古打大A · C-4 v3', W / 2, H * 0.06);
-
-  // ===== 顶部 3 列黄字 (H*0.16 - 0.34) =====
-  ctx.font = '16px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#ffd700';
-
-  // 次方计算 (内联)
-  var 次方玩家_6 = (gameState.mode && gameState.mode.indexOf('2V3') >= 0) ? gameState['次方']
-    : (gameState.mode && gameState.mode.indexOf('1V4') >= 0 ? (gameState['主方'] && gameState['主方'][0]) : null);
-  var 次方显示_6 = 次方玩家_6 ? (
-    (gameState['次方公开'] ? '公开' : '隐藏') +
-    (names[['A','B','C','D','E'].indexOf(次方玩家_6)] || 次方玩家_6)
-  ) : '-';
-
-  // 列 1 (左)
-  ctx.fillText('phase: ' + gameState.phase, W * 0.04, H * 0.16);
-  ctx.fillText('mode:  ' + (gameState.mode || '未定'), W * 0.04, H * 0.22);
-  ctx.fillText('主A: ' + fmt主A(gameState['主A']), W * 0.04, H * 0.28);
-  // 列 2 (中)
-  ctx.fillText('次方: ' + 次方显示_6, W * 0.36, H * 0.16);
-  ctx.fillText('上家: ' + ((names[['A','B','C','D','E'].indexOf(gameState.lastPlayer)] || gameState.lastPlayer) || '-'), W * 0.36, H * 0.22);
-  ctx.fillText('当前: ' + ((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) || '-'), W * 0.36, H * 0.28);
-  // [fix] 桌面放到"当前"下边 (中列第 4 行)
-  if (gameState.table && gameState.table.length > 0) {
-    var tStr = '桌: ';
-    for (var tIdx = 0; tIdx < gameState.table.length && tIdx < 10; tIdx++) {
-      tStr += cardDesc(gameState.table[tIdx]) + " ";
-    }
-    ctx.fillText(tStr, W * 0.36, H * 0.34);
-  }
-  // 列 3 (右)
-  ctx.fillText('底牌公开: ' + (gameState['底牌公开'] ? '是' : '否'), W * 0.68, H * 0.16);
-  ctx.fillText('过牌: ' + (function(){var p=gameState.passedPlayers||[]; return p.length?p.map(function(id){return names[['A','B','C','D','E'].indexOf(id)]||id;}).join(','):'-';})(), W * 0.68, H * 0.22);
-  // [2026-10-21 改] 本字段改为显示【推风目标】而非触发者。
-  //   原实现显示 (推风触发者 || lastEmptiedPlayer) —— 那是"谁出完牌触发的",
-  //   却标成"推风: X", 极易被读成"推给了 X", 2026-10-21 已因此误判三轮。
-  //   现在语义明确: "推风给 X" 的 X 就是 currentPlayer (§9.3 同阵营最近未出完者)。
-  var pwPending = !!(gameState['推风触发者'] || lastEmptiedPlayer);
-  var pwTarget = pwPending
-    ? (currentPlayer ? (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) : '?')
-    : '-';
-  ctx.fillText('推风给: ' + pwTarget, W * 0.68, H * 0.28);
-  ctx.fillText('桌牌: ' + (gameState.table ? gameState.table.length : 0) + ' 张', W * 0.68, H * 0.34);
-
-  // ===== 桌牌牌面 (黄字) =====
-  // [修复] 旧的独立桌面区已删 (改到中列"当前"下边)
-
-  // ===== 人手牌渲染 (humanPlayer 回合) =====
-  // [2026-10-23] 手牌几何提到 draw() 作用域: UI 日志区要据此算「手牌下沿」,
-  //   否则日志只能写死位置, 而布局一改就会压到手牌或按钮。
-  var cardW = 24, cardH = 42, cardGap = 1;
-  var cardY = H * 0.42;
-  var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
-  if (me && me.hand && me.hand.length > 0) {
-    function cardPower(c) {
-      if (c.isBigJoker) return 21;
-      if (c.isSmallJoker) return 20;
-      if (c.rank === 2) return 17;
-      if (c.rank === 3) return 18;
-      if (c.rank === 14) return 16;
-      return c.rank || 0;
-    }
-    var sortedHand = me.hand.slice().sort(function (a, b) { return cardPower(b) - cardPower(a); });
-    handCardHitboxes = [];
-    // [fix] 无条件渲染手牌 (轮到 AI 时也能看到自己的牌)
-    if (sortedHand.length > 0) {
-      var totalW = sortedHand.length * cardW + (sortedHand.length - 1) * cardGap;
-      var startX = (W - totalW) / 2;
-      sortedHand.forEach(function (card, k) {
-        var x = startX + k * (cardW + cardGap);
-        var isSel = selectedCards.indexOf(card.id) >= 0;
-        // [fix] hitbox 仅人类回合注入 (防止 AI 回合误点)
-        if (currentPlayer === humanPlayer && gameState.phase === PHASES.PLAY) {
-          handCardHitboxes.push({ x: x, y: cardY, w: cardW, h: cardH, cardId: card.id });
-        }
-        ctx.fillStyle = isSel ? '#ffd700' : '#1f6f3a';
-        ctx.fillRect(x, cardY, cardW, cardH);
-        ctx.strokeStyle = isSel ? '#c8102e' : '#ffffff';
-        ctx.lineWidth = isSel ? 3 : 1;
-        ctx.strokeRect(x, cardY, cardW, cardH);
-        // rank + suit (一行文字一行花色)
-        // [fix] 大小王无花色 (suit=null), 原先 suitChar[null] || card.suit 会把
-        //   字面量 "null" 画到牌面上。改为显示「王」, 大王红 / 小王黑。
-        var isJoker = !!(card.isBigJoker || card.isSmallJoker);
-        ctx.fillStyle = card.isBigJoker ? '#c8102e'
-                       : (isJoker ? '#000000'
-                          : ((card.suit === 'H' || card.suit === 'D') ? '#c8102e' : '#000000'));
-        ctx.font = 'bold 12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(rankDesc(card), x + cardW / 2, cardY + 16);
-        ctx.font = 'bold 18px sans-serif';
-        ctx.fillText(isJoker ? '王' : (suitChar[card.suit] || card.suit), x + cardW / 2, cardY + 35);
-      });
-      // 已选张数提示
-      if (selectedCards.length > 0) {
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('已选 ' + selectedCards.length + ' 张, 点出牌按钮出牌', W / 2, cardY - 8);
-      }
-    }
-  }
-
-  
-// ===== 按钮: 由 uiButtons() 统一排版并绘制 (需求八) =====
-// 之前这里硬编码出牌/过牌两个按钮并各自判断 phase/currentPlayer, 与阶段闸门
-// 的按钮需求完全脱节 —— 亮A/不亮/反A/不反/下/结算/下一局 全都点不到。
-// 现在: 按钮集合来自 uiButtons()（单一来源）, 这里只负责算坐标 + 画。
-(function drawUiButtons() {
-  var list = uiButtons();
-  btnPlay = null; btnPass = null; btnStage = list;
-  if (!list.length) return;
-
-  var gap = 6, h = 30;
-  // 无 canvas 时用默认视口, 这样**无头测试也能验证命中区**（坐标照样算出来）
-  var vw = W || 844, vh = H || 390;
-  var pad = vw * 0.02;
-  var w = Math.max(56, Math.min(96, (vw - pad * 2 - gap * (list.length - 1)) / list.length));
-  var y = vh * 0.93 - h;
-  var totalW = w * list.length + gap * (list.length - 1);
-  var startX = vw - totalW - pad;
-
-  list.forEach(function (b, i) {
-    var x = startX + i * (w + gap);
-    b.x = x; b.y = y; b.w = w; b.h = h;
-    if (b.id === 'play') btnPlay = b;
-    if (b.id === 'pass') btnPass = b;
+  var out = uiRender.render(ctx || uiRender.noopCtx(), {
+    W: W, H: H,
+    gameState: gameState,
+    currentPlayer: currentPlayer,
+    humanPlayer: humanPlayer,
+    selectedCards: selectedCards,
+    names: names,
+    rankDesc: rankDesc,
+    cardDesc: cardDesc,
+    buttons: uiButtons(),
+    stageHint: _stageHint(),
+    logVisible: uiLogVisible,
+    logHistory: logHistory,
+    toast: uiToast,
+    settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
+    turnDeadline: uiTurnDeadline,
+    turnTotal: uiTurnTotal,
+    phase: gameState.phase
   });
-
-  if (!ctx) return;   // 无 canvas: 只算坐标, 不绘制
-
-  list.forEach(function (b, i) {
-    var x = startX + i * (w + gap);
-    ctx.fillStyle = b.enabled ? '#1e6091' : '#555';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = b.enabled ? '#ffffff' : '#888888';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(b.label, x + w / 2, y + h / 2);
-  });
-
-  // 阶段提示文字: 让真人知道现在轮到哪个阶段、按钮为何不可用
-  if (list.length) {
-    ctx.fillStyle = '#ffd700';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(_stageHint(), pad, y + h / 2);
-  }
-
-  // ===== 提示条 (需求十二) =====
-  // 文案固定为用户指定的「【当前没有可用牌】」, 2 秒后自动消失。
-  if (uiToast && uiToast.text && uiToast.until > Date.now()) {
-    var tw = (typeof ctx.measureText === 'function') ? ctx.measureText(uiToast.text).width : 150;
-    var tx = W / 2 - tw / 2 - 10, ty = H * 0.05;
-    ctx.fillStyle = 'rgba(0,0,0,0.78)';
-    ctx.fillRect(tx, ty, tw + 20, 26);
-    ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(tx, ty, tw + 20, 26);
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(uiToast.text, tx + 10, ty + 13);
-  }
-
-  // ===== 结算画面 (需求十) =====
-  if (gameState.phase === PHASES.GAME_END) _drawSettlement();
-
-  // ===== UI 日志 + 【Log】开关 (需求十一) =====
-  _drawUiLog();
-})();
-
-// ===== 结算画面 (需求十) =====
-// 五人得分表 + 胜负结果。分数**由引擎 calculateScore 给出**, UI 不自己算。
-
-function _stageHint() {
-  var c = gateChoice;
-  var ph = gameState.phase;
-  if (ph === PHASES.GAME_END) return '本局结束';
-  if (ph === PHASES.PLAY) {
-    return currentPlayer === humanPlayer ? '轮到你出牌' : ('等待 ' + pn(currentPlayer) + ' 出牌');
-  }
-  var stage = gateIdx < GATE_PLAN.length ? GATE_PLAN[gateIdx].label : '准备';
-  if (c && !c.eligible) return stage + '（你无相应资格，按【下】继续）';
-  if (c && c.eligible) return stage + '（需你先选择）';
-  return stage;
-}
-
-  // [2026-10-23 移除] UI 层操作日志已按用户要求去掉, 只保留控制台 log。
-  //   原因: 屏幕空间宝贵; 且控制台日志已足够定位问题
-  //   (2026-10-23 19:52 真实对局日志即为纯控制台输出, 成功定位 dpr 猜测错误)。
-  //   历史: 该块曾放在此处, 位置为「手牌下沿 ~ 按钮上沿」, 行数按可用空间算
-  //   (skill game-ui-engine-contract §2.1: 行数×间距×起点三者联动)。
-
-  // ===== 顶部 5 按钮 (选我是哪个 + 剩余张数) =====
-  const meBtnW = 56, meBtnH = 32, meGap = 8;
-  for (var mi = 0; mi < 5; mi++) {
-    var mx = W * 0.04 + mi * (meBtnW + meGap);
-    var my = H * 0.01;
-    var isMe = ['A','B','C','D','E'][mi] === humanPlayer;  // [fix] humanPlayer 存的是 ID 不是中文名
-    var cnt = gameState.players[mi] ? gameState.players[mi].hand.length : '?';
-    ctx.fillStyle = isMe ? '#ffeb3b' : '#666';
-    ctx.fillRect(mx, my, meBtnW, meBtnH);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-    ctx.strokeRect(mx, my, meBtnW, meBtnH);
-    ctx.fillStyle = '#000';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText((isMe ? '★' : '') + names[mi] + ' ' + cnt, mx + meBtnW / 2, my + meBtnH / 2);
-  }
-  btnSelectPlayers = [];
-  for (var mi2 = 0; mi2 < 5; mi2++) {
-    btnSelectPlayers.push({ x: W * 0.04 + mi2 * (meBtnW + meGap), y: H * 0.01, w: meBtnW, h: meBtnH, id: names[mi2] });
-  }
+  btnLog = out.btnLog;
+  btnStage = out.btnStage;
+  handCardHitboxes = out.handHitboxes;
+  btnSelectPlayers = out.seatHitboxes;
 }
 
 // === 首次 draw (启动渲染) ===
 if (ctx) draw();
 
 // === 轮次结束检测 ===
+function _stageHint() {
+  var c = gateChoice;
+  var ph = gameState.phase;
+  if (ph === PHASES.GAME_END) return '本局结束';
+  if (ph === PHASES.PLAY) {
+    return currentPlayer === humanPlayer ? '轮到你出牌' : ('等待 ' + pn(currentPlayer) + ' 行动');
+  }
+  var stage = gateIdx < GATE_PLAN.length ? GATE_PLAN[gateIdx].label : '准备';
+  if (c && !c.eligible) return stage + '（你无相应资格，自动继续）';
+  if (c && c.eligible) return stage + '（需你先选择）';
+  return stage;
+}
 function checkRoundEnd() {
   if (!gameState || !gameState.players) return false;
   var nonEmpty = gameState.players.filter(function (p) { return p.hand.length > 0; });
@@ -1344,6 +1161,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // [测试可及性] draw / cardDesc 原先未导出, 导致无头测试无法捕获单帧渲染内容,
     //   从而无法验证信息边界 (他人手牌是否泄露)。本块已有 typeof module 守卫, 对微信无影响。
     draw: draw, cardDesc: cardDesc,
+    // [2026-10-24 UI 重做] 供无头测试验证新 UI 契约
+    uiHint: uiHint,
+    uiHintCandidates: uiHintCandidates,
+    uiTurnInfo: function () { return { deadline: uiTurnDeadline, total: uiTurnTotal, now: Date.now() }; },
+    uiLayout: function () { return uiRender.layout(W || 844, H || 390); },
+    uiHandLayout: function (n) { return uiRender.handLayout(n, uiRender.layout(W || 844, H || 390)); },
+    uiButtonBoxes: function () { return btnStage || []; },
+    uiLayoutSnapshot: function () { return uiRender.layout(W || 844, H || 390); },
     selectedCards: function () { return selectedCards; },
     handCardHitboxes: function () { return handCardHitboxes; },
     setHumanPlayer: function (p) { humanPlayer = p; },

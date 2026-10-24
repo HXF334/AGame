@@ -1,6 +1,6 @@
 ---
 name: "git-safe-workflow"
-description: "Git 安全工作流——改前检查、差异审查、提交拆分、推送重试上限、tag/reset 回滚"
+description: "Git 安全工作流——改前检查、差异审查、提交拆分、推送只推一次、tag/reset 回滚"
 ---
 
 # Git 安全工作流
@@ -74,28 +74,29 @@ git commit -F MSG.txt
 
 ---
 
-## 4. 推送：区分「可重试」和「不可重试」
+## 4. 推送：只推一次，失败就停
 
 ```bash
 git push origin main
 git push origin <tag>     # tag 要单独推
 ```
 
-**重试上限：最多 2 次尝试**（首次 + 1 次重试）。两次都失败就**停下来**，
+**只推一次**。失败就**立刻停下来**，把提交留在本地，等下一次连同后续提交一起推。
+不重试、不后台再推、不空转——连续失败说明是环境问题，多试只会把提交越压越久。
 把状态留着等下一次一起推。不要空转重试——连续失败说明是环境问题，不是操作问题。
 
-**按错误信息判断**：
+**按错误信息判断性质**（处置都是「停」，区别只在下次推之前要不要先改配置）：
 
 | 错误 | 性质 | 处置 |
 |---|---|---|
-| `Could not connect to server port 443` | 网络 | 可重试 1 次；仍失败则停 |
-| `Recv failure: Connection was reset` | 网络抖动 | 可重试 1 次 |
+| `Could not connect to server port 443` | 网络 | 停，等网络恢复；下次一起推 |
+| `Recv failure: Connection was reset` | 网络抖动 | 停，同上 |
 | `Connection timed out`（**固定时长**，如恒定 21 秒）| TCP 握手就超时 | **调超时参数无效**（`http.lowSpeedLimit` 只管传输阶段，不管握手）；停 |
 | `Permission denied` / `403` | 凭据或权限 | **不可重试**，改凭据 |
 | `non-fast-forward` / `rejected` | 远端有你没有的提交 | **不可重试**，先 `git fetch` 再决定 rebase 还是 merge |
 | `src refspec does not match` | 分支/标签名写错 | 改名字 |
 
-**区分不了就当作不可重试**：停下来的代价（下次多推一次）远小于「在错误的远端状态下
+**区分不了就当作「停」**：停下来的代价
 强行推」。
 
 **推 tag 与推分支是两次独立操作** —— 分支推成功不代表 tag 推成功，反之亦然。
@@ -141,7 +142,7 @@ git tag -l            # 确认 tag 在本地（是否在远端要另外确认）
 - [ ] diff 每一行都能说清为什么改
 - [ ] 一个提交一个主题
 - [ ] 消息用 `-F` 传文件，正文含「为什么 + 怎么验证」
-- [ ] 推送重试不超过 2 次，失败就停
+- [ ] 推送只做一次，失败即停（不重试、不后台再推）
 - [ ] 分支和 tag **分别确认**推上去了（回读 `git log origin/main`）
 - [ ] 做过 `reset --hard` 的话，回退后跑过测试
 - [ ] 有 tag 作为回退锚点

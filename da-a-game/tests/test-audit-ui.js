@@ -1,5 +1,6 @@
 // tests/test-audit-ui.js — 自主审查: game.js 状态同步与信息边界 (§12/§14)
 var fs = require('fs');
+var srcUI = (function () { try { return fs.readFileSync(require('path').join(__dirname, '..', 'ui-render.js'), 'utf8'); } catch (e) { return ''; } })();
 var src = fs.readFileSync('game.js', 'utf8');
 
 var passed = 0, failed = 0;
@@ -29,7 +30,9 @@ section('2. §12 信息边界 (隐藏手牌/底牌不泄露)');
 // draw() 里只能渲染 humanPlayer 的手牌
 var drawIdx = src.indexOf('function draw()');
 var drawEnd = src.indexOf('// === 首次 draw');
-var drawBody = src.substring(drawIdx, drawEnd > 0 ? drawEnd : drawIdx + 6000);
+// [2026-10-24 UI 重做] 渲染层拆到 ui-render.js, 断言要**同时**看两个文件
+// [2026-10-24 UI 重做] 渲染层拆到 ui-render.js -> 断言要**同时**看两个文件
+var drawBody = src.substring(drawIdx, drawEnd > 0 ? drawEnd : drawIdx + 6000) + '\n' + srcUI;
 
 check('2.1 draw 渲染手牌时限定 humanPlayer',
   drawBody.indexOf('p.id === humanPlayer') >= 0, '未按 humanPlayer 过滤');
@@ -51,7 +54,10 @@ check('3.2 doPass 检查 phase === PHASES.PLAY', /function doPass[\s\S]{0,200}?P
 
 // ================= 4. 健壮性 §14 =================
 section('4. §14 健壮性');
-check('4.1 draw 对无 canvas 早退', /function draw\(\)\s*\{[\s\S]{0,120}?if \(!ctx\)/.test(src), '缺 ctx 守卫');
+  // [2026-10-24 UI 重做] 新契约: 无 canvas 时用 **noopCtx 兜底并仍然算几何**(命中区),
+  //   比旧的「直接 return」更强 —— 旧写法无头测试拿不到命中区。
+  check("4.1 draw 对无 canvas 时兜底(noopCtx, 仍算几何)",
+    /noopCtx|if \(!ctx\)/.test(src) && /noopCtx/.test(srcUI), "缺 ctx 兜底");
 check('4.2 runAI 有循环上限保护', /guard\s*[<>=]/.test(src), 'AI 循环无上限');
 check('4.3 AI cardIds 空守卫', src.indexOf('action.cardIds &&') >= 0, '缺 cardIds 守卫');
 check('4.4 相册文本访问已加下标越界守卫', src.indexOf("['A','B','C','D','E'].indexOf") >= 0 || src.indexOf("indexOf(currentPlayer)") >= 0, '玩家名映射无守卫');

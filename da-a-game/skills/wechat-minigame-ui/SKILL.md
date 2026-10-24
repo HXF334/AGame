@@ -190,11 +190,84 @@ function uiButtons() {                 // 唯一入口: 返回 [{id, label, enab
 
 ---
 
-## 8. 行尾：必须 LF，CRLF 会让打包器直接崩,,**微信小游戏的打包器不容忍 CRLF。** 源文件被改成 CRLF 后，真机直接报：,,```,WAGame.js:1 SyntaxError: MiniProgramError,Invalid or unexpected token(env: Windows,mg,2.02.2608080; lib: 3.17.5),```,,**`node --check` 是过的** —— JS 规范允许 CR 当行结束符，所以本地语法检查完全测不出来。,报错位置是打包后的 `WAGame.js:1`，与源文件行号无关，看不出是哪个文件。,,**排查手法**：数行尾分布，CRLF 与裸 LF 必须分清：,,```js,var s = fs.readFileSync(f, 'utf8');,var crlf = 0, lone = 0, lf = 0;,for (var i = 0; i < s.length; i++) {,  var c = s.charCodeAt(i);,  if (c === 13) { if (s.charCodeAt(i + 1) === 10) { crlf++; i++; } else lone++; },  else if (c === 10) lf++;,},console.log(f, { crlf: crlf, lone: lone, lf: lf });   // 期望 crlf=0,```,,**写文件时保持原行尾**：`split(/\r?\n/)` 之后要用**与原文件一致**的分隔符 join。,仓库是 **LF**（已用 `.gitattributes` 的 `eol=lf` 锁定），`join('\r\n')` 会把整个文件改坏。,,**完成判据**：改完的行尾分布与改动前一致；`node --check` 通过**不代表**打包能过 ——,行尾类问题只能靠上面的计数检查 + 真机确认。,
-,## 9. 打包陷阱：项目目录下的所有 .js 都会被打包,,`minigameRoot: "./"` 意味着**项目目录下每一个 .js 都会被打进包里**，,包括你以为是「工具」的 `scripts/`、`tests/`。,,### 9.1 shebang 是语法错误,,```js,#!/usr/bin/env node     // ← 打包后 -> Invalid or unexpected token,```,,`#` 在 JS 里不合法。Node 只允许 CommonJS 入口文件带 shebang，打包器不会帮你剥掉。,,**症状**：真机报 `WAGame.js:1 SyntaxError: MiniProgramError / Invalid or unexpected token`。,**难点**：报错位置是**打包后**的文件第 1 行，跟源文件行号毫无关系 —— 完全看不出是哪个文件。,,**排查手法**（一次扫全项目）：,,```js,function walk(dir, out) {,  fs.readdirSync(dir).forEach(function (n) {,    if (n === 'node_modules' || n === '.git') return;,    var p = path.join(dir, n);,    if (fs.statSync(p).isDirectory()) walk(p, out);,    else if (/\.js$/.test(n)) out.push(p);,  });,  return out;,},walk('.', []).forEach(function (f) {,  if (fs.readFileSync(f, 'utf8').indexOf('#!') === 0) console.log('shebang: ' + f);,});,```,,**修法**：去掉 shebang（用 `node xxx.js` 显式调用），**不要**把它留在项目目录里。,,### 9.2 用 packOptions.ignore 排除非游戏代码,,```json,{ "packOptions": { "ignore": [,  { "type": "folder", "value": "scripts" },,  { "type": "folder", "value": "tests" },] } },```,,**同时也是打包体积与安全**：测试套件、文档、Skill 源码都不该进包。,新加了 `scripts/`、`tests/` 这类目录后，**立刻把 packOptions.ignore 补上**。,,**完成判据**：项目目录下所有 `.js` 都不含 shebang / BOM；,`packOptions.ignore` 覆盖了所有非游戏目录；真机能正常启动。,
-## 7. 收尾自检
+## 7. 打包期崩溃：两类根因，同一个报错
+
+微信小游戏把项目目录下的源文件合成一个 `WAGame.js`。合成失败时真机只报一行：
+
+```
+WAGame.js:1 SyntaxError: MiniProgramError
+Invalid or unexpected token(env: Windows,mg,2.02.2608080; lib: 3.17.5)
+```
+
+**报错位置是打包产物第 1 行，与源文件行号无关**；**`node --check` 过、测试全绿** ——
+本地测不到打包期才发生的事。所以「本地全绿 + 真机崩在第 1 行」只有两类根因：
+
+| 根因 | 判据 | 修法 |
+|---|---|---|
+| **源文件是 CRLF** | 打包器不容忍 CRLF | 行尾改回 LF（§7.1） |
+| **被打进包的 .js 带 shebang** | `#` 在 JS 里不合法，打包器不剥 | 去 shebang，或把该目录排除出包（§7.2） |
+
+### 7.1 源文件必须是 LF
+
+**排查**（CRLF 与裸 LF 必须分清；`crlf`=CRLF 数，`lone`=孤立 CR 数，`lf`=裸 LF 数）：
+
+```js
+var s = fs.readFileSync(f, 'utf8');
+var crlf = 0, lone = 0, lf = 0;
+for (var i = 0; i < s.length; i++) {
+  var c = s.charCodeAt(i);
+  if (c === 13) { if (s.charCodeAt(i + 1) === 10) { crlf++; i++; } else lone++; }
+  else if (c === 10) lf++;
+}
+console.log(f, { crlf: crlf, lone: lone, lf: lf });   // 期望 crlf=0
+```
+
+**写文件时保持原行尾**：`split(/\r?\n/)` 之后要用**与原文件一致**的分隔符 join。
+仓库是 **LF**（`.gitattributes` 的 `eol=lf` 锁定），`join('\r\n')` 会把整个文件改坏。
+
+### 7.2 shebang 与打包范围
+
+`minigameRoot: "./"` 意味着**项目目录下每一个 .js 都会被打进包里**，包括你以为是「工具」的 `scripts/`、`tests/`。
+
+```js
+#!/usr/bin/env node     // ← 打包后 -> Invalid or unexpected token
+```
+
+`#` 在 JS 里不合法。Node 只允许 CommonJS 入口文件带 shebang，打包器不会帮你剥掉 ——
+**同一个报错、同一个位置**，但根因不同。
+
+两条修法（任选）：**去掉 shebang**（用 `node xxx.js` 显式调用），或**把该目录排除出包**：
+
+```json
+{ "packOptions": { "ignore": [
+  { "type": "folder", "value": "scripts" },
+  { "type": "folder", "value": "tests" }
+] } }
+```
+
+**同时也是打包体积与安全**：测试套件、文档、Skill 源码都不该进包。
+新增 `scripts/`、`tests/` 这类目录后，**立刻把 packOptions.ignore 补上**。
+
+### 7.3 提交/打包前跑体检
+
+本仓库已有 `scripts/preflight.js`，把上面的检查（shebang / BOM / CRLF / 非标准字符 / 语法 / packOptions / Markdown 结构）串成一道关：
+
+```powershell
+node scripts/preflight.js            # 全跑
+node scripts/preflight.js --fast     # 只跑静态体检
+```
+
+**不要手写一次性扫描脚本** —— 体检已有实现，重复造只会漏项。
+
+**完成判据**：被打包的 `.js` 全部纯 LF、无 shebang/BOM；`packOptions.ignore` 覆盖所有非游戏目录；
+`node scripts/preflight.js` 退出码 0；**真机能正常启动**。
+
+## 8. 收尾自检
+
 
 - [ ] `node --check` 所有改过的 `.js` 通过
+- [ ] `node scripts/preflight.js` 退出码 0（shebang / BOM / CRLF / packOptions / Markdown 结构全过）
+- [ ] 被打包的 `.js` 全部纯 LF（无 CRLF、无孤立 CR）
 - [ ] 画布逻辑坐标与触摸坐标是**同一套**（CSS 像素或物理像素，二选一并贯穿）
 - [ ] 每个元素都属于某个分区，不越区、不压按钮行
 - [ ] 手牌满（22 张）不溢出，重叠时抬升可见
@@ -204,6 +277,7 @@ function uiButtons() {                 // 唯一入口: 返回 [{id, label, enab
 - [ ] 在**没有 IDE** 的情况下，无头测试能验证命中区（布局与绘制已分离）
 - [ ] **真机点一遍**：每个按钮、每张手牌都点过，确认响应与预期一致
       （无头测试没有「点」这个动作，触达性只有真机能验）
+
 
 ---
 

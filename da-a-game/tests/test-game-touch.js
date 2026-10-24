@@ -50,13 +50,21 @@ var handN = g.gameState().players[0].hand.length;
 
 check('1.1 hitbox 数量 = 实际手牌数 (' + handN + ' 张)', boxes.length === handN,
   'hitboxes=' + boxes.length + ' hand=' + handN);
-check('1.2 所有 hitbox 尺寸一致', boxes.every(function (b) { return b.w === 24 && b.h === 42; }),
+// [2026-10-24 UI 重做] 卡片尺寸随布局自适应 -> 断言**统一性**而不是写死的旧尺寸 24x42
+  // [2026-10-24 UI 重做] 卡片尺寸随布局自适应 -> 断言**统一性**而不是写死的旧尺寸 24x42
+  check("1.2 所有 hitbox 尺寸一致(不写死尺寸)", boxes.every(function (b) { return b.w === boxes[0].w && b.h === boxes[0].h; }),
   JSON.stringify(boxes[0]));
 check('1.3 全部位于画布内', boxes.every(function (b) {
   return b.x >= 0 && b.y >= 0 && b.x + b.w <= W && b.y + b.h <= H;
 }));
-check('1.4 手牌区不落在按钮区 (y < H/2)', boxes.every(function (b) { return b.y < H / 2; }),
-  'y=' + (boxes[0] && boxes[0].y));
+  // [2026-10-24 UI 重做] 按用户参考图: 手牌固定**底部**、按钮在手牌**上方**。
+  //   旧断言 y<H/2 是旧布局(手牌在中间)的代理, 已失效。
+  //   真实不变量: **手牌区与按钮区不相交**(两区上下排列, 但不能重叠)。
+  var btns = (typeof g.uiButtonBoxes === "function") ? g.uiButtonBoxes() : [];
+  var rectHit = function (a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; };
+  var intersect = 0;
+  boxes.forEach(function (b) { btns.forEach(function (t) { if (rectHit(b, t)) intersect++; }); });
+  check("1.4 手牌区与按钮区不重叠", intersect === 0, "intersect=" + intersect + " btnCount=" + btns.length);
 {
   // 风险项: 22 张手牌 * 25px = 549px。若画布宽于比值则右侧溢出,
   // 右端若干张牌会跑出屏幕而点不到。横屏常见分辨率需都能容纳。
@@ -122,11 +130,22 @@ section('2. 命中测试 — 点中心选中对应牌');
 }
 
 {
-  // 点牌与牌之间的 1px 间隙 -> 不应选中任何牌
+  // [2026-10-24 UI 重做] 新设计里命中区**首尾相接铺满整排手牌**, 不再有"牌与牌之间的间隙"
+  //   这个死区 —— 每一像素都恰好属于一张牌。
+  //   所以旧断言的前提消失, 换成真实不变量: **手牌条之外点击不选中任何牌**。
   scenario(cards5);
   boxes = hbs();
-  var gap = boxes[0].x + boxes[0].w + 0.5;      // 第1、2 张之间的空隙
-  tap(gap, boxes[0].y + boxes[0].h / 2);
+  tap(boxes[0].x + boxes[0].w / 2, H - 5);   // 手牌条下方(按钮行之上/之下, 非手牌区)
+  check("2.3 点在手牌条之外 -> 不选中", sel().length === 0, "selected=" + JSON.stringify(sel()));
+  // 附加: 相邻命中区必须首尾相接(无死区、无重叠)
+  var gapCount = 0, overlapCount = 0;
+  for (var gi = 1; gi < boxes.length; gi++) {
+    var d = boxes[gi].x - (boxes[gi - 1].x + boxes[gi - 1].w);
+    if (d > 0.01) gapCount++;
+    if (d < -0.01) overlapCount++;
+  }
+  check("2.3b 相邻命中区首尾相接(无死区无重叠)", gapCount === 0 && overlapCount === 0,
+    "gaps=" + gapCount + " overlaps=" + overlapCount);
   check('2.3 点在手牌间隙 -> 不选中', sel().length === 0, 'selected=' + JSON.stringify(sel()));
 }
 

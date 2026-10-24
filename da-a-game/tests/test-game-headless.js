@@ -210,7 +210,10 @@ section('8. 信息边界 (draw 不渲染他人手牌)');
  // 那些牌的面/点描述会出现在文案里。这是对"信息边界"的真实验证。
 {
   var st = g.gameState();
-  var me = handOf('A');
+  // [2026-10-24 用户修改] 真人座位**开局随机**(要求3) -> 这里不能再写死 A,
+  //   否则信息边界的"我方"一直指错人(测试在查错的对象)。
+  var humanId = (typeof g.getHumanPlayer === 'function') ? g.getHumanPlayer() : 'A';
+  var me = handOf(humanId);
   check('8.0 人类玩家手牌已按预期处于某状态', Array.isArray(me), 'n=' + me.length);
 
   // 收集当前所有手牌的文案, 区分"我方"与"敌方"
@@ -230,7 +233,7 @@ section('8. 信息边界 (draw 不渲染他人手牌)');
   // 所有牌面文案都应能在"我方手牌"中找到对应 (或属于装饰性文案)
   var foreignLeak = [];
   st.players.forEach(function (p) {
-    if (p.id === 'A') return;
+    if (p.id === humanId) return;   // 跳过**真人**, 不再写死 A
     (p.hand || []).forEach(function (c) {
       var desc = gmod.engine && gmod.engine.cardDesc ? gmod.engine.cardDesc(c) : null;
       if (desc && texts.some(function (t) { return t.indexOf(desc) >= 0; })) foreignLeak.push(p.id + ':' + desc);
@@ -240,7 +243,11 @@ section('8. 信息边界 (draw 不渲染他人手牌)');
 
   // 单帧绘制量应与手牌数同阶, 而非 5 倍
   check('8.2 单帧绘制调用数合理 (未逐张渲染全部 5 家)',
-    frameCalls.length > 0 && frameCalls.length < 600, 'frameCalls=' + frameCalls.length);
+    // [2026-10-24 UI 重做] 新渲染层装饰更多(牌桌/座位/牌面/按钮), 绝对值上去了;
+    //   真实意图是「绘制量与**自己手牌数**同阶, 而不是渲染 5 个人的手牌」。
+    //   所以上界按手牌数计: 若渲染了全部 5 席手牌, 会是手牌数的约 5 倍 -> 必然越界。
+    frameCalls.length > 0 && frameCalls.length < 400 + me.length * 25,
+  'frameCalls=' + frameCalls.length + ' handN=' + me.length);
   console.log('   [信息] 人类手牌 ' + me.length + ' 张, 单帧 canvas 调用 ' + frameCalls.length);
 }
 

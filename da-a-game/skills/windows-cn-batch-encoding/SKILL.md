@@ -104,15 +104,10 @@ git push origin main *> $null
 if ($LASTEXITCODE -eq 0) { "PUSH OK" } else { "PUSH FAILED" }
 ```
 
-网络间歇性不可达时按退出码重试，不要按"出现了错误文本"判断：
+网络间歇性不可达时**按退出码**判断成败，不要按「出现了错误文本」判断（判定顺序见上面「判定顺序」）。
 
-```powershell
-for ($i=1; $i -le 4; $i++) {
-    git push origin main *> $null
-    if ($LASTEXITCODE -eq 0) { Write-Host "PUSH OK (第 $i 次)"; break }
-    Write-Host "第 $i 次失败, 10 秒后重试"; Start-Sleep -Seconds 10
-}
-```
+**推多少次由 `git-safe-workflow` §4 决定**（本工作区：**只推一次**，失败就停，提交留本地等下次一起推）。
+不要在这里自己加重试循环。
 
 **修法（一般形式）**：内联只保留"无嵌套引号、无括号、无 `$`、无中文"的调度命令（如 `cd x; node fix.js`）。任何超过一行的逻辑一律写成 `.js` / `.ps1` 文件再跑，**跑完立刻删掉**——遗留的临时脚本会被打包器或 IDE 扫到。
 

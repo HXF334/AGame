@@ -10,7 +10,9 @@
 var CTX_METHODS = [
   'fillRect', 'strokeRect', 'fillText', 'clearRect', 'beginPath', 'closePath',
   'moveTo', 'lineTo', 'arc', 'fill', 'stroke', 'save', 'restore', 'translate',
-  'rotate', 'scale', 'setTransform', 'drawImage', 'measureText', 'createLinearGradient'
+  'rotate', 'scale', 'setTransform', 'drawImage', 'measureText', 'createLinearGradient',
+  // [2026-10-24 UI 重做] 真实 ctx 有而旧 mock 缺的方法(新渲染层用到)
+  'arcTo', 'ellipse', 'rect', 'quadraticCurveTo', 'bezierCurveTo', 'setLineDash', 'clip'
 ];
 
 function makeCtx(calls) {
