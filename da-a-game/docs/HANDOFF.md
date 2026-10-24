@@ -141,17 +141,24 @@ node scripts/sync-skills.js --check  # 只校验是否一致(退出码 1 = 不�
 
 ## 6. Skill 与仓库文档的关系
 
-仓库 `da-a-game/skills/` 下的两份是**唯一来源**，Workshop 里的是**自动生成的镜像**
-（`node scripts/sync-skills.js` 同步）：
+**全部 8 个 Skill 都在仓库里**，仓库是唯一来源；Workshop 里的是**自动生成的镜像**
+（`node scripts/sync-skills.js` 同步，`--check` 只校验）：
 
 | 仓库来源 | Workshop 镜像 | 内容 |
 |---|---|---|
 | `skills/da-a-game-rules/SKILL.md` | `dada-a-game-rules` | 完整规则手册（唯一权威）|
 | `skills/senior-dev-standard/SKILL.md` | `senior-dev-standard` | 代码改动纪律 |
+| `skills/dada-a-game-impl/SKILL.md` | `dada-a-game-impl` | 引擎实现 11 坑 |
+| `skills/game-ui-engine-contract/SKILL.md` | `game-ui-engine-contract` | UI 契约排错 + 无头测试 |
+| `skills/wechat-minigame-ui/SKILL.md` | `wechat-minigame-ui` | Canvas 小游戏界面实现 |
+| `skills/git-safe-workflow/SKILL.md` | `git-safe-workflow` | Git 安全工作流 |
+| `skills/wechat-miniprogram-fix-class/SKILL.md` | `wechat-miniprogram-fix-class` | 小程序错误类 |
+| `skills/windows-cn-batch-encoding/SKILL.md` | `windows-cn-batch-encoding` | 中文 Windows 编码 |
 
-其余 6 个 Skill 只存在于 Workshop（`game-ui-engine-contract` / `dada-a-game-impl` /
-`wechat-minigame-ui` / `git-safe-workflow` / `wechat-miniprogram-fix-class` /
-`windows-cn-batch-encoding`）。
+> **为什么要这样**：`~/.openclaw/agents/work/agent/workshop-skills/` **不在版本控制里** ——
+> 那个目录被清掉，Skill 就没了。仓库才是能版本化、能交接、能回滚的地方。
+> Workshop 里的镜像**由脚本生成，不要手改**（下次同步会覆盖）。
+> 改镜像的方法：**改仓库那份 → 跑 `node scripts/sync-skills.js`**。
 
 ---
 

@@ -74,12 +74,17 @@ da-a-game/
 | `git-safe-workflow` | Workshop | 生效（新建）。Git 安全工作流 |
 | `senior-dev-standard` | Workshop | **镜像**（从仓库提升上来，已含变异测试硬证据、审查看调用点、测试纪律映射表）|
 
-**唯一来源在仓库**，Workshop 里的是自动生成的镜像（`node scripts/sync-skills.js` 同步）：
+**全部 8 个 Skill 的唯一来源都在仓库**，Workshop 里的是自动生成的镜像
+（`node scripts/sync-skills.js` 同步 / `--check` 校验）：
 
 | 仓库唯一来源 | Workshop 镜像 | 说明 |
 |---|---|---|
 | `da-a-game/skills/da-a-game-rules/SKILL.md`（31KB，§1-§15）| `dada-a-game-rules` | **规则唯一权威** |
 | `da-a-game/skills/senior-dev-standard/SKILL.md` | `senior-dev-standard` | 代码改动纪律 |
+| `da-a-game/skills/{dada-a-game-impl, game-ui-engine-contract, wechat-minigame-ui, git-safe-workflow, wechat-miniprogram-fix-class, windows-cn-batch-encoding}/` | 同名 | 其余 6 个 |
+
+> **为什么要这样**：Workshop 目录 `~/.openclaw/agents/work/agent/workshop-skills/` **不在版本控制里** ——
+> 它被清掉，Skill 就没了。仓库是能版本化、能交接、能回滚的地方。
 
 **⚠️ 曾经的坑**：两份规则手册各自漂移（仓库 31KB / Workshop 20KB），反A条款的
 「花色是否须与主A相同」在两份里不一致 —— 仓库 §4.4 写明「任意花色都可以」，

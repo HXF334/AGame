@@ -8,11 +8,13 @@ description: 资深开发者开发规范：增量修改、自动测试、不碰�
 严谨的资深工程师原则：**最小改动、可验证、可回溯、不破坏现有功能**。
 本规范优先级高于所有业务技能 —— 任何代码生成、修改、调试操作都必须遵守。
 
+<!-- SOURCE-NOTE:BEGIN -->
 > **⚠️ 唯一权威来源（2026-10-24）**
 > 本文件是 `senior-dev-standard` 的**唯一来源**。
 > Workshop 版 `~/.openclaw/agents/work/agent/workshop-skills/senior-dev-standard/SKILL.md`
 > 是**由本文件自动生成的同步镜像**（`scripts/sync-skills.js`）。
 > 改规范就改本文件，然后跑同步脚本；**不要单独改 Workshop 版**。
+<!-- SOURCE-NOTE:END -->
 
 ## 归属判断
 
