@@ -190,6 +190,7 @@ function uiButtons() {                 // 唯一入口: 返回 [{id, label, enab
 
 ---
 
+## 8. 行尾：必须 LF，CRLF 会让打包器直接崩,,**微信小游戏的打包器不容忍 CRLF。** 源文件被改成 CRLF 后，真机直接报：,,```,WAGame.js:1 SyntaxError: MiniProgramError,Invalid or unexpected token(env: Windows,mg,2.02.2608080; lib: 3.17.5),```,,**`node --check` 是过的** —— JS 规范允许 CR 当行结束符，所以本地语法检查完全测不出来。,报错位置是打包后的 `WAGame.js:1`，与源文件行号无关，看不出是哪个文件。,,**排查手法**：数行尾分布，CRLF 与裸 LF 必须分清：,,```js,var s = fs.readFileSync(f, 'utf8');,var crlf = 0, lone = 0, lf = 0;,for (var i = 0; i < s.length; i++) {,  var c = s.charCodeAt(i);,  if (c === 13) { if (s.charCodeAt(i + 1) === 10) { crlf++; i++; } else lone++; },  else if (c === 10) lf++;,},console.log(f, { crlf: crlf, lone: lone, lf: lf });   // 期望 crlf=0,```,,**写文件时保持原行尾**：`split(/\r?\n/)` 之后要用**与原文件一致**的分隔符 join。,仓库是 **LF**（已用 `.gitattributes` 的 `eol=lf` 锁定），`join('\r\n')` 会把整个文件改坏。,,**完成判据**：改完的行尾分布与改动前一致；`node --check` 通过**不代表**打包能过 ——,行尾类问题只能靠上面的计数检查 + 真机确认。,
 ## 7. 收尾自检
 
 - [ ] `node --check` 所有改过的 `.js` 通过

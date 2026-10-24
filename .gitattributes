@@ -1,0 +1,9 @@
+# 微信小游戏打包器不容忍 CRLF —— 一律用 LF。
+# [2026-10-24] 我曾用 join("\r\n") 重写 game.js, 把纯 LF 变成纯 CRLF,
+#   结果真机报 "WAGame.js:1 SyntaxError: Invalid or unexpected token"（打包器挂了）。
+#   node --check 是过的 —— JS 允许 CR 当行结束符, 但打包器不认。
+* text=auto eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
