@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // scripts/sync-skills.js — 仓库 -> Workshop 同步（仓库是唯一来源）
 //
 // [方向] 仓库 `da-a-game/skills/<name>/SKILL.md` = **唯一来源**。

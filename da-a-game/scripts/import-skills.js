@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // scripts/import-skills.js — 一次性: 把只在 Workshop 存在的 Skill 复制进仓库
 //
 // [为什么] `~/.openclaw/agents/work/agent/workshop-skills/` **不在版本控制里**。
