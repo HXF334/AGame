@@ -36,7 +36,11 @@ section('2. 阶段拆分与自动推进');
 // [2026-10-24 用户修改] 真人座位**随机**, 未必手里有 A;
 //   没有 A 时按需求 4: AI 亮A -> 自动推进到 PLAY(不再停在 LIANG_A)。
 //   本节要测「真人做亮A决策」, 所以换个座位重开直到真人手里有 A(消除随机性)。
-for (var _try = 0; _try < 40 && !(g.gateInfo() && g.gateInfo().choice); _try++) {
+//   注意退出条件必须是 kind==='LIANG_A': 只是「有 choice」不够 ——
+//   真人没 A 时 AI 会亮A, 闸门可能停在**反A**决策上, 那时 phase 不是 LIANG_A。
+for (var _try = 0; _try < 60; _try++) {
+  var _gi = g.gateInfo();
+  if (_gi && _gi.choice && _gi.choice.kind === 'LIANG_A') break;
   g.newGame();
 }
 var gi = g.gateInfo();
@@ -194,7 +198,14 @@ g.newGame();
 // [2026-10-24 用户修改] 新局重置真人座位(随机), 仍在 A~E
 check('9.1 新局重置后真人座位合法', ['A','B','C','D','E'].indexOf(g.getHumanPlayer()) >= 0, g.getHumanPlayer());
 check('9.2 选牌已清空', g.selectedCards().length === 0, 'sel=' + g.selectedCards().length);
-check('9.3 回到发牌阶段', g.gameState().phase === 'LIANG_A', g.gameState().phase);
+// [2026-10-24] 各阶段**自动推进**: 真人手里有 A -> 停在 LIANG_A 等真人决策;
+//   没有 A -> AI 依次亮A -> 继续推进到后续阶段。所以「发牌阶段」**不是唯一落点**,
+//   断言固定 phase 就会随机翻车(这正是 9.3 flaky 的原因)。
+//   真实不变量: **新局重新发牌(阶段链从头开始)**, 且不是上一局的残留。
+var log9 = g.logHistory().join('\n');
+check('9.3 新局重新发牌(阶段链从头开始, 非上一局残留)',
+  log9.indexOf('发牌完成') >= 0 && g.gameState().phase !== 'GAME_END',
+  'phase=' + g.gameState().phase);
 check('9.4 日志已重置并重新记录', g.logHistory().length > 0 && g.logHistory()[0].indexOf('对局初始化') >= 0,
   g.logHistory()[0]);
 // [fix] 原断言漏算了**底牌**: 5 人各 21 张 = 105, 另有 3 张底牌才凑齐 108。
