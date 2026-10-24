@@ -1,6 +1,6 @@
 # 内蒙古打大A · 项目状态报告
 
-**更新时间**：2026-10-24 01:20 (Asia/Shanghai) · 版本 **v0.10.0**
+**更新时间**：2026-10-24 11:15 (Asia/Shanghai) · 版本 **v0.11.0**
 **项目路径**：`C:\Users\MyFirstAI\.openclaw\workspace-work\AGame\da-a-game\`
 **入口文档**：`docs/VERSION.md`（最准）· 交接须知：`docs/HANDOFF.md`
 
@@ -33,11 +33,23 @@ da-a-game/
 
 ## 3. v0.10.0 交付内容
 
+## 2.5 v0.11.0 变更（2026-10-24 晚）
+
+| # | 要求 | 落点 |
+|---|---|---|
+| 1 | 反A 两张A **不得与主A同花色** | 引擎 `handleFanA` + UI `canFanA` + 规则文 §4.4 |
+| 2 | 亮双大A **默认 1V4暗打** | 去掉 `doubleA===true` 锁明打那支 → 进 IDENTITY_CHOICE 选明/暗；规则文 §4.5 |
+| 3 | 真人座位**开局随机** | `_randomSeat()`，每局重掷 |
+| 4 | **删除【下】**，自动推进 | `gateAutoAdvance` + 新增 `_aiLiangARound()`（原先 AI 没有亮A 逻辑）|
+
+**验证**：9 个直接受影响的套件连跑 3 次 0 fail（随机座位会让测试天然 flaky，已消除）。
+
+
 | 需求 | 落地 |
 |---|---|
-| 二、真人默认丁位 | `DEFAULT_HUMAN='D'`（NAMES_MAP: D=丁），每局重置 |
+| 二、真人座位 | **开局随机** A~E，每局重掷；顶部 5 按钮可切 |
 | 三、阶段按钮 | 亮A·不亮 · 反A·不反 · 公开身份·隐藏身份 |
-| 四、阶段拆分 +【下】 | 6 档闸门；从发牌到出牌**点 4 次**；有待决策时【下】拒绝推进 |
+| 四、阶段拆分 | 6 档闸门，**自动推进**（【下】按钮已删）；需要真人决策处停下等真人点 |
 | 五/六/七、资格由引擎判定 | `canLiangA` / `canFanA` / `canChooseIdentity` / `identityChooser`（判据从既有 handler 提取）|
 | 八、统一按钮模型 | `uiButtons()` 单一来源；`uiButtonAt()` / `uiClick()` 按 id 分发 |
 | 十、结算画面 | 胜负 + 原因 + **五人得分表**（分数由引擎 `calculateScore` 给）|
@@ -106,8 +118,8 @@ Workshop 版只写「持有同花色两张A」，实现方照着不够全的那�
 ## 7. Git
 
 ```
-main    6b958b1  docs: v0.10.0 版本冻结
+main    f5f252c  feat!: v0.11.0 4 条新要求
 tag     v0.10.0 -> 6b958b1      v0.9.0 -> e115ac3
 ```
 
-回退：`git reset --hard v0.9.0`（界面重构前）/ `git reset --hard v0.10.0`。
+回退：`git reset --hard v0.9.0`（界面重构前）/ `v0.10.0`（v0.11.0 之前）。

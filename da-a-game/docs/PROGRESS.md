@@ -212,3 +212,33 @@ doc  KNOWN_ISSUES.md 更新至 B30
 - 修 _runall.js 区间参数 off-by-one（1-based 闭区间传 0 → files[-1]）
 
 ---
+
+
+---
+
+## 2026-10-24 晚 · v0.11.0 规则修正 + 交互改造
+
+### 规则修正
+
+1. **反A 的两张同花色A 不能与主A相同** —— 引擎 `handleFanA` 加校验，
+   UI `canFanA` 跳过主A花色，规则文 §4.4 改写（原「任意花色都可以」是反的）
+2. **亮双大A 默认 1V4暗打** —— 去掉 `主A.doubleA===true` 直接锁 1V4明打那支，
+   双大A 改走 IDENTITY_CHOICE 选明/暗；反A成功后自动 1V4明打不变；规则文 §4.5 改写
+
+### 其他修改
+
+3. **真人座位开局随机** —— `_randomSeat()` 取代固定丁位，每局重掷
+4. **删除【下】按钮**，各阶段自动推进 —— `gateNext`→`gateAutoAdvance`；
+   三个决策函数决策完自动续跑；**新增 `_aiLiangARound()`**（原先 AI 根本没有亮A 逻辑）
+
+### 顺带挖出的 2 个测试自身 bug
+
+1. `test-game-headless.js` 的 `human()` 写死 `'D'`（丁位时代遗留）→ 随机座位后
+   测试以为真人是 D、实际是 A → 走 `runAI()` 但轮次属真人 → 永不推进（steps=900）
+2. `doPlay()` 不接参数（用 `selectedCards`），测试传的数组一直被忽略
+
+### 验证
+
+9 个直接受影响的套件连跑 3 次 0 fail（随机座位会让测试天然 flaky，已消除）
+
+---

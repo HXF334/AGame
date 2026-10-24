@@ -143,7 +143,9 @@ function uiButtons() {                 // 唯一入口: 返回 [{id, label, enab
       out.push({ id: 'liangA',   label: '亮A', enabled: !!gateChoice.eligible });
       out.push({ id: 'noLiangA', label: '不亮', enabled: !!gateChoice.eligible });
     }
-    out.push({ id: 'next', label: '下', enabled: !(gateChoice && gateChoice.eligible) });
+    // [2026-10-24 用户要求] **不提供【下】**: 各阶段自动判断能否进入下一阶段。
+    //   需要真人决策时**停下等真人点**, 决策完自动续跑(gateAutoAdvance)。
+    //   若保留「跳过」按钮且在有待决策时可用, 等于给了一条绕过玩家决策的路径。
   }
   if (phase === PLAY) {
     out.push({ id: 'play', label: '出牌', enabled: currentPlayer === humanPlayer });
@@ -156,7 +158,7 @@ function uiButtons() {                 // 唯一入口: 返回 [{id, label, enab
 **要点**：
 - **资格不具备时按钮仍然显示，但 `enabled=false`** —— 玩家需要知道「有这个操作但我不符合条件」，
   直接不显示会让玩家以为自己漏看了什么。
-- **「跳过后续操作」的按钮，在有待决策时必须禁用**。让【下】在需要亮A/反A选择时仍然可用，
+- **不要提供「跳过后续阶段」的按钮**。让「跳过」在需要亮A/反A选择时仍然可用，
   等于给了一条绕过玩家决策的路径。
 - **每一档状态的「进入该状态后要做的事」收进统一入口函数**，所有能触发状态转换的地方都调它。
   分散在多个入口的补丁逻辑必然漏一处（漏掉的那处会表现为「某个阶段按钮全灰 / AI 不出手」）。
