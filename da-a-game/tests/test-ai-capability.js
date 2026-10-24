@@ -150,7 +150,7 @@ section('5. 起手省大牌');
   var st = mkState([], hand);
   var act = chooseAction(st, 'A');
   var opened = hand.filter(function (c) { return c.id === (act.cardIds || [])[0]; })[0];
-  check('5.1 起手不出 2/3/A -> ��安全牌', opened && opened.rank >= 5 && opened.rank <= 13,
+  check('5.1 起手不出 2/3/A -> 是安全牌', opened && opened.rank >= 5 && opened.rank <= 13,
     'first=' + (opened ? opened.suit + opened.rank : 'none'));
 }
 

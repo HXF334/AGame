@@ -17,13 +17,11 @@ npm-debug.log*
 
 # 审查用临时脚本 (一次性, 不入库)
 tests/_*.js
-# \u56de\u5f52\u811a\u672c\u4ea7\u7269
 _reg.txt
 
-# ѹ�����в���(tools/stress-pushwind.js ÿ���ܶ�����д)
+# 压测产物 (tools/stress-pushwind.js 生成的结果文件)
 da-a-game/tools/stress_result.txt
 
-# edit \u5de5\u5177\u81ea\u52a8\u751f\u6210\u7684\u5907\u4efd\u6587\u4ef6
+# edit 工具自动生成的备份文件
 *_OLD
 *_OLD[0-9]*
-
