@@ -65,16 +65,26 @@ da-a-game/
 
 | Skill | 位置 | 状态 |
 |---|---|---|
-| `dada-a-game-rules` | Workshop | 生效。**与仓库副本分叉**（见下）|
+| `dada-a-game-rules` | Workshop | **镜像**（自动生成，勿手改）|
 | `dada-a-game-impl` | Workshop | 生效。11 个引擎实现踩坑 + 验证清单 |
 | `game-ui-engine-contract` | Workshop | 生效。UI 契约排错 + 无头测试 + 触摸映射 |
 | `wechat-miniprogram-fix-class` | Workshop | 生效。小程序错误类 |
 | `windows-cn-batch-encoding` | Workshop | 生效。中文 Windows 编码 |
-| `da-a-game-rules`（仓库副本）| `da-a-game/skills/` | **未被 agent 加载**，内容更全（28KB，含 §3 阶段状态机 / §12 AI行动 / §13 必测用例 / §14 完成标准 / §15 汇报）|
-| `senior-dev-standard` | `da-a-game/skills/` | **未被 agent 加载**。含变异测试硬证据、审查看调用点等重要规约 |
+| `wechat-minigame-ui` | Workshop | 生效（新建）。Canvas 小游戏界面实现 |
+| `git-safe-workflow` | Workshop | 生效（新建）。Git 安全工作流 |
+| `senior-dev-standard` | Workshop | **镜像**（从仓库提升上来，已含变异测试硬证据、审查看调用点、测试纪律映射表）|
 
-**⚠️ 规则手册两份副本编号与措辞都不同**（Workshop §1-§11 / 仓库 §1-§15），
-改规则前先确认看的是哪一份。
+**唯一来源在仓库**，Workshop 里的是自动生成的镜像（`node scripts/sync-skills.js` 同步）：
+
+| 仓库唯一来源 | Workshop 镜像 | 说明 |
+|---|---|---|
+| `da-a-game/skills/da-a-game-rules/SKILL.md`（31KB，§1-§15）| `dada-a-game-rules` | **规则唯一权威** |
+| `da-a-game/skills/senior-dev-standard/SKILL.md` | `senior-dev-standard` | 代码改动纪律 |
+
+**⚠️ 曾经的坑**：两份规则手册各自漂移（仓库 31KB / Workshop 20KB），反A条款的
+「花色是否须与主A相同」在两份里不一致 —— 仓库 §4.4 写明「任意花色都可以」，
+Workshop 版只写「持有同花色两张A」，实现方照着不够全的那份写 →
+用户实测报「我有双大A，提示我没有反A资格」。**已改为仓库=来源 + 自动同步。**
 
 ---
 

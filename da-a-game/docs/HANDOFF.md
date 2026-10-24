@@ -113,14 +113,22 @@ node tests/test-ui-phase-gate.js   # 单个
 
 ---
 
-## 5. ⚠️ 规则手册有两份副本，已经分叉
+## 5. ⚠️ 规则手册：仓库版是唯一来源，Workshop 版是自动生成的镜像
 
-| 副本 | 位置 | 章节结构 |
+| 角色 | 位置 | 说明 |
 |---|---|---|
-| **Workshop**（**被 agent 加载的那份**） | `~/.openclaw/agents/work/agent/workshop-skills/dada-a-game-rules/` | §1 游戏概览 … §11 规则空白处理流程 |
-| 仓库副本（**更全**，但未被加载） | `da-a-game/skills/da-a-game-rules/` | §1 核心职责 … §15 汇报，含 §3 阶段状态机 / §12 AI行动与信息边界 / §13 必测用例 / §14 完成标准 |
+| **唯一权威来源** | `da-a-game/skills/da-a-game-rules/SKILL.md` | **完整版**（§1 核心职责 … §15 汇报，含 §3 每局阶段状态机 / §12 AI行动与信息边界 / §13 必测用例 / §14 开发完成标准）。**要改规则就改这里** |
+| 自动生成的镜像 | `~/.openclaw/agents/work/agent/workshop-skills/dada-a-game-rules/SKILL.md` | 供 agent 加载。**由 `scripts/sync-skills.js` 生成，勿手改**（下次同步会覆盖）|
 
-两者**不是同一份文件的两个副本，而是两套编号、两套措辞**。改规则前**先确认看的是哪一份**。
+```bash
+node scripts/sync-skills.js          # 同步
+node scripts/sync-skills.js --check  # 只校验是否一致(退出码 1 = 不一致)
+```
+
+**为什么曾经分叉**：两份各自演化，Workshop 版少了 §3/§12-§15。直接后果：反A条款的
+「花色是否须与主A相同」两份不一致（仓库 §4.4 写明「任意花色都可以」，Workshop 版只写
+「持有同花色两张A」），实现方照着不够全的那份写 → 用户实测报「我有双大A，提示我没有反A资格」。
+→ **判据要逐条对唯一来源，不能对「看起来对」的感觉。**
 
 ---
 
@@ -129,7 +137,21 @@ node tests/test-ui-phase-gate.js   # 单个
 - 版本 **v0.10.0**，55 个套件全绿
 - 需求二~十三全部落地，**已由用户在微信开发者工具真机确认**
 - 未修 Bug：**0**
-- 未闭环：像素级真机表现、`senior-dev-standard` 未进 Workshop（见 `docs/VERSION.md` 遗留清单）
+- 未闭环：像素级真机表现（见 `docs/VERSION.md` 遗留清单）
+
+## 6. Skill 与仓库文档的关系
+
+仓库 `da-a-game/skills/` 下的两份是**唯一来源**，Workshop 里的是**自动生成的镜像**
+（`node scripts/sync-skills.js` 同步）：
+
+| 仓库来源 | Workshop 镜像 | 内容 |
+|---|---|---|
+| `skills/da-a-game-rules/SKILL.md` | `dada-a-game-rules` | 完整规则手册（唯一权威）|
+| `skills/senior-dev-standard/SKILL.md` | `senior-dev-standard` | 代码改动纪律 |
+
+其余 6 个 Skill 只存在于 Workshop（`game-ui-engine-contract` / `dada-a-game-impl` /
+`wechat-minigame-ui` / `git-safe-workflow` / `wechat-miniprogram-fix-class` /
+`windows-cn-batch-encoding`）。
 
 ---
 
