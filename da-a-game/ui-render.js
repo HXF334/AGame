@@ -29,24 +29,29 @@ function noopCtx() {
   for (var i = 0; i < M.length; i++) c[M[i]] = function () {};
   return c;
 }
+// ===== 布局常量(全部相对比例, 适配横屏) =====
 function layout(W, H) {
   var vw = W || 844, vh = H || 390;
   return {
     vw: vw, vh: vh,
     top: { h: vh * 0.115 },
     table: { cx: vw * 0.5, cy: vh * 0.30, rx: vw * 0.415, ry: vh * 0.185 },
-    // 4 个 AI 分布在牌桌左右（真人信息在顶栏, 不占桌面）
-    seats: {
-      A: { x: vw * 0.105, y: vh * 0.205, side: 'L' },
-      B: { x: vw * 0.105, y: vh * 0.400, side: 'L' },
-      C: { x: vw * 0.895, y: vh * 0.205, side: 'R' },
-      D: { x: vw * 0.895, y: vh * 0.400, side: 'R' },
-      E: { x: vw * 0.895, y: vh * 0.590, side: 'R' }
-    },
+    // [2026-10-24] **4 个固定槽位**(2 左 2 右)。
+    //   旧做法按 ID 固定槽位, 真人被排除后 AI 填自己的 ID 槽 -> 出现「右 3 左 1」。
+    //   现在: 真人以外的 4 人**按 ID 顺序**填这 4 个槽 -> 永远 2 左 2 右。
+    seats: [
+      { x: vw * 0.100, y: vh * 0.205, side: 'L' },
+      { x: vw * 0.100, y: vh * 0.400, side: 'L' },
+      { x: vw * 0.900, y: vh * 0.205, side: 'R' },
+      { x: vw * 0.900, y: vh * 0.400, side: 'R' }
+    ],
     center: { x: vw * 0.5, y: vh * 0.285 },
     turn: { x: vw * 0.5, y: vh * 0.505 },
     btn: { y: vh * 0.555, h: vh * 0.105 },
-    hand: { y: vh * 0.735, maxW: vw * 0.90, cardH: vh * 0.215, ratio: 0.64 }
+    // [2026-10-24] 手牌区收窄到 0.80, 左侧给真人头像+牌数让位
+    hand: { y: vh * 0.735, maxW: vw * 0.80, cardH: vh * 0.215, ratio: 0.64 },
+    // [2026-10-24] 真人头像(手牌左侧)
+    me: { x: vw * 0.055, r: vh * 0.052 }
   };
 }
 
@@ -187,73 +192,105 @@ function drawTopBar(ctx, st, m, btnLog) {
 
   // 右: 底牌公开 + Log 按钮
   text(ctx, '底牌' + (g['底牌公开'] ? '公开' : '隐藏'), m.vw * 0.975, y0, fs, '#c9c9c9', 'right', false);
-  if (btnLog) {
-    ctx.fillStyle = st.logVisible ? '#c8102e' : '#1e6091';
-    rr(ctx, btnLog.x, btnLog.y, btnLog.w, btnLog.h, 6); ctx.fill();
-    ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 1.5;
-    rr(ctx, btnLog.x, btnLog.y, btnLog.w, btnLog.h, 6); ctx.stroke();
-    text(ctx, 'Log', btnLog.x + btnLog.w / 2, btnLog.y + btnLog.h / 2, Math.max(10, Math.round(m.vh * 0.033)), '#ffffff', 'center', true);
-  }
+  // [2026-10-24 用户要求] **删掉 Log 按钮** —— 它压住了微信右上角的胶囊按钮。
+  //   logHistory 仍然在记(控制台可看), 只是不再上屏。
 }
 
 // ===== 玩家座位 =====
+// 玩家座位: 真人以外的 4 人按 ID 顺序填 4 个固定槽位(2 左 2 右)
+// [2026-10-24] 返回 seatMap(playerId -> 槽位), 供「各家出牌显示在自己前方」用
 function drawSeats(ctx, st, m) {
   var g = st.gameState;
   var r = Math.round(m.vh * 0.052);
   var camps = (g['主方'] || []);
   var passed = g.passedPlayers || [];
-  var out = [];
-  SEAT_IDS.forEach(function (pid) {
-    if (pid === st.humanPlayer) return;         // 真人信息在顶栏
-    var pos = m.seats[pid];
-    if (!pos) return;
+  var scores = st.scores || {};
+  var out = [], seatMap = {};
+  var others = SEAT_IDS.filter(function (id) { return id !== st.humanPlayer; });
+  for (var oi = 0; oi < others.length && oi < m.seats.length; oi++) {
+    var pid = others[oi];
+    var pos = m.seats[oi];
+    seatMap[pid] = pos;
     var p = g.players.filter(function (x) { return x.id === pid; })[0];
     var isCur = st.currentPlayer === pid;
     var isPassed = passed.indexOf(pid) >= 0;
     var isOut = p && p.hand && p.hand.length === 0;
-    var scale = isCur ? 1.14 : 1;
-    var rr_ = Math.round(r * scale);
+    var rr_ = Math.round(r * (isCur ? 1.14 : 1));
     var cx = pos.x, cy = pos.y;
 
-    // 头像底盘
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    circle(ctx, cx + 2, cy + 3, rr_ + 3); ctx.fill();
-    ctx.fillStyle = SEAT_COLOR[SEAT_IDS.indexOf(pid)] || '#666';
-    circle(ctx, cx, cy, rr_); ctx.fill();
-    ctx.strokeStyle = isCur ? '#ffd700' : 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = isCur ? Math.max(3, m.vh * 0.009) : 1.5;
-    circle(ctx, cx, cy, rr_); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  circle(ctx, cx + 2, cy + 3, rr_ + 3); ctx.fill();
+  ctx.fillStyle = SEAT_COLOR[SEAT_IDS.indexOf(pid)] || '#666';
+  circle(ctx, cx, cy, rr_); ctx.fill();
+  ctx.strokeStyle = isCur ? '#ffd700' : 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = isCur ? Math.max(3, m.vh * 0.009) : 1.5;
+  circle(ctx, cx, cy, rr_); ctx.stroke();
 
-    // 名字
-    var nm = st.names[SEAT_IDS.indexOf(pid)];
-    var tx = pos.side === 'L' ? cx + rr_ + 8 : cx - rr_ - 8;
-    var ta = pos.side === 'L' ? 'left' : 'right';
-    text(ctx, nm, tx, cy - rr_ * 0.45, Math.max(10, Math.round(m.vh * 0.036)), isCur ? '#ffd700' : '#ffffff', ta, isCur);
+  var nm = st.names[SEAT_IDS.indexOf(pid)];
+  var tx = pos.side === 'L' ? cx + rr_ + 8 : cx - rr_ - 8;
+  var ta = pos.side === 'L' ? 'left' : 'right';
+  text(ctx, nm, tx, cy - rr_ * 0.45, Math.max(10, Math.round(m.vh * 0.036)), isCur ? '#ffd700' : '#ffffff', ta, isCur);
 
-    // 剩余牌数徽章
-    var cnt = p && p.hand ? p.hand.length : 0;
-    var bw = Math.round(r * 0.95), bh = Math.round(r * 0.62);
-    var bx = cx + rr_ + 4, by = cy + rr_ * 0.35;
-    if (pos.side === 'R') { bx = cx - rr_ - 4 - bw; }
-    ctx.fillStyle = isOut ? '#555' : '#2f6fb5';
-    rr(ctx, bx, by, bw, bh, 4); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
-    rr(ctx, bx, by, bw, bh, 4); ctx.stroke();
-    text(ctx, String(cnt), bx + bw / 2, by + bh / 2, Math.max(9, Math.round(m.vh * 0.030)), '#ffffff', 'center', true);
+  var cnt = p && p.hand ? p.hand.length : 0;
+  var bw = Math.round(r * 0.95), bh = Math.round(r * 0.62);
+  var bx = cx + rr_ + 4, by = cy + rr_ * 0.35;
+  if (pos.side === 'R') bx = cx - rr_ - 4 - bw;
+  ctx.fillStyle = isOut ? '#555' : '#2f6fb5';
+  rr(ctx, bx, by, bw, bh, 4); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+  rr(ctx, bx, by, bw, bh, 4); ctx.stroke();
+  text(ctx, String(cnt), bx + bw / 2, by + bh / 2, Math.max(9, Math.round(m.vh * 0.030)), '#ffffff', 'center', true);
 
-    // 状态: 已过牌 / 已出完
-    var stTxt = isOut ? '已出完' : (isPassed ? '不出' : '');
-    if (stTxt) {
-      text(ctx, stTxt, tx, cy + rr_ * 0.85, Math.max(9, Math.round(m.vh * 0.030)),
-        isOut ? '#9a9a9a' : '#cccccc', ta, false);
-    }
-    // 阵营(已确定且允许公开)
-    if (camps.indexOf(pid) >= 0) {
-      text(ctx, '主方', tx, cy + rr_ * 1.5, Math.max(9, Math.round(m.vh * 0.028)), '#ffd98a', ta, false);
-    }
-    out.push({ x: cx - rr_, y: cy - rr_, w: rr_ * 2, h: rr_ * 2, id: pid });
-  });
+  var stTxt = isOut ? '已出完' : (isPassed ? '不出' : '');
+  if (stTxt) {
+    text(ctx, stTxt, tx, cy + rr_ * 0.85, Math.max(9, Math.round(m.vh * 0.030)),
+      isOut ? '#9a9a9a' : '#cccccc', ta, false);
+  }
+  if (camps.indexOf(pid) >= 0) {
+    text(ctx, '主方', tx, cy + rr_ * 1.5, Math.max(9, Math.round(m.vh * 0.028)), '#ffd98a', ta, false);
+  }
+  // [2026-10-24] 头像下方显示**当前积分**
+  drawScore(ctx, st, pid, scores[pid], cx, cy + rr_ + Math.round(m.vh * 0.034));
+  out.push({ x: cx - rr_, y: cy - rr_, w: rr_ * 2, h: rr_ * 2, id: pid });
+  }
+  drawSeatPlays(ctx, st, m, seatMap);
   return out;
+}
+
+// [2026-10-24] 头像下方的积分文字
+function drawScore(ctx, st, pid, delta, x, y) {
+  var v = (delta === undefined || delta === null) ? 0 : delta;
+  var txt = (v > 0 ? '+' : '') + v;
+  var col = v > 0 ? '#7ee08a' : (v < 0 ? '#ff8888' : '#bbbbbb');
+  text(ctx, txt, x, y, Math.max(10, Math.round((st.H || 390) * 0.033)), col, 'center', true);
+}
+
+// [2026-10-24] 每个玩家**最新出牌**显示在**自己前方**(朝牌桌中心)
+//   规则: 只显示**最新**一次出牌(不堆叠); 过牌清自己那格; 轮到我出牌时清全部。
+function drawSeatPlays(ctx, st, m, seatMap) {
+  var plays = st.uiPlays || {};
+  var ids = Object.keys(plays);
+  for (var i = 0; i < ids.length; i++) {
+    var pid = ids[i];
+    var cards = plays[pid];
+    if (!cards || !cards.length) continue;
+    var slot = seatMap[pid];
+    if (!slot) continue;
+    var cw = Math.round(m.vh * 0.058), ch = Math.round(cw * 1.35);
+    var gap = Math.round(cw * 0.14);
+    var n = Math.min(cards.length, 4);
+    var total = n * cw + (n - 1) * gap;
+    var rr_ = Math.round(m.vh * 0.052);
+    var x0 = slot.side === 'L' ? (slot.x + rr_ + 6) : (slot.x - rr_ - 6 - total);
+    var y = slot.y - ch / 2 - m.vh * 0.010;
+    for (var j = 0; j < n; j++) {
+      drawMiniCard(ctx, cards[j], x0 + j * (cw + gap), y, cw, ch, st);
+    }
+    if (cards.length > n) {
+      text(ctx, '+' + (cards.length - n), x0 + total + 4, y + ch / 2,
+        Math.max(8, Math.round(m.vh * 0.026)), '#ffffff', 'left', false);
+    }
+  }
 }
 
 // ===== 中央: 最近出牌 + 过牌提示 =====
@@ -370,14 +407,41 @@ function drawCard(ctx, card, x, y, w, h, isSel, st) {
   var joker = !!(card.isBigJoker || card.isSmallJoker);
   // 左上角点数
   text(ctx, st.rankDesc(card), x + w * 0.22, y + h * 0.14, Math.max(8, Math.round(w * 0.34)), col, 'center', true);
-  // 中央大点数
-  text(ctx, st.rankDesc(card), x + w / 2, y + h * 0.42, Math.max(11, Math.round(w * 0.46)), col, 'center', true);
-  // 花色
+  // [2026-10-24 用户要求] 牌面**只留一层数字**: 去掉中央那层, 上方数字放大
+  text(ctx, st.rankDesc(card), x + w * 0.24, y + h * 0.17, Math.max(11, Math.round(w * 0.46)), col, 'center', true);
   text(ctx, joker ? '王' : (SUIT_CHAR[card.suit] || ''), x + w / 2, y + h * 0.74,
     Math.max(11, Math.round(w * 0.58)), col, 'center', true);
   if (bigA) {
     text(ctx, '大A', x + w / 2, y + h * 0.92, Math.max(7, Math.round(w * 0.22)), '#b8860b', 'center', true);
   }
+}
+
+// ===== 真人头像 + 牌数(手牌左侧) =====
+// [2026-10-24 用户要求] 真人也要有头像和牌数, 放在手牌左侧。
+function drawMeSeat(ctx, st, m) {
+  var g = st.gameState;
+  var me = g.players.filter(function (p) { return p.id === st.humanPlayer; })[0];
+  var cnt = (me && me.hand) ? me.hand.length : 0;
+  var r = Math.round(m.me.r);
+  var cx = m.me.x, cy = m.hand.y + m.hand.cardH * 0.42;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  circle(ctx, cx + 2, cy + 3, r + 3); ctx.fill();
+  ctx.fillStyle = SEAT_COLOR[SEAT_IDS.indexOf(st.humanPlayer)] || '#666';
+  circle(ctx, cx, cy, r); ctx.fill();
+  ctx.strokeStyle = st.currentPlayer === st.humanPlayer ? '#ffd700' : 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = st.currentPlayer === st.humanPlayer ? Math.max(3, m.vh * 0.009) : 1.5;
+  circle(ctx, cx, cy, r); ctx.stroke();
+  text(ctx, st.names[SEAT_IDS.indexOf(st.humanPlayer)], cx, cy - r * 0.30,
+    Math.max(10, Math.round(m.vh * 0.034)), '#ffffff', 'center', true);
+  var bw = Math.round(r * 0.95), bh = Math.round(r * 0.62);
+  var bx = cx - bw / 2, by = cy + r * 0.45;
+  ctx.fillStyle = '#2f6fb5';
+  rr(ctx, bx, by, bw, bh, 4); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
+  rr(ctx, bx, by, bw, bh, 4); ctx.stroke();
+  text(ctx, String(cnt), bx + bw / 2, by + bh / 2, Math.max(9, Math.round(m.vh * 0.030)), '#ffffff', 'center', true);
+  var sc = (st.scores || {})[st.humanPlayer];
+  drawScore(ctx, st, st.humanPlayer, sc, cx, by + bh + Math.round(m.vh * 0.030));
 }
 
 // ===== 回合信息 + 倒计时 =====
@@ -505,10 +569,11 @@ function render(ctx, st) {
   drawCenter(ctx, st, m);
   drawTurnInfo(ctx, st, m);
   var btnBoxes = drawButtons(ctx, st, m, st.buttons || []);
+  drawMeSeat(ctx, st, m);
   var handBoxes = drawHand(ctx, st, m);
   drawToast(ctx, st, m);
   if (st.phase === 'GAME_END') drawSettlement(ctx, st, m);
-  drawLog(ctx, st, m, btnLog);
+  // [2026-10-24] 日志面板已移除(用户要求删掉 Log 按钮)
 
   return { btnLog: btnLog, btnStage: btnBoxes, handHitboxes: handBoxes, seatHitboxes: seatBoxes, layout: m };
 }

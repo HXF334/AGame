@@ -147,24 +147,16 @@ check('6.4 选牌状态被保留', g.selectedCards().length === 1, 'sel=' + g.se
 // ============================================================
 // 7. UI 日志 + 【Log】开关（需求十一）
 // ============================================================
-section('7. UI 日志与 Log 开关');
+// [2026-10-24 用户要求] **删掉 Log 按钮 + 日志面板**
+//   原因: 它压住了微信右上角的胶囊按钮。logHistory 仍在记(控制台可看), 只是不再上屏。
+//   所以原第 7 节(测面板显隐)的前提**已不存在** —— 换成锁住新契约: 画面上不得再有 Log。
+section('7. Log 按钮已移除');
 g.draw();
-var lb = g.btnLog();
-check('7.1 Log 按钮有坐标', !!lb && lb.x !== undefined, JSON.stringify(lb));
-check('7.2 默认隐藏', g.uiLogVisible() === false);
-var n0 = g.logHistory().length;
-g.toggleUiLog();
-check('7.3 切换后显示', g.uiLogVisible() === true);
-check('7.4 切换不影响日志记录', g.logHistory().length >= n0, n0 + '->' + g.logHistory().length);
-var beforeTxt = texts().length;
-g.draw();
-var afterTxt = texts().length;
-check('7.5 打开后画出更多文字(面板内容)', afterTxt > beforeTxt, beforeTxt + '->' + afterTxt);
-g.toggleUiLog();
-check('7.6 可再次隐藏', g.uiLogVisible() === false);
-var b2 = texts().length;
-g.draw();
-check('7.7 隐藏后不再画面板', texts().length - b2 < afterTxt - beforeTxt, 'delta=' + (texts().length - b2));
+var allTxt7 = texts().join('|');
+check('7.1 画面上不再出现 Log 文字', allTxt7.indexOf('Log') < 0, allTxt7.slice(0, 120));
+check('7.2 按钮列表里没有 log', g.uiButtons().map(function (b) { return b.id; }).indexOf('log') < 0,
+  g.uiButtons().map(function (b) { return b.id; }).join(','));
+check('7.3 日志仍然在记录(只是不上屏)', g.logHistory().length > 0, 'n=' + g.logHistory().length);
 
 // ============================================================
 // 8. 结算画面（需求十）

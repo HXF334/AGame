@@ -672,6 +672,32 @@ var btnLog = null;
 // ===== 主渲染 (2026-10-24 交给 ui-render.js) =====
 // 布局/绘制全在 ui-render.js: 纯几何, 可无头测试。
 // **无 canvas 时仍然算几何**(ui-render 内部用 no-op ctx), 这样无头测试能验证命中区。
+// ===== [2026-10-24] 每人最新出牌 / 当前积分 (UI 侧) =====
+var uiPlays = {};
+
+function _uiCardsByIds(ids, st) {
+  var pool = [];
+  (st.table || []).forEach(function (c) { pool.push(c); });
+  (st.discarded || []).forEach(function (c) { pool.push(c); });
+  (st.players || []).forEach(function (p) {
+    (p.hand || []).forEach(function (c) { pool.push(c); });
+    (p['底牌'] || []).forEach(function (c) { pool.push(c); });
+  });
+  var out = [];
+  ids.forEach(function (id) {
+    for (var i = 0; i < pool.length; i++) if (pool[i].id === id) { out.push(pool[i]); return; }
+  });
+  return out;
+}
+
+// [2026-10-24] 当前积分: **只来自引擎** calculateScore, UI 不自己算。
+//   引擎是**终局才结算** -> 对局中途 winner 未定, 积分就是 0(中途还没定)。
+function _uiScores() {
+  try {
+    var res = checkGameEnd(gameState);
+    return calculateScore(gameState, res) || {};
+  } catch (e) { return {}; }
+}
 function draw() {
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
@@ -687,6 +713,8 @@ function draw() {
     logVisible: uiLogVisible,
     logHistory: logHistory,
     toast: uiToast,
+    uiPlays: uiPlays,
+    scores: _uiScores(),
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
     turnDeadline: uiTurnDeadline,
     turnTotal: uiTurnTotal,
@@ -912,6 +940,8 @@ function doPass() {
     gameState = r.state;
     var _roundEnded = _hadTable && (gameState.table || []).length === 0;
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
+    delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
+    delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
@@ -1028,6 +1058,12 @@ function runAI() {
       if (action.choice !== undefined) wrapped.payload.choice = action.choice;
       var r1 = transition(gameState, wrapped);
       if (r1 && r1.ok) {
+        // [2026-10-24] 记录 AI 最新出牌 -> 显示在它自己座位前方
+        if (action.type === ACTIONS.PLAY && action.cardIds && action.cardIds.length) {
+          uiPlays[currentPlayer] = _uiCardsByIds(action.cardIds, gameState);
+        } else if (action.type === ACTIONS.PASS) {
+          delete uiPlays[currentPlayer];
+        }
         // [fix] PASS 动作无 cardIds, 需守卫避免 TypeError
         var wasEmpty = !!(ai && ai.hand && action.cardIds && ai.hand.length === action.cardIds.length);
         // [P0 修复] AI 出牌也可能结束轮次(所有人都过完后最后一人出牌收桌), 同上取证
@@ -1081,6 +1117,10 @@ function advanceCurrentPlayer() {
     var nextPlayer = gameState.players.find(function (p) { return p.id === next; });
     if (nextPlayer && nextPlayer.hand && nextPlayer.hand.length > 0) {
       currentPlayer = next;
+      // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
+      uiTurnTick();
+      // [2026-10-24] 轮到我出牌 -> 清掉各家最新出牌(新一墩开始)
+      if (next === humanPlayer) uiPlays = {};
       // 清空选中
       selectedCards = [];
       // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
@@ -1111,13 +1151,7 @@ if (typeof wx !== 'undefined') {
       }
     }
 
-    // 检查 右上角【Log】开关 (需求十一)
-    if (btnLog && x >= btnLog.x && x <= btnLog.x + btnLog.w && y >= btnLog.y && y <= btnLog.y + btnLog.h) {
-      uiLogVisible = !uiLogVisible;
-      log('UI 日志面板: ' + (uiLogVisible ? '显示' : '隐藏'));
-      draw();
-      return;
-    }
+    // [2026-10-24 用户要求] **删掉【Log】按钮**(它压住了微信胶囊按钮) -> 命中分支一并删除
 
     // 统一按钮模型（需求八）: 可用性已由 uiButtons() 判定, 这里只按 id 分发。
     //   不可用的按钮在 uiButtonAt 里已跳过, 不会被命中。
@@ -1168,6 +1202,8 @@ if (typeof module !== 'undefined' && module.exports) {
     uiLayout: function () { return uiRender.layout(W || 844, H || 390); },
     uiHandLayout: function (n) { return uiRender.handLayout(n, uiRender.layout(W || 844, H || 390)); },
     uiButtonBoxes: function () { return btnStage || []; },
+    uiPlays: function () { return uiPlays; },
+    uiScores: function () { return _uiScores(); },
     uiLayoutSnapshot: function () { return uiRender.layout(W || 844, H || 390); },
     selectedCards: function () { return selectedCards; },
     handCardHitboxes: function () { return handCardHitboxes; },
@@ -1257,4 +1293,5 @@ steps.push('advance:' + (moved ? 'ok' : 'wait'));
     toggleUiLog: function () { uiLogVisible = !uiLogVisible; if (ctx) draw(); return uiLogVisible; },
     btnLog: function () { return btnLog; }
   };
+
 }
