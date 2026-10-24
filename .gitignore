@@ -22,3 +22,8 @@ _reg.txt
 
 # 压测运行产物(tools/stress-pushwind.js 每次跑都会重写)
 da-a-game/tools/stress_result.txt
+
+# edit \u5de5\u5177\u81ea\u52a8\u751f\u6210\u7684\u5907\u4efd\u6587\u4ef6
+*_OLD
+*_OLD[0-9]*
+
