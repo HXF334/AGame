@@ -404,6 +404,12 @@ function handleFanA(state, payload) {
       'FAN_A requires { playerId, suit, cardIds: [id1, id2] }', state);
   }
 
+  // [规则修正 2026-10-24 用户裁定] 反A 的两张同花色 A **不能与主A同花色**。
+  if (state.主A.suit === payload.suit) {
+    return err(ERR.SUIT_MISMATCH,
+      '反A 的两张A不能与主A同花色(' + payload.suit + ')', state);
+  }
+
   const player = state.players.find(function (p) { return p.id === payload.playerId; });
   if (!player) {
     return err(ERR.PLAYER_NOT_FOUND,
@@ -572,8 +578,11 @@ function handleRevealBottom(state, payload) {
 
   if (ownersSet.size === 1) {
     // 1V4：两个大A 同属一人
-    if (反A已发生 || state.mode === '1V4_明打' || (state.主A && state.主A.doubleA === true)) {
-      // §4.5: 反A 成功 / 直接亮双大A 宣告独打 → 1V4 明打已锁定, 直接进 PLAY
+    // [规则修正 2026-10-24 用户裁定] 亮双大A **默认 1V4暗打**:
+    //   也要进 IDENTITY_CHOICE 让玩家选明/暗, 亮明身份才 1V4明打。
+    //   (原来 doubleA===true 直接锁 1V4明打 跳过选择, 与裁定冲突。)
+    //   反A成功后自动 1V4明打 —— 这条不变。
+    if (反A已发生 || state.mode === '1V4_明打') {
       nextPhase = PHASES.PLAY;
       nextMode = '1V4_明打';
     } else {
@@ -799,15 +808,19 @@ function canFanA(state, playerId) {
   }
   var p = _findPlayer(state, playerId);
   if (!p) return { ok: false, reason: "玩家不存在" };
-  // 任意花色都可以, 只要**同一花色**有两张 A。底牌不在 hand 里, 天然不参与。
+  // [规则修正 2026-10-24 用户裁定] 反A 的两张同花色 A **不能与主A同花色**。
+  //   (此前这里写的是"任意花色都可以; 不要求与当前主A花色相同" —— 反了。)
+  //   底牌不在 hand 里, 天然不参与。
+  var mainSuit = state.主A.suit;
   var suits = ["H", "D", "C", "S"];
   for (var i = 0; i < suits.length; i++) {
+    if (suits[i] === mainSuit) continue;   // 不得与主A同花色
     var aces = p.hand.filter(function (c) { return c.suit === suits[i] && c.rank === 14; });
     if (aces.length >= 2) {
-      return { ok: true, reason: "手中有两张" + suits[i] + "A", cards: aces, suit: suits[i] };
+      return { ok: true, reason: "手中有两张" + suits[i] + "A(与主A不同花色)", cards: aces, suit: suits[i] };
     }
   }
-  return { ok: false, reason: "手中没有同一花色的两张A" };
+  return { ok: false, reason: "手中没有与主A(" + mainSuit + ")不同花色的两张A" };
 }
 
 // 身份选择授权人（§4.5）：次方优先；无次方时为主A确立者

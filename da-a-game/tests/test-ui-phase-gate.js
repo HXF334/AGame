@@ -24,14 +24,21 @@ function texts() {
 // 1. 真人默认丁位
 // ============================================================
 section('1. 真人默认丁位');
-check('1.1 默认真人是丁(D)', g.getHumanPlayer() === 'D', g.getHumanPlayer());
-check('1.2 defaultHuman 也是 D', g.defaultHuman() === 'D', g.defaultHuman());
-check('1.3 座位表 D=丁', g.getHumanPlayer() === 'D' && g.logHistory().join('').indexOf('丁(真人)') >= 0);
+// [2026-10-24 用户修改] 真人座位**开局随机**, 不再固定丁位
+check('1.1 真人在 A~E 之间(开局随机)', ['A','B','C','D','E'].indexOf(g.getHumanPlayer()) >= 0, g.getHumanPlayer());
+check('1.2 defaultHuman 与当前真人一致', g.defaultHuman() === g.getHumanPlayer(), g.defaultHuman());
+check('1.3 座位表里标出了真人', g.logHistory().join('').indexOf('(真人)') >= 0, g.getHumanPlayer());
 
 // ============================================================
-// 2. 发牌后阶段拆分 + 【下】推进
+// 2. 发牌后阶段拆分 + 自动推进
 // ============================================================
-section('2. 阶段拆分与【下】推进');
+section('2. 阶段拆分与自动推进');
+// [2026-10-24 用户修改] 真人座位**随机**, 未必手里有 A;
+//   没有 A 时按需求 4: AI 亮A -> 自动推进到 PLAY(不再停在 LIANG_A)。
+//   本节要测「真人做亮A决策」, 所以换个座位重开直到真人手里有 A(消除随机性)。
+for (var _try = 0; _try < 40 && !(g.gateInfo() && g.gateInfo().choice); _try++) {
+  g.newGame();
+}
 var gi = g.gateInfo();
 check('2.1 发牌后停在 LIANG_A', g.gameState().phase === 'LIANG_A', g.gameState().phase);
 check('2.2 闸门共 6 档', gi.total === 6, 'total=' + gi.total);
@@ -40,22 +47,27 @@ check('2.4 有待决策(亮A)', !!gi.choice, JSON.stringify(gi.choice));
 check('2.5 决策类型是亮A', gi.choice && gi.choice.kind === 'LIANG_A', JSON.stringify(gi.choice));
 check('2.6 资格由引擎判定(带 reason)', !!(gi.choice && gi.choice.reason), JSON.stringify(gi.choice));
 
-// 【下】在**有待决策且资格具备**时必须被拒绝
-var blocked = g.gateNext();
+// 自动推进在**有待决策且资格具备**时必须停下(不许跳过真人决策)
+var blocked = g.gateAutoAdvance();
 if (gi.choice && gi.choice.eligible) {
-  check('2.7 有资格时【下】被阻止(不许跳过真人决策)', blocked === false, 'blocked=' + blocked);
+check('2.7 有资格时自动推进被阻止(不许跳过真人决策)', blocked === false, 'blocked=' + blocked);
   check('2.8 阶段未推进', g.gameState().phase === 'LIANG_A', g.gameState().phase);
 } else {
-  check('2.7 无资格时【下】可推进', blocked === true, 'blocked=' + blocked);
+check('2.7b 无资格时自动推进', blocked === true, 'blocked=' + blocked);
 }
 
 // 做完决策后【下】才放行
 if (gi.choice && gi.choice.eligible) {
+  var idxBefore = gi.idx;
   g.humanLiangA(false);
-  check('2.9 决策被消费后 gateChoice 清空', !g.gateInfo().choice, JSON.stringify(g.gateInfo().choice));
+// [2026-10-24 契约变更] 决策后**自动推进**到下一档(可能又出现新决策),
+//   所以 gateChoice 不再是 null, 但档位必须前进。
+check('2.9 决策被消费后已自动推进(档位前进)', g.gateInfo().idx > idxBefore,
+  'before=' + idxBefore + ' now=' + g.gateInfo().idx);
   check('2.10 日志含「不亮A」', logStr().indexOf('不亮A') >= 0);
-  var moved = g.gateNext();
-  check('2.11 决策完成后【下】放行', moved === true, 'moved=' + moved);
+var moved = g.gateAutoAdvance();
+// 自动推进停在下一个决策点是**正常**的(那就是要真人再决策一次)
+check('2.11 自动推进到下一决策点或结束', g.gateInfo().idx >= idxBefore, 'idx=' + g.gateInfo().idx);
   check('2.12 阶段已推进', g.gameState().phase !== 'LIANG_A', g.gameState().phase);
 }
 
@@ -78,6 +90,9 @@ section('4. 出牌阶段按钮');
 var btns = g.uiButtons();
 var ids = btns.map(function (b) { return b.id; });
 check('4.1 出牌阶段有 play/pass', ids.indexOf('play') >= 0 && ids.indexOf('pass') >= 0, ids.join(','));
+check('4.1b **【下】按钮已删除**(各阶段自动推进)',
+  g.uiButtons().every(function (b) { return b.id !== 'next'; }),
+  g.uiButtons().map(function (b) { return b.id; }).join(','));
 check('4.2 出牌阶段无阶段选择按钮',
   ids.indexOf('liangA') < 0 && ids.indexOf('fanA') < 0 && ids.indexOf('next') < 0, ids.join(','));
 check('4.3 play 的可用性随轮到谁变化',
@@ -176,7 +191,8 @@ section('9. 下一局重置');
 g.setHumanPlayer('B');
 g.selectedCards().push('x');
 g.newGame();
-check('9.1 真人重置回丁位', g.getHumanPlayer() === 'D', g.getHumanPlayer());
+// [2026-10-24 用户修改] 新局重置真人座位(随机), 仍在 A~E
+check('9.1 新局重置后真人座位合法', ['A','B','C','D','E'].indexOf(g.getHumanPlayer()) >= 0, g.getHumanPlayer());
 check('9.2 选牌已清空', g.selectedCards().length === 0, 'sel=' + g.selectedCards().length);
 check('9.3 回到发牌阶段', g.gameState().phase === 'LIANG_A', g.gameState().phase);
 check('9.4 日志已重置并重新记录', g.logHistory().length > 0 && g.logHistory()[0].indexOf('对局初始化') >= 0,
@@ -203,7 +219,7 @@ section('10. 出牌阶段死锁回归');
   if (gi2.choice && gi2.choice.kind === 'LIANG_A' && gi2.choice.eligible) {
     g2.humanLiangA(false);      // 真人选择不亮A -> 强制排查由别人被动亮牌
   }
-  // [fix 2026-10-24] 原来用裸 gateNext() 循环, 但 gateNext() 在有待决策时会返回 false
+// [fix 2026-10-24] 原来用裸 gateNext() 循环, 但它在有待决策时会返回 false
   //   (需求四: 不许【下】跳过真人决策)。canFanA 改成「任意花色都可以」后,
   //   真人持双大A时反A决策会正确出现 -> 裸循环卡死。改用 drive 助手(它处理决策)。
   var drv = g2.__driveGateToPlay({});

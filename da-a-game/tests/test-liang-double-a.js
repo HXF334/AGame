@@ -71,8 +71,10 @@ section('1. 玩家持同花色两张A 直接亮 -> 1V4明打 独打');
   if (s.phase === PHASES.FAN_A) s = transition(s, { type: ACTIONS.ADVANCE, payload: {} }).state;
   s = transition(s, { type: ACTIONS.REVEAL_BOTTOM, payload: {} }).state;
 
-  check('1.4 进入 PLAY (直接进, 无 IDENTITY_CHOICE)', s.phase === PHASES.PLAY, 'phase=' + s.phase);
-  check('1.5 §4.5 mode = 1V4_明打', s.mode === '1V4_明打', 'mode=' + s.mode);
+// [2026-10-24 用户裁定·规则修正] 亮双大A **默认 1V4暗打**: 要进 IDENTITY_CHOICE 选明/暗,
+//   亮明身份才 1V4明打。(原来直接进 PLAY 且锁 1V4明打。)
+check('1.4 进入 IDENTITY_CHOICE (要选明/暗)', s.phase === PHASES.IDENTITY_CHOICE, 'phase=' + s.phase);
+check('1.5 未选择时 mode 未定', s.mode === null || s.mode === undefined, 'mode=' + s.mode);
   check('1.6 §4.3 无独立次方', s['次方'] === null, '次方=' + s['次方']);
   check('1.7 主方 = [B] 独打', s['主方'] && s['主方'].length === 1 && s['主方'][0] === 'B', JSON.stringify(s['主方']));
   check('1.8 抓方 = 其余 4 人', s['抓方'] && s['抓方'].length === 4, JSON.stringify(s['抓方']));

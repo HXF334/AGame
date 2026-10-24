@@ -58,13 +58,14 @@ var fanSt = function (hand, suit) {
 };
 
 var f1 = engine.canFanA(fanSt([A('x1', 'S', 14), A('x2', 'S', 14)], 'H'), 'D');
-check('2.1 主A=红桃, 玩家持两张黑桃A -> **有资格**(任意花色都可以)',
+check('2.1 主A=红桃, 玩家持两张黑桃A -> **有资格**(与主A不同花色)',
   f1.ok === true, JSON.stringify(f1));
 check('2.2 返回的花色是玩家自己的花色', f1.suit === 'S', String(f1.suit));
 check('2.3 返回两张A', f1.cards && f1.cards.length === 2, JSON.stringify(f1.cards));
 
 var f2 = engine.canFanA(fanSt([A('x1', 'H', 14), A('x2', 'H', 14)], 'H'), 'D');
-check('2.4 主A=红桃, 玩家持两张红桃A -> 有资格', f2.ok === true, JSON.stringify(f2));
+check('2.4 主A=红桃, 玩家持两张红桃A -> **无资格**(反A的两张A不得与主A同花色)',
+  f2.ok === false, JSON.stringify(f2));
 
 var f3 = engine.canFanA(fanSt([A('x1', 'S', 14), A('x2', 'C', 14)], 'H'), 'D');
 check('2.5 两张A花色不同 -> 无资格(必须同一花色)', f3.ok === false, JSON.stringify(f3));

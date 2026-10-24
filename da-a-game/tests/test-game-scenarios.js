@@ -262,8 +262,9 @@ section('S5 §4.3 直接亮双大A -> 1V4明打');
   }
   check('S5.1 REVEAL_BOTTOM 成功', r.ok === true, r.ok ? '' : (r.error.type + ' ' + r.error.message));
   if (r.ok) {
-    check('S5.2 直接进 PLAY (无 IDENTITY_CHOICE)', g.gameState().phase === 'PLAY', g.gameState().phase);
-    check('S5.3 mode = 1V4_明打', g.gameState().mode === '1V4_明打', String(g.gameState().mode));
+// [2026-10-24 用户裁定·规则修正] 双大A 默认 1V4暗打 -> 先进 IDENTITY_CHOICE 选明/暗
+check('S5.2 进 IDENTITY_CHOICE (要选明/暗)', g.gameState().phase === 'IDENTITY_CHOICE', g.gameState().phase);
+check('S5.3 未选择时 mode 未定', !g.gameState().mode, String(g.gameState().mode));
     check('S5.4 独打者为首出', g.currentPlayer() === 'B', String(g.currentPlayer()));
   }
 }

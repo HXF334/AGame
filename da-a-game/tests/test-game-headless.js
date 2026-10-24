@@ -37,9 +37,11 @@ function cardCount(st) {
   return t + (st.table || []).length + (st.discarded || []).length;
 }
 // [2026-10-23] 真人默认丁位(需求二), 原为 'A'
-function human() { return 'D'; }
+function human() { return g.getHumanPlayer(); }
 function handOf(pid) {
-  return g.gameState().players.find(function (p) { return p.id === pid; }).hand;
+  // [2026-10-24 用户修改] 真人座位**开局随机** —— 不能再写死座位,
+  //   否则测试以为真人是 D、实际真人是 A -> 走 runAI() 但轮次属于真人 -> 永不推进。
+return g.gameState().players.find(function (p) { return p.id === pid; }).hand;
 }
 
 // ================= 1. 加载与初始化 =================
@@ -97,11 +99,20 @@ section('3. 完整对局 (驱动真实 UI 函数)');
     steps++;
     var st = g.gameState();
     if (cardCount(st) !== 108) { conserveErr++; break; }
+    // [2026-10-24 契约变更] 各阶段**自动推进**, 但有待真人决策时会停下等真人。
+    //   测试代替真人做决策, 否则游戏卡在 LIANG_A -> currentPlayer 恒 null -> 空转到 900 步。
+    var ginfo = g.gateInfo();
+    if (ginfo && ginfo.choice && ginfo.choice.eligible) {
+      if (ginfo.choice.kind === 'LIANG_A') g.humanLiangA(false);
+      else if (ginfo.choice.kind === 'FAN_A') g.humanFanA(false);
+      else if (ginfo.choice.kind === 'IDENTITY') g.humanChooseIdentity(false);
+      continue;
+    }
     if (st.phase === 'GAME_END') { ended = true; break; }
 
     var cp = g.currentPlayer();
     try {
-      if (!cp) { g.advanceCurrentPlayer(); continue; }
+if (!cp) { crashed = 'currentPlayer 为空且无待决决策(卡死) @step ' + steps; break; }
       if (cp === human()) {
         // 人类回合: 优先出单张, 否则过牌
         // [2026-10-23] 原写死 handOf('A'), 但真人默认已改为丁位 ——
@@ -109,7 +120,14 @@ section('3. 完整对局 (驱动真实 UI 函数)');
         //   必须用 human() 而不是硬编码, 这样真人换座位也不用改这里。
         var h = handOf(human());
         if (h.length > 0 && (st.table.length === 0 || canSingleBeat(st, h[0]))) {
-          g.doPlay([h[0].id]);
+// [2026-10-24] doPlay() **不接参数**, 用 selectedCards —— 原来传数组是被忽略的,
+//   实际在自动出牌。真人座位随机后更容易撞上大A 这类边界牌: 本地 canSingleBeat
+//   判据与引擎不完全一致(大A 压制关系), 引擎会拒 -> 回合不推进 -> 空转到 guard。
+g.selectedCards().length = 0;
+g.selectedCards().push(h[0].id);
+g.doPlay();
+// 引擎拒了(本地判据与引擎不一致) -> 改过牌, 保证回合能推进
+if (g.currentPlayer() === human() && g.gameState().phase === 'PLAY') { g.doPass(); }
         } else {
           g.doPass();
         }

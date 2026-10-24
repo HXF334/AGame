@@ -116,8 +116,11 @@ function cardDesc(card) {
 let gameState = engine.newGameState();
 let currentPlayer = null;
 let lastEmptiedPlayer = null;
-var DEFAULT_HUMAN = 'D';   // 需求: 真人每局默认坐丁位 (NAMES_MAP: D=丁)
-let humanPlayer = DEFAULT_HUMAN;
+// [2026-10-24 用户修改] 真人座位**开局随机**, 不再固定丁位。
+//   顶部 5 个按钮仍可随时切换。
+var SEAT_IDS = ['A', 'B', 'C', 'D', 'E'];
+function _randomSeat() { return SEAT_IDS[Math.floor(Math.random() * SEAT_IDS.length)]; }
+let humanPlayer = _randomSeat();
 let selectedCards = [];
 let handCardHitboxes = [];
 
@@ -207,11 +210,17 @@ function runGateStage() {
         log('  发牌完成');
         log('  座位: ' + ['A','B','C','D','E'].map(function (id) {
           return pn(id) + (id === humanPlayer ? '(真人)' : '(AI)');
-        }).join(' ') + '  真人=' + pn(humanPlayer) + '(丁位)');
+}).join(' ') + '  真人=' + pn(humanPlayer) + '(随机座位)');
       } else { log('  发牌失败: ' + _errOf(r)); break; }
-      var e1 = canLiangA(gameState, humanPlayer);
-      gateChoice = { kind: 'LIANG_A', eligible: !!e1.ok, reason: e1.reason, cards: e1.cards };
-      log('  真人亮A资格: ' + (e1.ok ? '有' : '无') + ' — ' + e1.reason);
+var e1 = canLiangA(gameState, humanPlayer);
+log('  真人亮A资格: ' + (e1.ok ? '有' : '无') + ' — ' + e1.reason);
+if (e1.ok) {
+  // 有A -> 等真人点【亮A】/【不亮A】, 决策完自动进入下一阶段
+  gateChoice = { kind: 'LIANG_A', eligible: true, reason: e1.reason, cards: e1.cards };
+} else {
+  // 没有A -> 由 AI 依次尝试亮A, 完成后自动进入下一阶段
+  _aiLiangARound();
+}
       break;
 
     case 'FORCED_CHECK':
@@ -287,6 +296,27 @@ function runGateStage() {
 }
 
 // 授权者自动选 HIDDEN(真人无资格时; 沿用原自动链的行为)
+// AI 亮A 轮: 按座位顺序让 AI 尝试亮A, 第一个成功的成为主A。
+// [2026-10-24 用户要求] 「如果没有A, 等待其他玩家选择后自动进入下一阶段」
+function _aiLiangARound() {
+  if (gameState['主A']) return;               // 已有人亮A
+  for (var i = 0; i < SEAT_IDS.length; i++) {
+    var pid = SEAT_IDS[i];
+    if (pid === humanPlayer) continue;
+    if (gameState['主A']) return;
+    var e = canLiangA(gameState, pid);
+    if (!e.ok || !e.cards || !e.cards.length) continue;
+    var r = transition(gameState, { type: ACTIONS.LIANG_A,
+      payload: { playerId: pid, cardId: e.cards[0].id } });
+    if (r && r.ok) {
+      gameState = r.state;
+      log('  AI ' + pn(pid) + ' 亮A → 主A: ' + psuit(gameState['主A'] && gameState['主A'].suit));
+      return;
+    }
+  }
+  log('  AI 均未亮A');
+}
+
 function _autoChooseIdentity() {
   var chooser = engine.identityChooser(gameState);
   var r = transition(gameState, { type: ACTIONS.CHOOSE_IDENTITY,
@@ -300,15 +330,17 @@ function _autoChooseIdentity() {
 }
 
 // 【下】: 有待决策且资格具备时**拒绝推进**(防止跳过真人决策)
-function gateNext() {
-  if (gateChoice && gateChoice.eligible) {
-    log('  【下】被阻止: 需先完成「' + gateChoice.kind + '」选择');
-    return false;
+// [2026-10-24 用户修改] **删除【下】按钮**: 各阶段**自动判断**能否进入下一阶段,
+//   可以就直接进入; 需要真人决策的阶段停下等真人点, 决策完自动续跑。
+function gateAutoAdvance() {
+  var guard = 0;
+  while (guard++ < GATE_PLAN.length + 4) {
+    if (gateIdx >= GATE_PLAN.length) break;
+    if (gateChoice && gateChoice.eligible) return false;   // 等真人决策, 停下
+    gateChoice = null;
+    runGateStage();
+    enterPlayIfNeeded();   // 统一入口: 设首出权 + 触发 AI
   }
-  gateChoice = null;   // 无需决策, 消费后允许推进
-  runGateStage();
-  enterPlayIfNeeded();   // 统一入口: 设首出权 + 触发 AI
-  if (ctx) draw();
   return true;
 }
 
@@ -317,7 +349,13 @@ function humanLiangA(doIt) {
   if (!gateChoice || gateChoice.kind !== 'LIANG_A' || !gateChoice.eligible) return false;
   var cards = gateChoice.cards;
   gateChoice = null;              // 先消费, 防同一次决策被执行两次
-  if (!doIt) { log('  真人选择: 不亮A'); if (ctx) draw(); return true; }
+if (!doIt) {
+  log('  真人选择: 不亮A');
+  _aiLiangARound();     // 真人放弃 -> AI 依次尝试亮A
+  gateAutoAdvance();     // 自动进入下一阶段
+  if (ctx) draw();
+  return true;
+}
   var card = cards && cards[0];
   if (!card) { log('  亮A失败: 无可用A牌'); return true; }
   var r = transition(gameState, { type: ACTIONS.LIANG_A,
@@ -329,7 +367,8 @@ function humanLiangA(doIt) {
   } else {
     log('  亮A失败: ' + _errOf(r));   // 引擎拒绝时不改阵营
   }
-  enterPlayIfNeeded();
+gateAutoAdvance();   // 决策完自动进入下一阶段
+enterPlayIfNeeded();
   if (ctx) draw();
   return true;
 }
@@ -339,7 +378,12 @@ function humanFanA(doIt) {
   if (!gateChoice || gateChoice.kind !== 'FAN_A' || !gateChoice.eligible) return false;
   var cards = gateChoice.cards, suit = gateChoice.suit;
   gateChoice = null;
-  if (!doIt) { log('  真人选择: 不反A'); if (ctx) draw(); return true; }
+if (!doIt) {
+  log('  真人选择: 不反A');
+  gateAutoAdvance();     // 自动进入下一阶段
+  if (ctx) draw();
+  return true;
+}
   var ids2 = (cards || []).slice(0, 2).map(function (c) { return c.id; });
   if (ids2.length !== 2) { log('  反A失败: 牌数不足'); return true; }
   var r = transition(gameState, { type: ACTIONS.FAN_A,
@@ -351,7 +395,8 @@ function humanFanA(doIt) {
   } else {
     log('  反A失败: ' + _errOf(r));   // 失败不改阵营
   }
-  enterPlayIfNeeded();
+gateAutoAdvance();   // 决策完自动进入下一阶段
+enterPlayIfNeeded();
   if (ctx) draw();
   return true;
 }
@@ -373,23 +418,24 @@ function humanChooseIdentity(publicly) {
   }
   // [P0 2026-10-24] 这条路的 phase->PLAY 转换就在上面这行 transition 里,
   //   必须主动进 PLAY 阶段, 否则 currentPlayer 恒为 null(按钮全灰 + AI 不出手)。
-  enterPlayIfNeeded();
+gateAutoAdvance();   // 决策完自动进入下一阶段
+enterPlayIfNeeded();
   if (ctx) draw();
   return true;
 }
 
 // === 初始化（由阶段闸门驱动）===
 // 原实现是一条自动跑完的直线链, 中间零人工闸门; 现在**只跑第一个阶段「发牌」**,
-// 其余阶段由真人点【下】推进(见 gateNext / runGateStage)。
-// 原来的 runAI() 调用已移除 —— 现在由 gateNext 在到达 PLAY 阶段时统一触发,
+// 其余阶段**自动推进**(见 gateAutoAdvance / runGateStage)。
+// 原来的 runAI() 调用已移除 —— 现在由 gateAutoAdvance 在到达 PLAY 阶段时统一触发,
 // 否则会在发牌阶段就让 AI 开打。
 function initGame() {
   gateIdx = 0;
   gateChoice = null;
   log('=== 对局初始化 ===');
-  log('真人座位: ' + pn(humanPlayer) + ' (丁位, 可用顶部 5 按钮切换)');
+log('真人座位: ' + pn(humanPlayer) + ' (随机, 可用顶部 5 按钮切换)');
   log('阶段流程: 发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌');
-  runGateStage();
+gateAutoAdvance();   // 自动推进各阶段(遇真人决策则停下)
   if (ctx) draw();
 }
 
@@ -400,11 +446,11 @@ try {
 }
 
 // === 新一局（【下一局】按钮）===
-// 需求: 点击后必须重新发牌并重置真人座位为丁位, 同时重置日志与所有派生 UI 状态。
+// 需求: 点击后必须重新发牌并重置真人座位(随机), 同时重置日志与所有派生 UI 状态。
 //   漏掉任何一项都会让上一局残留污染新局(历史上出过的对局是其中一种)。
 function newGame() {
   log('=== 点击【下一局】===');
-  humanPlayer = DEFAULT_HUMAN;      // 真人每局默认丁位
+humanPlayer = _randomSeat();      // 真人每局随机座位
   selectedCards = [];
   handCardHitboxes = [];
   lastEmptiedPlayer = null;
@@ -412,7 +458,7 @@ function newGame() {
   gameState = engine.newGameState();
   logHistory = [];                   // 新局重置日志
   initGame();                        // 重新走阶段闸门(内部会重置 gateIdx/gateChoice)
-  log('新局已开始, 真人=' + pn(humanPlayer) + '(丁位)');
+log('新局已开始, 真人=' + pn(humanPlayer) + '(随机座位)');
   if (ctx) draw();
 }
 
@@ -452,8 +498,8 @@ function uiButtons() {
       out.push({ id: 'idPublic', label: '公开身份', enabled: !!c.eligible });
       out.push({ id: 'idHidden', label: '隐藏身份', enabled: !!c.eligible });
     }
-    // 【下】：有待决策且资格具备时**不可用**（不能跳过真人决策）
-    out.push({ id: 'next', label: '下', enabled: !(c && c.eligible) });
+
+
   }
 
   if (playing) {
@@ -494,7 +540,7 @@ function uiClick(id) {
     case 'noFanA':   return humanFanA(false);
     case 'idPublic': return humanChooseIdentity(true);
     case 'idHidden': return humanChooseIdentity(false);
-    case 'next':     return gateNext();
+case 'next':     log('  【下】已移除(各阶段自动推进)'); return false;
     case 'play':     doPlay(); return true;
     case 'pass':     doPass(); return true;
     case 'newGame':  newGame(); return true;
@@ -1337,12 +1383,12 @@ if (typeof module !== 'undefined' && module.exports) {
         phase: gameState.phase
       };
     },
-    gateNext: gateNext,
+gateAutoAdvance: gateAutoAdvance,
     humanLiangA: humanLiangA,
     humanFanA: humanFanA,
     humanChooseIdentity: humanChooseIdentity,
     getHumanPlayer: function () { return humanPlayer; },
-    defaultHuman: function () { return DEFAULT_HUMAN; },
+defaultHuman: function () { return humanPlayer; },
     // 无头驱动: 模拟真人依次点【下】, 遇到需要决策的阶段按 opts 决定。
     //   opts = { liangA:bool, fanA:bool, identity:bool, maxSteps:int }
     //   默认全部 false(不亮/不反/隐藏) —— 与真人「什么都不主动」一致。
@@ -1363,8 +1409,8 @@ if (typeof module !== 'undefined' && module.exports) {
           steps.push('decide:' + c.kind);
           continue;
         }
-        var moved = gateNext();
-        steps.push('next:' + (moved ? 'ok' : 'blocked'));
+var moved = gateAutoAdvance();
+steps.push('advance:' + (moved ? 'ok' : 'wait'));
         if (!moved) break;
       }
       // 闸门跑完但 PLAY 还没就绪(理论不该发生) -> 兜底再推一次, 避免留下 null 首出权
