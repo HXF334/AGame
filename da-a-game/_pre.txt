@@ -1,0 +1,30 @@
+
+=== 1. shebang（#!）— 会被打进包的 .js 都不能有 ===
+  PASS  无 shebang   81 个 .js 全部干净
+
+=== 2. UTF-8 BOM ===
+  PASS  无 BOM
+
+=== 3. 行尾（必须是 LF；CRLF 会让打包器报 SyntaxError） ===
+  PASS  无 CRLF
+  PASS  无孤立 CR
+
+=== 4. 非标准字符（U+2028/2029、孤立代理对、控制字符） ===
+  PASS  .js 无非标准字符(严格)
+  WARN  非 .js 文件含 U+FFFD(可能是故意的示例, 也可能是损坏): skills/wechat-miniprogram-fix-class/SKILL.md(1)
+
+=== 5. 语法（node --check 全部 .js） ===
+  PASS  全部 .js 语法正确
+
+=== 6. 打包配置（project.config.json） ===
+  PASS  project.config.json 可解析
+  PASS  packOptions.ignore 覆盖非游戏目录   已排除: scripts, tests, docs, skills
+  PASS  minigameRoot 存在   minigameRoot=./
+
+=== 7. 其它配置文件 ===
+  PASS  game.json 可解析
+
+=== 8. Skill 镜像一致（仓库=唯一来源, Workshop=生成镜像） ===
+  PASS  sync-skills --check   check: 全部一致
+
+=== 9. 全量测试 ===

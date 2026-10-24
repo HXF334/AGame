@@ -246,7 +246,9 @@ section('8. 信息边界 (draw 不渲染他人手牌)');
     // [2026-10-24 UI 重做] 新渲染层装饰更多(牌桌/座位/牌面/按钮), 绝对值上去了;
     //   真实意图是「绘制量与**自己手牌数**同阶, 而不是渲染 5 个人的手牌」。
     //   所以上界按手牌数计: 若渲染了全部 5 席手牌, 会是手牌数的约 5 倍 -> 必然越界。
-    frameCalls.length > 0 && frameCalls.length < 400 + me.length * 25,
+    // [2026-10-25] 新渲染层每张牌的绘制调用翻倍(点数+花色, 大小王还要竖排 5 个字母),
+    //   实测 ~45-48 次/张。上界按手牌数重新定, 仍能抓住"渲染了全部 5 席手牌"(约 5 倍)。
+    frameCalls.length > 0 && frameCalls.length < 500 + me.length * 55,
   'frameCalls=' + frameCalls.length + ' handN=' + me.length);
   console.log('   [信息] 人类手牌 ' + me.length + ' 张, 单帧 canvas 调用 ' + frameCalls.length);
 }

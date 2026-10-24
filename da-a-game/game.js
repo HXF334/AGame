@@ -20,6 +20,15 @@ var calculateScore = require('./src/scoring.js').calculateScore;
 // [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
 var uiRender = require('./ui-render.js');
 
+// [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
+//   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
+//   initGame() 之后, 导致启动路径里 uiPlays === undefined,
+//   AI 出牌时 `uiPlays[currentPlayer] = ...` 抛
+//   "Cannot set properties of undefined (setting 'A')"(且只在某些发牌下出现 -> flaky)。
+var uiPlays = {};
+var uiMarks = {};
+var uiMemoOpen = false;
+
 // === 工具 ===
 // 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
 var logHistory = [];
@@ -676,7 +685,6 @@ var btnLog = null;
 // 布局/绘制全在 ui-render.js: 纯几何, 可无头测试。
 // **无 canvas 时仍然算几何**(ui-render 内部用 no-op ctx), 这样无头测试能验证命中区。
 // ===== [2026-10-24] 每人最新出牌 / 当前积分 (UI 侧) =====
-var uiPlays = {};
 
 function _uiCardsByIds(ids, st) {
   var pool = [];
@@ -704,8 +712,6 @@ function _uiScores() {
 // ===== [2026-10-25] v0.14.0 UI 配套状态 =====
 // 敌友标记: uiMarks[观察者id][目标id] = 'friend' | 'enemy' | null(问号)
 //   [用户] 每人一套独立标记(我标乙=友, 丙标乙=敌, 互不影响); 新对局重置; 圆钮不含自己
-var uiMarks = {};
-var uiMemoOpen = false;
 var btnMarkHits = null;
 var btnMemo = null;
 
