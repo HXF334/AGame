@@ -458,6 +458,9 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiStopTicker();                   // 清理倒计时定时器
   uiToast = null;                   // 清残留提示
   uiLogVisible = false;             // 日志面板默认隐藏
+  uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
+  uiMemoOpen = false;               // 记牌器默认收起
+  uiPlays = {};                     // 清掉各家出牌显示
   selectedCards = [];
   handCardHitboxes = [];
   lastEmptiedPlayer = null;
@@ -698,6 +701,101 @@ function _uiScores() {
     return calculateScore(gameState, res) || {};
   } catch (e) { return {}; }
 }
+// ===== [2026-10-25] v0.14.0 UI 配套状态 =====
+// 敌友标记: uiMarks[观察者id][目标id] = 'friend' | 'enemy' | null(问号)
+//   [用户] 每人一套独立标记(我标乙=友, 丙标乙=敌, 互不影响); 新对局重置; 圆钮不含自己
+var uiMarks = {};
+var uiMemoOpen = false;
+var btnMarkHits = null;
+var btnMemo = null;
+
+// 敌友三态循环: ? -> 友 -> 敌 -> ?
+function uiMarkCycle(pid) {
+  var mine = uiMarks[humanPlayer] || (uiMarks[humanPlayer] = {});
+  var cur = mine[pid] || null;
+  mine[pid] = (cur === null) ? 'friend' : (cur === 'friend' ? 'enemy' : null);
+  log('标记 ' + pn(pid) + ' -> ' + (mine[pid] === 'friend' ? '友' : (mine[pid] === 'enemy' ? '敌' : '?')));
+  return mine[pid];
+}
+
+// 大A 判定: 引擎打的 is主方大A 标记(同花色的那两张 A)
+function _uiIsMainAce(card) { return !!(card && card['is主方大A'] === true); }
+
+// 主方头像右上角该显示几个大A花色标
+//   1V4明打 -> 2; 1V4暗打 -> 1, 等主方打出第2张大A(该花色A已出场) -> 2
+//   2V3 -> 主方 1 个; 次方仅在**身份亮明**(次方公开)时 1 个
+function _uiMainAceMarks() {
+  var out = {};
+  var g = gameState;
+  var zhu = g['主A'];
+  if (!zhu || !zhu.suit) return out;
+  var mode = g.mode || '';
+  var suit = zhu.suit;
+  if (mode.indexOf('1V4') === 0) {
+    var main = zhu.establishedBy;
+    var n = 1;
+    if (mode.indexOf('明打') >= 0) {
+      n = 2;
+    } else {
+      // 该花色的 A 总共就 2 张且都在独打者手里 -> 场上有该花色A 打出 = 独打者打的
+      var playedA = 0;
+      (g.discarded || []).forEach(function (c) { if (c.suit === suit && c.rank === 14) playedA++; });
+      (g.table || []).forEach(function (c) { if (c.suit === suit && c.rank === 14) playedA++; });
+      if (playedA >= 1) n = 2;
+    }
+    if (main) out[main] = n;
+  } else {
+    if (zhu.establishedBy) out[zhu.establishedBy] = 1;
+    if (g['次方'] && g['次方公开'] === true) out[g['次方']] = 1;
+  }
+  return out;
+}
+
+// 记牌器: 还没打出的牌 = 所有人手牌 + 未翻开的底牌(翻开后就进了 hand)
+//   顺序按 §6.2 单牌大小: 大A > 大王 > 小王 > 3 > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4
+//   大A 单独统计(不影响 A 的个数, A 里包含大A)
+function _uiMemo() {
+  var bigAce = 0, bigJoker = 0, smallJoker = 0;
+  var byRank = {};
+  function add(c) {
+    if (!c) return;
+    if (_uiIsMainAce(c)) bigAce++;
+    if (c.isBigJoker) { bigJoker++; return; }
+    if (c.isSmallJoker) { smallJoker++; return; }
+    byRank[c.rank] = (byRank[c.rank] || 0) + 1;
+  }
+  (gameState.players || []).forEach(function (p) {
+    (p.hand || []).forEach(add);
+    if (p['底牌']) add(p['底牌']);
+  });
+  var suit = gameState['主A'] ? gameState['主A'].suit : null;
+  var items = [];
+  items.push({ label: '大A', icon: suit ? (uiRender.SUIT_CHAR[suit] || '?') : '?', value: bigAce, color: '#ffd700' });
+  items.push({ label: '大王', icon: '大', value: bigJoker, color: '#c8102e' });
+  items.push({ label: '小王', icon: '小', value: smallJoker, color: '#ffffff' });
+  var order = [3, 2, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4];
+  var names = { 3: '3', 2: '2', 14: 'A', 13: 'K', 12: 'Q', 11: 'J', 10: '10', 9: '9', 8: '8', 7: '7', 6: '6', 5: '5', 4: '4' };
+  order.forEach(function (rk) {
+    items.push({ label: names[rk], value: byRank[rk] || 0 });
+  });
+  return { items: items };
+}
+
+// 测试模式: 微信开发者工具 或 无 wx 的 node 环境 -> 显示完整调试信息; 真机 -> 精简
+function _uiTestMode() {
+  if (typeof wx === 'undefined') return true;
+  try {
+    var info = wx.getSystemInfoSync();
+    return !info || info.platform === 'devtools';
+  } catch (e) { return true; }
+}
+
+// 一轮结束(有人过牌导致) -> 清掉各家最新出牌
+function _uiRoundEnded(beforeLen) {
+  if (beforeLen > 0 && (gameState.table || []).length === 0) { uiPlays = {}; return true; }
+  return false;
+}
+
 function draw() {
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
@@ -714,6 +812,13 @@ function draw() {
     logHistory: logHistory,
     toast: uiToast,
     uiPlays: uiPlays,
+    marks: uiMarks,
+    memoOpen: uiMemoOpen,
+    memoItems: _uiMemo().items,
+    testMode: _uiTestMode(),
+    isMainAce: _uiIsMainAce,
+    mainAceSuit: gameState['主A'] ? gameState['主A'].suit : null,
+    mainAceMarks: _uiMainAceMarks(),
     scores: _uiScores(),
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
     turnDeadline: uiTurnDeadline,
@@ -724,6 +829,8 @@ function draw() {
   btnStage = out.btnStage;
   handCardHitboxes = out.handHitboxes;
   btnSelectPlayers = out.seatHitboxes;
+  btnMarkHits = out.markHits;
+  btnMemo = out.memoIcon;
 }
 
 // === 首次 draw (启动渲染) ===
@@ -941,6 +1048,8 @@ function doPass() {
     var _roundEnded = _hadTable && (gameState.table || []).length === 0;
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
     delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
+    // [2026-10-25] 有人过牌导致本轮结束 -> 清掉**全部**各家的出牌显示
+    _uiRoundEnded(_hadTable ? 1 : 0);
     delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
@@ -1120,7 +1229,8 @@ function advanceCurrentPlayer() {
       // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
       uiTurnTick();
       // [2026-10-24] 轮到我出牌 -> 清掉各家最新出牌(新一墩开始)
-      if (next === humanPlayer) uiPlays = {};
+      // [2026-10-25 用户修正] 轮到我出牌 -> **只清我自己**上回打出的牌; 一轮结束才清全部
+      if (next === humanPlayer) delete uiPlays[humanPlayer];
       // 清空选中
       selectedCards = [];
       // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
@@ -1152,6 +1262,24 @@ if (typeof wx !== 'undefined') {
     }
 
     // [2026-10-24 用户要求] **删掉【Log】按钮**(它压住了微信胶囊按钮) -> 命中分支一并删除
+
+    // [2026-10-25] 记牌器图标: 点击展开/收起记牌器
+    if (btnMemo && x >= btnMemo.x - btnMemo.r && x <= btnMemo.x + btnMemo.r &&
+        y >= btnMemo.y - btnMemo.r && y <= btnMemo.y + btnMemo.r) {
+      uiMemoOpen = !uiMemoOpen;
+      log('记牌器: ' + (uiMemoOpen ? '展开' : '收起'));
+      draw();
+      return;
+    }
+    // [2026-10-25] 敌友钮: 点击循环 ? -> 友 -> 敌 -> ?
+    for (var mk = 0; mk < (btnMarkHits || []).length; mk++) {
+      var mh = btnMarkHits[mk];
+      if (x >= mh.x && x <= mh.x + mh.w && y >= mh.y && y <= mh.y + mh.h) {
+        uiMarkCycle(mh.id);
+        draw();
+        return;
+      }
+    }
 
     // 统一按钮模型（需求八）: 可用性已由 uiButtons() 判定, 这里只按 id 分发。
     //   不可用的按钮在 uiButtonAt 里已跳过, 不会被命中。
@@ -1203,6 +1331,12 @@ if (typeof module !== 'undefined' && module.exports) {
     uiHandLayout: function (n) { return uiRender.handLayout(n, uiRender.layout(W || 844, H || 390)); },
     uiButtonBoxes: function () { return btnStage || []; },
     uiPlays: function () { return uiPlays; },
+    uiMemoItems: function () { return _uiMemo().items; },
+    uiIsMainAce: _uiIsMainAce,
+    uiMainAceMarks: _uiMainAceMarks,
+    uiMarks: function () { return uiMarks; },
+    uiMarkCycle: uiMarkCycle,
+    uiTestMode: _uiTestMode,
     uiScores: function () { return _uiScores(); },
     uiLayoutSnapshot: function () { return uiRender.layout(W || 844, H || 390); },
     selectedCards: function () { return selectedCards; },
