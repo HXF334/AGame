@@ -737,6 +737,7 @@ function _uiScores() {
 var btnMarkHits = null;
 var btnMemo = null;
 var btnPlayerHits = null;
+var btnSwitch = null;   // [2026-10-25] 真人头像上的「切」按钮(循环切换真人视角)
 
 // 敌友三态循环: ? -> 友 -> 敌 -> ?
 function uiMarkCycle(pid) {
@@ -874,7 +875,7 @@ function draw() {
   btnSelectPlayers = out.seatHitboxes;
   btnMarkHits = out.markHits;
   btnMemo = out.memoIcon;
-  btnPlayerHits = out.playerBtns;
+  btnSwitch = out.switchHit;
 }
 
 // === 首次 draw (启动渲染) ===
@@ -1321,6 +1322,17 @@ if (typeof wx !== 'undefined') {
       }
     }
 
+    // [2026-10-25] 真人头像上的「切」按钮: 在 5 个玩家间循环切换真人视角
+    //   (点 4 个 AI 头像也能直接切到那人; 但这样切不到「当前真人」, 所以给个循环按钮)
+    if (btnSwitch && x >= btnSwitch.x && x <= btnSwitch.x + btnSwitch.w &&
+        y >= btnSwitch.y && y <= btnSwitch.y + btnSwitch.h) {
+      var _ids = ['A', 'B', 'C', 'D', 'E'];
+      var _cur = _ids.indexOf(humanPlayer);
+      humanPlayer = _ids[(_cur + 1) % 5];
+      log('切换玩家: ' + names[_cur]);
+      draw();
+      return;
+    }
     // [2026-10-25] 记牌器图标: 点击展开/收起记牌器
     if (btnMemo && x >= btnMemo.x - btnMemo.r && x <= btnMemo.x + btnMemo.r &&
         y >= btnMemo.y - btnMemo.r && y <= btnMemo.y + btnMemo.r) {
