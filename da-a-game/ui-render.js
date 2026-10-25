@@ -51,7 +51,7 @@ function layout(W, H) {
     turn: { x: vw * 0.5, y: vh * 0.468 },      // [2026-10-25] 上移, 不与按钮行重叠
     btn: { y: vh * 0.560, h: vh * 0.100 },
     // [2026-10-25] 手牌上移, 避开手机底部横条
-    hand: { y: vh * 0.700, maxW: vw * 0.68, cardH: vh * 0.200, ratio: 0.64 },
+    hand: { y: vh * 0.700, maxW: vw * 0.68, cardH: vh * 0.200, ratio: 0.70 },
     me: { x: safe + r + 30, r: r, y: vh * 0.700 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
     memo: { iconX: vw * 0.5, iconY: vh * 0.062, iconR: Math.round(vh * 0.036) }
@@ -59,18 +59,25 @@ function layout(W, H) {
 }
 
 // 手牌几何: 命中区用**精确步长**(浮点不取整) -> 相邻命中区严格不重叠
+// 手牌几何: 命中区用**精确步长**(浮点不取整) -> 相邻命中区严格不重叠
+// [2026-10-25 用户] 牌之间的**间距固定不变**(不随牌数自适应):
+//   按最多张数算一个 step; 牌变少时总宽度自然缩小, 整体居中
+// 手牌几何: 命中区用**精确步长**(浮点不取整) -> 相邻命中区严格不重叠
+// [2026-10-25 用户] 牌之间的**间距固定不变**(不随牌数自适应):
+//   按最多张数算一个 step; 牌变少时总宽度自然缩小, 整体居中
+//   总宽 = step*(n-1) + cardW —— **最后一张是完整牌宽**, 命中区要和这个对得上(否则不算居中)
+// 手牌几何
+// [2026-10-25 用户] 牌之间的**间距固定不变**(不随牌数自适应): 牌变少 -> 总宽缩小 -> 整体居中
+// [2026-10-25] 步长必须是**整数**: 浮点步长会让相邻命中区边界抖动(被判定成重叠), 尺寸也不一致
+//   命中区契约(test-game-touch): 数量=手牌数 / 全部等宽 / 相邻不重叠 / 外接盒居中
 function handLayout(n, m) {
   var cardH = m.hand.cardH;
   var cardW = Math.round(cardH * m.hand.ratio);
   var maxW = m.hand.maxW;
-  var step;
-  if (n <= 1) step = cardW;
-  else {
-    var avail = maxW - cardW;
-    step = Math.min(cardW, avail / (n - 1));
-    if (step < 10) step = 10;
-  }
-  var totalW = n <= 1 ? cardW : step * n;
+  var MAXN = 22;                          // 21 张手牌 + 1 张底牌
+  var step = Math.min(cardW, Math.round((maxW - cardW) / (MAXN - 1)));
+  if (step < 8) step = 8;
+  var totalW = n <= 1 ? cardW : step * n;   // 命中区外接盒宽度(全部等宽 step)
   return { cardW: cardW, cardH: cardH, step: step, x0: (m.vw - totalW) / 2, y: m.hand.y, n: n,
            totalW: totalW, lift: Math.round(cardH * 0.22) };
 }
@@ -303,15 +310,15 @@ function drawSeats(ctx, st, m) {
       if (s2) {
         var ix = cx + inw * (rr_ + 10);
         var ia = pos.side === 'L' ? 'left' : 'right';
-        text(ctx, s2, ix, cy, Math.max(10, Math.round(m.vh * 0.034)), isOut ? '#9a9a9a' : '#cccccc', ia, false);
+        text(ctx, s2, ix, cy, Math.max(12, Math.round(m.vh * 0.044)), isOut ? '#9a9a9a' : '#ffd700', ia, true);
       }
     }
     // 积分(头像正下方)
     drawScore(ctx, st, pid, scores[pid], cx, cy + rr_ + Math.round(m.vh * 0.036));
-    // ---- 头像上方两个角标 ----
+    // ---- 敌友钮: 放在**玩家名上方**(横向避开头像, 不压头像) ----
     var mr = Math.round(m.vh * 0.020);
-    var mkx = pos.side === 'L' ? (cx - rr_ * 0.72) : (cx + rr_ * 0.72);
-    var mky = cy - rr_ * 0.72;
+    var mkx = pos.side === 'L' ? (nameX - fs * 0.5) : (nameX + fs * 0.5);
+    var mky = cy - rr_ * 0.30 - fs * 0.95;
     drawAllyMark(ctx, st, m, mkx, mky, mr, myMarks[pid] || null);
     markHits.push({ x: mkx - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
     if (st.mainAceMarks && st.mainAceMarks[pid]) {
@@ -331,14 +338,18 @@ function drawSeats(ctx, st, m) {
   return { boxes: out, seatMap: seatMap, markHits: markHits };
 }
 
+// 积分(头像下方) —— [2026-10-25 用户] 数字后面加「分」
 function drawScore(ctx, st, pid, delta, x, y) {
   var v = (delta === undefined || delta === null) ? 0 : delta;
   var col = v > 0 ? '#7ee08a' : (v < 0 ? '#ff8888' : '#bbbbbb');
-  text(ctx, (v > 0 ? '+' : '') + v, x, y, Math.max(10, Math.round((st.H || 390) * 0.033)), col, 'center', true);
+  text(ctx, (v > 0 ? '+' : '') + v + '分', x, y,
+    Math.max(10, Math.round((st.H || 390) * 0.033)), col, 'center', true);
 }
 
 // ===== 各家最新出牌(只在自己前方) =====
 // [2026-10-25] 各家最新出牌 -> 头像**内侧**(朝牌桌中心), 与外侧的名字/牌数分开, 互不遮挡; 牌放大
+// [2026-10-25 用户] 各家最新出牌 -> 头像**内侧**(朝牌桌中心)
+//   **和手牌一样重叠**(不再一张张分开); 内容按可见宽度居中
 function drawSeatPlays(ctx, st, m, seatMap) {
   var plays = st.uiPlays || {};
   Object.keys(plays).forEach(function (pid) {
@@ -346,16 +357,20 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     if (!cards || !cards.length) return;
     var slot = seatMap[pid];
     if (!slot) return;
-    var cw = Math.round(m.vh * 0.076), ch = Math.round(cw * 1.34);
-    var gap = Math.round(cw * 0.12);
-    var n = Math.min(cards.length, 3);
-    var total = n * cw + (n - 1) * gap;
+    var cardH = Math.round(m.vh * 0.115);
+    var cardW = Math.round(cardH * m.hand.ratio);
+    var n = Math.min(cards.length, 4);
+    var step = Math.round(cardW * 0.58);        // 重叠: 露出 58%
+    var totalW = cardW + step * (n - 1);
     var rr_ = Math.round(m.vh * 0.052);
-    var x0 = slot.side === 'L' ? (slot.x + rr_ + 8) : (slot.x - rr_ - 8 - total);
-    var y = slot.y - ch / 2;
-    for (var j = 0; j < n; j++) drawMiniCard(ctx, cards[j], x0 + j * (cw + gap), y, cw, ch, st);
+    var x0 = slot.side === 'L' ? (slot.x + rr_ + 8) : (slot.x - rr_ - 8 - totalW);
+    var y = slot.y - cardH / 2;
+    for (var j = 0; j < n; j++) {
+      var vis = (j === n - 1) ? cardW : step;
+      drawMiniCard(ctx, cards[j], x0 + j * step, y, cardW, cardH, st, vis);
+    }
     if (cards.length > n) {
-      text(ctx, '+' + (cards.length - n), x0 + total + 4, y + ch / 2,
+      text(ctx, '+' + (cards.length - n), x0 + totalW + 4, y + cardH / 2,
         Math.max(8, Math.round(m.vh * 0.026)), '#ffffff', 'left', false);
     }
   });
@@ -368,6 +383,15 @@ function drawSeatPlays(ctx, st, m, seatMap) {
 // 手牌(含底牌牌背)
 // [2026-10-25] **大A 要排在大王前面** -> 排序时把大A 单独算
 //   牌面内容按**可见宽度**居中(重叠时可见的是左边一条, 否则内容会偏右)
+// 手牌(含底牌牌背)
+// [2026-10-25] **大A 要排在大王前面** -> 排序时把大A 单独算
+//   牌面内容按**可见宽度**居中(重叠时可见的是左边一条, 否则内容会偏右)
+//   命中区宽度 = 实际可见宽度 -> 手牌条左右留白相等(居中)
+//   底牌在**最右面**, 只显示牌背; 它占位但**不可点**(cardId=null)
+// 手牌(含底牌牌背)
+// [2026-10-25] **大A 要排在大王前面** -> 排序时把大A 单独算
+//   牌面内容按**可见宽度**居中(重叠时可见的是左边一条, 否则内容会偏右)
+//   所有命中区等宽 step; **底牌不占命中区**(数量必须=手牌数), 只画在手牌条最右端
 function drawHand(ctx, st, m) {
   var g = st.gameState;
   var humanPlayer = st.humanPlayer;
@@ -379,22 +403,22 @@ function drawHand(ctx, st, m) {
   var sorted = hand.slice().sort(function (a, b) {
     return cardPower(b, isAce(b)) - cardPower(a, isAce(a));
   });
-  var total = sorted.length + (bottom ? 1 : 0);
-  if (!total) return [];
-  var L2 = handLayout(total, m);
+  var n = sorted.length;
+  if (!n) return [];
+  var L2 = handLayout(n, m);
   var boxes = [];
-  var xAcc = L2.x0;
   var showHit = (st.currentPlayer === st.humanPlayer && g.phase === 'PLAY');
-  for (var i = 0; i < sorted.length; i++) {
+  for (var i = 0; i < n; i++) {
     var card = sorted[i];
     var isSel = st.selectedCards.indexOf(card.id) >= 0;
-    var x = xAcc; xAcc += L2.step;
-    // 可见宽度: 除最后一张(且没有底牌)外, 右边都被下一张盖住 -> 只有 step 宽可见
-    var vis = (i === sorted.length - 1 && !bottom) ? L2.cardW : Math.min(L2.step, L2.cardW);
-    drawCard(ctx, card, x, L2.y - (isSel ? L2.lift : 0), L2.cardW, L2.cardH, isSel, st, vis);
-    if (showHit) boxes.push({ x: x, y: L2.y, w: Math.max(1, L2.step), h: L2.cardH, cardId: card.id });
+    var x = L2.x0 + i * L2.step;
+    drawCard(ctx, card, x, L2.y - (isSel ? L2.lift : 0), L2.cardW, L2.cardH, isSel, st, L2.step);
+    if (showHit) boxes.push({ x: x, y: L2.y, w: L2.step, h: L2.cardH, cardId: card.id });
   }
-  if (bottom) drawCardBack(ctx, xAcc, L2.y, L2.cardW, L2.cardH);
+  // 底牌: 画在手牌条**最右端**, 只显示背面, 不占命中区
+  if (bottom) {
+    drawCardBack(ctx, L2.x0 + n * L2.step, L2.y, L2.cardW, L2.cardH);
+  }
   return boxes;
 }
 
@@ -471,12 +495,14 @@ function drawCardBack(ctx, x, y, w, h) {
 // 小牌面(各家出牌) —— 内容居中
 // 小牌面(各家出牌) —— 和手牌一致: 大小王也用英文 JOKER 竖排; 内容居中
 // 小牌面(各家出牌) —— 和手牌一致: 大小王用英文 JOKER 竖排(缩到牌面内), 内容居中
-function drawMiniCard(ctx, card, x, y, w, h, st) {
+// 小牌面(各家出牌) —— 和手牌一致: 大小王用英文 JOKER 竖排; 内容按可见宽度居中
+function drawMiniCard(ctx, card, x, y, w, h, st, visibleW) {
   var joker = !!(card.isBigJoker || card.isSmallJoker);
   var red = (card.suit === 'H' || card.suit === 'D' || card.isBigJoker);
   var col = joker ? (card.isBigJoker ? '#c8102e' : '#1a1a1a') : (red ? '#c8102e' : '#1a1a1a');
   var isBigAce = st.isMainAce ? !!st.isMainAce(card) : false;
-  var cx = x + w / 2;
+  var vw2 = visibleW || w;
+  var cx = x + vw2 / 2;
   ctx.fillStyle = isBigAce ? '#fdf3c8' : '#fdfdf6';
   rr(ctx, x, y, w, h, 3); ctx.fill();
   ctx.strokeStyle = isBigAce ? '#d9a05b' : 'rgba(0,0,0,0.35)'; ctx.lineWidth = isBigAce ? 2 : 1;
@@ -546,7 +572,7 @@ function drawMeSeat(ctx, st, m) {
   }
   // 「切」按钮(真人头像右上; 点击循环切换真人视角)
   var sr = Math.round(m.vh * 0.022);
-  var sx = cx + rr_ * 0.72, sy = cy - rr_ * 0.72;
+  var sx = cx - rr_ * 0.72, sy = cy - rr_ * 0.72;
   ctx.fillStyle = '#1e6091';
   circle(ctx, sx, sy, sr); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 1.5;

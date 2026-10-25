@@ -543,7 +543,7 @@ function uiHintCandidates() {
 function _uiComboPower(cards) {
   var mx = 0;
   (cards || []).forEach(function (c) {
-    var p = uiRender.cardPower(c, g.uiIsMainAce(c));
+    var p = uiRender.cardPower(c, _uiIsMainAce(c));
     if (p > mx) mx = p;
   });
   return mx;
@@ -1303,7 +1303,6 @@ if (typeof wx !== 'undefined') {
         //   -> 点谁都不是谁(切不到戊)。改成用 hitbox 里带的**真实 pid**。
         humanPlayer = bp.id;
         log('切换玩家: ' + names[['A','B','C','D','E'].indexOf(bp.id)]);
-        log('切换玩家: ' + names[i]);
         draw();
         return;
       }
@@ -1311,16 +1310,6 @@ if (typeof wx !== 'undefined') {
 
     // [2026-10-24 用户要求] **删掉【Log】按钮**(它压住了微信胶囊按钮) -> 命中分支一并删除
 
-    // [2026-10-25] 顶栏 5 个玩家按钮(测试模式): 切换真人视角
-    for (var pb = 0; pb < (btnPlayerHits || []).length; pb++) {
-      var pbtn = btnPlayerHits[pb];
-      if (x >= pbtn.x && x <= pbtn.x + pbtn.w && y >= pbtn.y && y <= pbtn.y + pbtn.h) {
-        humanPlayer = pbtn.id;
-        log('切换玩家: ' + names[['A','B','C','D','E'].indexOf(pbtn.id)]);
-        draw();
-        return;
-      }
-    }
 
     // [2026-10-25] 真人头像上的「切」按钮: 在 5 个玩家间循环切换真人视角
     //   (点 4 个 AI 头像也能直接切到那人; 但这样切不到「当前真人」, 所以给个循环按钮)
@@ -1367,6 +1356,7 @@ if (typeof wx !== 'undefined') {
     for (var k = 0; k < handCardHitboxes.length; k++) {
       var hb = handCardHitboxes[k];
       if (x >= hb.x && x <= hb.x + hb.w && y >= hb.y && y <= hb.y + hb.h) {
+        if (!hb.cardId) continue;          // 底牌占位但不可点
         var idx2 = selectedCards.indexOf(hb.cardId);
         if (idx2 >= 0) selectedCards.splice(idx2, 1);
         else selectedCards.push(hb.cardId);
