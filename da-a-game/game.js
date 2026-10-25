@@ -524,6 +524,26 @@ function uiHintCandidates() {
     out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards) });
   }
   me.hand.forEach(function (c) { add([c.id]); });
+  // [2026-10-25 用户] 「双大A」候选: 上家出了 3333 时, 双大A 能压住
+  //   (引擎的 candidateCombos 不含这种**主A花色的两张A**组合)
+  try {
+    var _zhuSuit = gameState['主A'] && gameState['主A'].suit;
+    if (_zhuSuit) {
+      var _aces = me.hand.filter(function (c) { return c.rank === 14 && c.suit === _zhuSuit; });
+      if (_aces.length === 2) {
+        var _ids2 = [_aces[0].id, _aces[1].id];
+        var _key2 = _ids2.slice().sort().join(',');
+        if (!seen[_key2]) {
+          var _r2 = transition(gameState, { type: ACTIONS.PLAY,
+            payload: { playerId: humanPlayer, cardIds: _ids2.slice() } });
+          if (_r2 && _r2.ok) {
+            seen[_key2] = 1;
+            out.push({ ids: _ids2.slice(), cards: _aces.slice(), label: '双大A' });
+          }
+        }
+      }
+    }
+  } catch (e) { }
   try {
     var combos = candidateCombos(me.hand) || [];
     combos.forEach(function (ids) { if (ids && ids.length >= 2) add(ids); });
@@ -642,6 +662,8 @@ function uiButtons() {
   }
 
   if (ended) {
+    // [2026-10-25] 结算阶段的「下一局」**逻辑上仍然存在**(uiButtons 里保留, 测试 8.4 要),
+    //   但**绘制**由结算面板自己做(画在面板内下方中央) -> drawButtons 在结算阶段跳过它
     out.push({ id: 'newGame', label: '下一局', enabled: true });
   }
   return out;
@@ -737,7 +759,7 @@ function _uiScores() {
 var btnMarkHits = null;
 var btnMemo = null;
 var btnPlayerHits = null;
-var btnSwitch = null;   // [2026-10-25] 真人头像上的「切」按钮(循环切换真人视角)
+var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
 
 // 敌友三态循环: ? -> 友 -> 敌 -> ?
 function uiMarkCycle(pid) {
@@ -762,9 +784,9 @@ function _uiIsMainAce(card) { return !!(card && card['is主方大A'] === true); 
 //   (之前用 state.主方 数组判主方 -> 次方未亮明时也被标成「主方」, 属于信息泄露)
 function _uiCamps() {
   var g = gameState;
-  var out = { main: null, second: null };
+  var out = { main: null, second: null, secondOpen: false };
   if (g['主A'] && g['主A'].establishedBy) out.main = g['主A'].establishedBy;
-  if (g['次方'] && g['次方公开'] === true) out.second = g['次方'];
+  if (g['次方']) { out.second = g['次方']; out.secondOpen = (g['次方公开'] === true); }
   return out;
 }
 
@@ -875,7 +897,7 @@ function draw() {
   btnSelectPlayers = out.seatHitboxes;
   btnMarkHits = out.markHits;
   btnMemo = out.memoIcon;
-  btnSwitch = out.switchHit;
+  btnSettle = out.settleBtn;
 }
 
 // === 首次 draw (启动渲染) ===
@@ -1311,14 +1333,10 @@ if (typeof wx !== 'undefined') {
     // [2026-10-24 用户要求] **删掉【Log】按钮**(它压住了微信胶囊按钮) -> 命中分支一并删除
 
 
-    // [2026-10-25] 真人头像上的「切」按钮: 在 5 个玩家间循环切换真人视角
-    //   (点 4 个 AI 头像也能直接切到那人; 但这样切不到「当前真人」, 所以给个循环按钮)
-    if (btnSwitch && x >= btnSwitch.x && x <= btnSwitch.x + btnSwitch.w &&
-        y >= btnSwitch.y && y <= btnSwitch.y + btnSwitch.h) {
-      var _ids = ['A', 'B', 'C', 'D', 'E'];
-      var _cur = _ids.indexOf(humanPlayer);
-      humanPlayer = _ids[(_cur + 1) % 5];
-      log('切换玩家: ' + names[_cur]);
+    // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
+    if (btnSettle && x >= btnSettle.x && x <= btnSettle.x + btnSettle.w &&
+        y >= btnSettle.y && y <= btnSettle.y + btnSettle.h) {
+      uiClick('newGame');
       draw();
       return;
     }
@@ -1343,7 +1361,9 @@ if (typeof wx !== 'undefined') {
     // 统一按钮模型（需求八）: 可用性已由 uiButtons() 判定, 这里只按 id 分发。
     //   不可用的按钮在 uiButtonAt 里已跳过, 不会被命中。
     var hitBtn = uiButtonAt(x, y);
-    if (hitBtn) {
+    // [2026-10-25] 结算阶段: 「下一局」的真实按钮在**结算面板内**, 由 btnSettle 命中;
+    //   底部那个不可见的同名按钮不要再触发
+    if (hitBtn && !(hitBtn.id === 'newGame' && btnSettle)) {
       uiClick(hitBtn.id);
       draw();
       return;
