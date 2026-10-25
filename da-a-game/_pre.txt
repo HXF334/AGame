@@ -28,3 +28,9 @@
   PASS  sync-skills --check   check: 全部一致
 
 === 9. 全量测试 ===
+  FAIL  全部套件 PASS   55/56 失败: test-ui-v14.js
+
+========================================================
+preflight: 11/12 项通过
+失败项:
+  - 全部套件 PASS  55/56 失败: test-ui-v14.js

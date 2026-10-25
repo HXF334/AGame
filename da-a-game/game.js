@@ -505,21 +505,22 @@ function showToast(txt, ms) {
 //   2) 每个候选用**引擎 transition** 逐个校验 —— 走的是和 doPlay **完全相同**的引擎路径,
 //      所以「能过 transition」= 「出牌会被引擎接受」。**绝不推荐非法牌型。**
 //   3) 选不出合法牌 -> 提示「当前没有可用牌」。
+// 候选: 全部单张 + 引擎给的组合, 每个都用**引擎 transition** 校验(与 doPlay 同一路径)
+// [2026-10-25 用户] 按**有效牌从小到大**排序(小王 < 小牌 < ... < 大A),
+//   多次点【提示】时依次推荐下一个
 function uiHintCandidates() {
   var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
   if (!me || !me.hand || !me.hand.length) return [];
   var out = [], seen = {};
   function add(ids) {
     if (!ids || !ids.length) return;
-    var key = ids.slice().sort().join("," );
+    var key = ids.slice().sort().join(',');
     if (seen[key]) return;
     seen[key] = 1;
     var r = transition(gameState, { type: ACTIONS.PLAY,
       payload: { playerId: humanPlayer, cardIds: ids.slice() } });
     if (!r || !r.ok) return;
-    var cards = ids.map(function (id) {
-      return me.hand.find(function (c) { return c.id === id; });
-    }).filter(Boolean);
+    var cards = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
     out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards) });
   }
   me.hand.forEach(function (c) { add([c.id]); });
@@ -527,7 +528,20 @@ function uiHintCandidates() {
     var combos = candidateCombos(me.hand) || [];
     combos.forEach(function (ids) { if (ids && ids.length >= 2) add(ids); });
   } catch (e) { }
+  // 按牌力升序(小 -> 大)
+  out.sort(function (a, b) {
+    var pa = _uiComboPower(a.cards), pb = _uiComboPower(b.cards);
+    if (pa !== pb) return pa - pb;
+    return a.cards.length - b.cards.length;
+  });
   return out;
+}
+
+// 组合的牌力取其中最大的一张
+function _uiComboPower(cards) {
+  var mx = 0;
+  (cards || []).forEach(function (c) { var p = uiRender.cardPower(c); if (p > mx) mx = p; });
+  return mx;
 }
 
 // 候选的可读描述(不做完整牌型识别, 够用即可)
@@ -539,22 +553,25 @@ function _uiComboLabel(cards) {
   return "组合 " + cards.map(cardDesc).join(" ");
 }
 
+// [2026-10-25 用户] 1) 选中牌后**不再弹提示文字**(已选中, 提示条多余)
+//   2) 多次点击 -> 按有效牌从小到大依次推荐下一个候选
+var uiHintIdx = 0;
 function uiHint() {
   if (currentPlayer !== humanPlayer || gameState.phase !== PHASES.PLAY) {
-    log("  提示: 现在不是你的回合");
+    log('  提示: 现在不是你的回合');
     return false;
   }
   var cands = uiHintCandidates();
   if (!cands.length) {
     showToast(NO_PLAYABLE_TEXT);
-    log("  提示: " + NO_PLAYABLE_TEXT);
+    log('  提示: ' + NO_PLAYABLE_TEXT);
     if (ctx) draw();
     return false;
   }
-  var pick = cands[0];
+  var pick = cands[uiHintIdx % cands.length];
+  uiHintIdx = (uiHintIdx + 1) % cands.length;
   selectedCards = pick.ids.slice();
-  showToast("提示: " + pick.label + "（已选中，点【出牌】确认）");
-  log("  提示: " + pick.label + " -> 已选中 " + pick.ids.length + " 张");
+  log('  提示: ' + pick.label + ' -> 已选中 ' + pick.ids.length + ' 张');
   if (ctx) draw();
   return true;
 }
@@ -714,6 +731,7 @@ function _uiScores() {
 //   [用户] 每人一套独立标记(我标乙=友, 丙标乙=敌, 互不影响); 新对局重置; 圆钮不含自己
 var btnMarkHits = null;
 var btnMemo = null;
+var btnPlayerHits = null;
 
 // 敌友三态循环: ? -> 友 -> 敌 -> ?
 function uiMarkCycle(pid) {
@@ -730,6 +748,20 @@ function _uiIsMainAce(card) { return !!(card && card['is主方大A'] === true); 
 // 主方头像右上角该显示几个大A花色标
 //   1V4明打 -> 2; 1V4暗打 -> 1, 等主方打出第2张大A(该花色A已出场) -> 2
 //   2V3 -> 主方 1 个; 次方仅在**身份亮明**(次方公开)时 1 个
+// 主方头像右上角该显示几个大A花色标
+//   1V4明打 -> 2; 1V4暗打 -> 1, 等主方打出第2张大A(该花色A已出场) -> 2
+//   2V3 -> 主A持有者 1 个; 次方仅在**身份亮明**(次方公开)时 1 个
+// [2026-10-25 用户反馈] 之前次方未亮明也显示了大A图标 -> 修正: 次方亮明才给
+// [2026-10-25] 阵营标签: 只给**主A 持有者**标「主方」; 次方**身份亮明后**才标「次方」。
+//   (之前用 state.主方 数组判主方 -> 次方未亮明时也被标成「主方」, 属于信息泄露)
+function _uiCamps() {
+  var g = gameState;
+  var out = { main: null, second: null };
+  if (g['主A'] && g['主A'].establishedBy) out.main = g['主A'].establishedBy;
+  if (g['次方'] && g['次方公开'] === true) out.second = g['次方'];
+  return out;
+}
+
 function _uiMainAceMarks() {
   var out = {};
   var g = gameState;
@@ -743,7 +775,6 @@ function _uiMainAceMarks() {
     if (mode.indexOf('明打') >= 0) {
       n = 2;
     } else {
-      // 该花色的 A 总共就 2 张且都在独打者手里 -> 场上有该花色A 打出 = 独打者打的
       var playedA = 0;
       (g.discarded || []).forEach(function (c) { if (c.suit === suit && c.rank === 14) playedA++; });
       (g.table || []).forEach(function (c) { if (c.suit === suit && c.rank === 14) playedA++; });
@@ -782,7 +813,7 @@ function _uiMemo() {
   var order = [3, 2, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4];
   var names = { 3: '3', 2: '2', 14: 'A', 13: 'K', 12: 'Q', 11: 'J', 10: '10', 9: '9', 8: '8', 7: '7', 6: '6', 5: '5', 4: '4' };
   order.forEach(function (rk) {
-    items.push({ label: names[rk], value: byRank[rk] || 0 });
+    items.push({ label: names[rk], value: byRank[rk] || 0, suitChar: '♠', suitColor: '#1a1a1a' });
   });
   return { items: items };
 }
@@ -825,6 +856,7 @@ function draw() {
     isMainAce: _uiIsMainAce,
     mainAceSuit: gameState['主A'] ? gameState['主A'].suit : null,
     mainAceMarks: _uiMainAceMarks(),
+    camps: _uiCamps(),
     scores: _uiScores(),
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
     turnDeadline: uiTurnDeadline,
@@ -837,6 +869,7 @@ function draw() {
   btnSelectPlayers = out.seatHitboxes;
   btnMarkHits = out.markHits;
   btnMemo = out.memoIcon;
+  btnPlayerHits = out.playerBtns;
 }
 
 // === 首次 draw (启动渲染) ===
@@ -1260,7 +1293,10 @@ if (typeof wx !== 'undefined') {
     for (var i = 0; i < (btnSelectPlayers || []).length; i++) {
       var bp = btnSelectPlayers[i];
       if (x >= bp.x && x <= bp.x + bp.w && y >= bp.y && y <= bp.y + bp.h) {
-        humanPlayer = ['A','B','C','D','E'][i];
+        // [2026-10-25 P0 修复] 原来用**槽位索引**当玩家 ID, 但座位现在是**动态环排**的
+        //   -> 点谁都不是谁(切不到戊)。改成用 hitbox 里带的**真实 pid**。
+        humanPlayer = bp.id;
+        log('切换玩家: ' + names[['A','B','C','D','E'].indexOf(bp.id)]);
         log('切换玩家: ' + names[i]);
         draw();
         return;
@@ -1268,6 +1304,17 @@ if (typeof wx !== 'undefined') {
     }
 
     // [2026-10-24 用户要求] **删掉【Log】按钮**(它压住了微信胶囊按钮) -> 命中分支一并删除
+
+    // [2026-10-25] 顶栏 5 个玩家按钮(测试模式): 切换真人视角
+    for (var pb = 0; pb < (btnPlayerHits || []).length; pb++) {
+      var pbtn = btnPlayerHits[pb];
+      if (x >= pbtn.x && x <= pbtn.x + pbtn.w && y >= pbtn.y && y <= pbtn.y + pbtn.h) {
+        humanPlayer = pbtn.id;
+        log('切换玩家: ' + names[['A','B','C','D','E'].indexOf(pbtn.id)]);
+        draw();
+        return;
+      }
+    }
 
     // [2026-10-25] 记牌器图标: 点击展开/收起记牌器
     if (btnMemo && x >= btnMemo.x - btnMemo.r && x <= btnMemo.x + btnMemo.r &&

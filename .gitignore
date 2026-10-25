@@ -1,27 +1,28 @@
 # 微信小游戏本地私有配置 (文件自述: 不上传到微信)
 project.private.config.json
-
 # 依赖与构建产物
 node_modules/
 dist/
 .cache/
-
 # 系统文件
 .DS_Store
 Thumbs.db
-
 # 日志 (game.js 每日滚动写)
 logs/
 *.log
 npm-debug.log*
-
 # 审查用临时脚本 (一次性, 不入库)
 tests/_*.js
 _reg.txt
-
 # 压测产物 (tools/stress-pushwind.js 生成的结果文件)
 da-a-game/tools/stress_result.txt
-
 # edit 工具自动生成的备份文件
 *_OLD
 *_OLD[0-9]*
+
+# [2026-10-25] 临时产物(后台跑测试/preflight 的落盘文件, 别进仓库)
+_pre.txt
+_pree.txt
+_r14.txt
+_r14e.txt
+tests/_chunk.js
