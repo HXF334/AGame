@@ -20,6 +20,14 @@ var calculateScore = require('./src/scoring.js').calculateScore;
 // [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
 var uiRender = require('./ui-render.js');
 
+// [2026-10-25] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
+//   JS 的 var 只提升**声明**, 不提升 `= {}` 的**赋值** —— 之前 uiPlays 就是这么炸的
+//   (启动路径里它是 undefined -> AI 出牌时抛 "Cannot set properties of undefined")。
+//   这里的 uiPrevHandLens 在启动时也被读 -> 同样必须提前。
+var uiPassed = {};          // pid -> true (该玩家点了「不出」)
+var uiPrevHandLens = {};    // pid -> 上次的手牌张数(用来发现谁出牌了)
+var uiPrevTableIds = {};    // 上次桌牌上的牌 id 集合(用来发现桌牌被收走=新一轮/推风)
+
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
 //   initGame() 之后, 导致启动路径里 uiPlays === undefined,
@@ -697,7 +705,7 @@ function uiClick(id) {
     case 'idHidden': return humanChooseIdentity(false);
 case 'next':     log('  【下】已移除(各阶段自动推进)'); return false;
     case 'play':     doPlay(); return true;
-    case 'pass':     doPass(); return true;
+    case 'pass':     doPass(); uiPassed[humanPlayer] = true; return true;
     case 'hint':     return uiHint();
     case 'newGame':  newGame(); return true;
     default: return false;
@@ -760,6 +768,9 @@ var btnMarkHits = null;
 var btnMemo = null;
 var btnPlayerHits = null;
 var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
+// [2026-10-25] 「不出」的 UI 层状态: 引擎的 passedPlayers 语义是「有人出牌就清全员」,
+//   但用户要的是「只在**该玩家自己**出牌时才清」+ 推风/新一轮时全清 -> 这里独立维护
+// (uiPassed / uiPrevHandLens / uiPrevTableIds 的**赋值**在文件顶部 —— 必须早于 initGame())
 
 // 敌友三态循环: ? -> 友 -> 敌 -> ?
 function uiMarkCycle(pid) {
@@ -782,6 +793,29 @@ function _uiIsMainAce(card) { return !!(card && card['is主方大A'] === true); 
 // [2026-10-25 用户反馈] 之前次方未亮明也显示了大A图标 -> 修正: 次方亮明才给
 // [2026-10-25] 阵营标签: 只给**主A 持有者**标「主方」; 次方**身份亮明后**才标「次方」。
 //   (之前用 state.主方 数组判主方 -> 次方未亮明时也被标成「主方」, 属于信息泄露)
+// [2026-10-25] 同步「不出」显示状态
+//   1) 某个玩家手牌变少 -> 他出牌了 -> **只清他一个人的**「不出」
+//   2) 桌牌上的牌**一张都不在了**(桌牌被收走 = 新一轮 or 推风) -> 所有人「不出」清掉, 各家出牌显示也清掉
+function _uiSyncPassState() {
+  var g = gameState;
+  if (!g || !g.players) return;
+  g.players.forEach(function (p) {
+    var prev = uiPrevHandLens[p.id];
+    if (prev !== undefined && p.hand.length < prev) delete uiPassed[p.id];
+    uiPrevHandLens[p.id] = p.hand.length;
+  });
+  var cur = {};
+  (g.table || []).forEach(function (c) { cur[c.id] = 1; });
+  var hadOld = Object.keys(uiPrevTableIds).length > 0;
+  var anyLeft = false;
+  for (var oid in uiPrevTableIds) { if (cur[oid]) { anyLeft = true; break; } }
+  if (hadOld && !anyLeft && Object.keys(cur).length > 0) {
+    uiPassed = {};      // 新一轮 / 推风 -> 「不出」全清
+    uiPlays = {};       // 桌牌显示也清空
+  }
+  uiPrevTableIds = cur;
+}
+
 function _uiCamps() {
   var g = gameState;
   var out = { main: null, second: null, secondOpen: false };
@@ -862,6 +896,8 @@ function _uiRoundEnded(beforeLen) {
 }
 
 function draw() {
+  // [2026-10-25] 同步「不出」显示状态(谁出牌了/桌牌被收走了)
+  _uiSyncPassState();
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
     gameState: gameState,
@@ -885,6 +921,7 @@ function draw() {
     mainAceSuit: gameState['主A'] ? gameState['主A'].suit : null,
     mainAceMarks: _uiMainAceMarks(),
     camps: _uiCamps(),
+    uiPassed: uiPassed,
     scores: _uiScores(),
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
     turnDeadline: uiTurnDeadline,
