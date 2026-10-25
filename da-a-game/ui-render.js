@@ -235,6 +235,9 @@ function drawAllyMark(ctx, st, m, x, y, r, state) {
 // 玩家座位: 真人以外的 4 人按逆时针环排填 4 个固定槽位(2 左 2 右)
 // [2026-10-25] 名字/牌数/状态 -> 头像**外侧**; 出的牌 -> 头像**内侧**;
 //   敌友钮 左左上/右右上; 大A图标 左右上/右左上; 大A图标只给真正的大A持有者
+// 玩家座位: 真人以外的 4 人按逆时针环排填 4 个固定槽位(2 左 2 右)
+// [2026-10-25] 名字/牌数 -> 头像**外侧**; 出的牌 &「不出」-> 头像**内侧**
+//   敌友钮 左左上/右右上; 大A图标 左右上/右左上
 function drawSeats(ctx, st, m) {
   var g = st.gameState;
   var r = Math.round(m.vh * 0.052);
@@ -259,7 +262,17 @@ function drawSeats(ctx, st, m) {
     var isOut = p && p.hand && p.hand.length === 0;
     var rr_ = Math.round(r * (isCur ? 1.14 : 1));
     var cx = pos.x, cy = pos.y;
-    var outw = pos.side === 'L' ? -1 : 1;
+    var outw = pos.side === 'L' ? -1 : 1;      // 外侧(名字/牌数)
+    var inw = -outw;                           // 内侧(出的牌/不出)
+    // ---- 头像 ----
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    circle(ctx, cx + 2, cy + 3, rr_ + 3); ctx.fill();
+    ctx.fillStyle = SEAT_COLOR[SEAT_IDS.indexOf(pid)] || '#666';
+    circle(ctx, cx, cy, rr_); ctx.fill();
+    ctx.strokeStyle = isCur ? '#ffd700' : 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = isCur ? Math.max(3, m.vh * 0.009) : 1.5;
+    circle(ctx, cx, cy, rr_); ctx.stroke();
+    // ---- 外侧: 名字 + 牌数徽章 ----
     var fs = Math.max(10, Math.round(m.vh * 0.034));
     var nm = st.names[SEAT_IDS.indexOf(pid)];
     var nameX = cx + outw * (rr_ + 6);
@@ -274,12 +287,24 @@ function drawSeats(ctx, st, m) {
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
     rr(ctx, bx, by, bw, bh, 4); ctx.stroke();
     text(ctx, String(cnt), bx + bw / 2, by + bh / 2, Math.max(9, Math.round(m.vh * 0.030)), '#ffffff', 'center', true);
-    var stTxt = isOut ? '已出完' : (isPassed ? '不出' : '');
+    // ---- 阵营(只给主A持有者/已亮明次方) ----
     var ly = by + bh + Math.round(m.vh * 0.026);
-    if (stTxt) { text(ctx, stTxt, nameX, ly, Math.max(9, Math.round(m.vh * 0.028)), '#cccccc', nameA, false); ly += Math.round(m.vh * 0.036); }
     if (camp.main === pid) { text(ctx, '主方', nameX, ly, Math.max(9, Math.round(m.vh * 0.028)), '#ffd98a', nameA, false); }
     else if (camp.second === pid) { text(ctx, '次方', nameX, ly, Math.max(9, Math.round(m.vh * 0.028)), '#9fd0ff', nameA, false); }
+    // ---- 内侧: 「不出」/「已出完」(和出的牌同一位置) ----
+    var plays = st.uiPlays || {};
+    var hasPlay = plays[pid] && plays[pid].length;
+    if (!hasPlay) {
+      var s2 = isOut ? '已出完' : (isPassed ? '不出' : '');
+      if (s2) {
+        var ix = cx + inw * (rr_ + 10);
+        var ia = pos.side === 'L' ? 'left' : 'right';
+        text(ctx, s2, ix, cy, Math.max(10, Math.round(m.vh * 0.034)), isOut ? '#9a9a9a' : '#cccccc', ia, false);
+      }
+    }
+    // 积分(头像正下方)
     drawScore(ctx, st, pid, scores[pid], cx, cy + rr_ + Math.round(m.vh * 0.036));
+    // ---- 头像上方两个角标 ----
     var mr = Math.round(m.vh * 0.020);
     var mkx = pos.side === 'L' ? (cx - rr_ * 0.72) : (cx + rr_ * 0.72);
     var mky = cy - rr_ * 0.72;
@@ -334,38 +359,42 @@ function drawSeatPlays(ctx, st, m, seatMap) {
 
 // ===== 手牌(含底牌牌背) =====
 // [用户 #9] 底牌在自己手牌区**最右面**, 只显示牌背; 翻开后备选加入手牌
+// 手牌(含底牌牌背)
+// [2026-10-25 用户] **大A 要排在大王前面** -> 排序时把大A 单独算
 function drawHand(ctx, st, m) {
-  // 只画真人自己的手牌: 按 humanPlayer 过滤, 绝不渲染他人手牌
   var g = st.gameState;
   var humanPlayer = st.humanPlayer;
   var me = g.players.filter(function (p) { return p.id === humanPlayer; })[0];
   if (!me) return [];
   var hand = (me.hand || []).slice();
-  var bottom = me['底牌'] || null;      // 未翻开的底牌
-  var sorted = hand.slice().sort(function (a, b) { return cardPower(b) - cardPower(a); });
+  var bottom = me['底牌'] || null;
+  var isAce = st.isMainAce || function () { return false; };
+  var sorted = hand.slice().sort(function (a, b) {
+    return cardPower(b, isAce(b)) - cardPower(a, isAce(a));
+  });
   var total = sorted.length + (bottom ? 1 : 0);
   if (!total) return [];
-
-  var L = handLayout(total, m);
+  var L2 = handLayout(total, m);
   var boxes = [];
-  var xAcc = L.x0;
+  var xAcc = L2.x0;
   var showHit = (st.currentPlayer === st.humanPlayer && g.phase === 'PLAY');
   for (var i = 0; i < sorted.length; i++) {
     var card = sorted[i];
     var isSel = st.selectedCards.indexOf(card.id) >= 0;
-    var x = xAcc; xAcc += L.step;
-    drawCard(ctx, card, x, L.y - (isSel ? L.lift : 0), L.cardW, L.cardH, isSel, st);
-    if (showHit) boxes.push({ x: x, y: L.y, w: Math.max(1, L.step), h: L.cardH, cardId: card.id });
+    var x = xAcc; xAcc += L2.step;
+    drawCard(ctx, card, x, L2.y - (isSel ? L2.lift : 0), L2.cardW, L2.cardH, isSel, st);
+    if (showHit) boxes.push({ x: x, y: L2.y, w: Math.max(1, L2.step), h: L2.cardH, cardId: card.id });
   }
-  if (bottom) {
-    var bx = xAcc;
-    drawCardBack(ctx, bx, L.y, L.cardW, L.cardH);
-  }
+  if (bottom) drawCardBack(ctx, xAcc, L2.y, L2.cardW, L2.cardH);
   return boxes;
 }
 
 // 牌力排序(大->小): 大A > 大王 > 小王 > 3 > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4
-function cardPower(c) {
+// 牌力排序(大->小): **大A** > 大王 > 小王 > 3 > 2 > A > K > Q > J > 10 > 9 > 8 > 7 > 6 > 5 > 4
+// [2026-10-25 用户] **大A 必须比大王还大**(同花色的 A 就是大A)
+//   isBigAce 由调用方传入(靠 state.主A.suit + 持有者判定), 不用引擎那个「同花色全标」的标记
+function cardPower(c, isBigAce) {
+  if (isBigAce) return 22;
   if (c.isBigJoker) return 21;
   if (c.isSmallJoker) return 20;
   if (c.rank === 3) return 19;
@@ -378,6 +407,7 @@ function cardPower(c) {
 // [用户 #1] 大点数在上 + 大花色在下, **无角标**; 大小王 = 英文 JOKER 竖排
 // [用户 #8] 大A 底色淡黄
 // [2026-10-25 用户] 牌面**内容居中**, 字略小; 大点数在上/大花色在下/无角标; 大小王=英文 JOKER 竖排; 大A=淡黄底
+// 牌面: **内容整体居中**(点数+花色作为一组), 大小王=英文 JOKER 竖排(整体居中), 大A=淡黄底
 function drawCard(ctx, card, x, y, w, h, isSel, st) {
   var joker = !!(card.isBigJoker || card.isSmallJoker);
   var red = (card.suit === 'H' || card.suit === 'D' || card.isBigJoker);
@@ -392,15 +422,23 @@ function drawCard(ctx, card, x, y, w, h, isSel, st) {
   rr(ctx, x, y, w, h, 4); ctx.stroke();
   if (joker) {
     var letters = 'JOKER';
-    var lh = h * 0.102;
-    var startY = y + h * 0.22;
+    var fs = Math.max(9, Math.round(w * 0.34));
+    var lh = fs * 1.02;
+    // 5 个字母作为一组, 整体垂直居中
+    var groupH = lh * (letters.length - 1);
+    var startY = y + h / 2 - groupH / 2;
     for (var li = 0; li < letters.length; li++) {
-      text(ctx, letters[li], x + w / 2, startY + li * lh, Math.max(9, Math.round(w * 0.36)), col, 'center', true);
+      text(ctx, letters[li], x + w / 2, startY + li * lh, fs, col, 'center', true);
     }
     return;
   }
-  text(ctx, st.rankDesc(card), x + w / 2, y + h * 0.30, Math.max(11, Math.round(w * 0.48)), col, 'center', true);
-  text(ctx, SUIT_CHAR[card.suit] || '', x + w / 2, y + h * 0.68, Math.max(12, Math.round(w * 0.54)), col, 'center', true);
+  // 点数 + 花色作为一组, 整体居中
+  var numFs = Math.max(11, Math.round(w * 0.46));
+  var suitFs = Math.max(12, Math.round(w * 0.50));
+  var numY = y + h / 2 - numFs * 0.62;
+  var suitY = y + h / 2 + suitFs * 0.60;
+  text(ctx, st.rankDesc(card), x + w / 2, numY, numFs, col, 'center', true);
+  text(ctx, SUIT_CHAR[card.suit] || '', x + w / 2, suitY, suitFs, col, 'center', true);
 }
 
 // 底牌牌背: 深色底 + 简单图案
@@ -420,6 +458,7 @@ function drawCardBack(ctx, x, y, w, h) {
 
 // 小牌面(桌面/各家出牌)
 // 小牌面(各家出牌) —— 内容居中
+// 小牌面(各家出牌) —— 和手牌一致: 大小王也用英文 JOKER 竖排; 内容居中
 function drawMiniCard(ctx, card, x, y, w, h, st) {
   var joker = !!(card.isBigJoker || card.isSmallJoker);
   var red = (card.suit === 'H' || card.suit === 'D' || card.isBigJoker);
@@ -429,9 +468,23 @@ function drawMiniCard(ctx, card, x, y, w, h, st) {
   rr(ctx, x, y, w, h, 3); ctx.fill();
   ctx.strokeStyle = isBigAce ? '#d9a05b' : 'rgba(0,0,0,0.35)'; ctx.lineWidth = isBigAce ? 2 : 1;
   rr(ctx, x, y, w, h, 3); ctx.stroke();
-  if (joker) { text(ctx, '王', x + w / 2, y + h * 0.5, Math.max(9, Math.round(w * 0.46)), col, 'center', true); return; }
-  text(ctx, st.rankDesc(card), x + w / 2, y + h * 0.30, Math.max(8, Math.round(w * 0.44)), col, 'center', true);
-  text(ctx, SUIT_CHAR[card.suit] || '', x + w / 2, y + h * 0.68, Math.max(9, Math.round(w * 0.50)), col, 'center', true);
+  if (joker) {
+    var letters = 'JOKER';
+    var fs = Math.max(7, Math.round(w * 0.26));
+    var lh = fs * 1.02;
+    var groupH = lh * (letters.length - 1);
+    var startY = y + h / 2 - groupH / 2;
+    for (var li = 0; li < letters.length; li++) {
+      text(ctx, letters[li], x + w / 2, startY + li * lh, fs, col, 'center', true);
+    }
+    return;
+  }
+  var numFs = Math.max(8, Math.round(w * 0.42));
+  var suitFs = Math.max(9, Math.round(w * 0.46));
+  var numY = y + h / 2 - numFs * 0.62;
+  var suitY = y + h / 2 + suitFs * 0.60;
+  text(ctx, st.rankDesc(card), x + w / 2, numY, numFs, col, 'center', true);
+  text(ctx, SUIT_CHAR[card.suit] || '', x + w / 2, suitY, suitFs, col, 'center', true);
 }
 
 // ===== 真人头像 + 牌数(手牌左侧, 文字避开刘海) =====
@@ -570,8 +623,8 @@ function drawPlayerBar(ctx, st, m) {
   var camp = st.camps || {};
   var y = m.top.h * 0.70;
   var h = Math.round(m.vh * 0.040);
-  var w = Math.round(m.vw * 0.062);
-  var gap = Math.round(m.vw * 0.006);
+  var w = Math.round(m.vw * 0.082);
+  var gap = Math.round(m.vw * 0.008);
   var x0 = m.safeL + 4;
   var out = [];
   for (var i = 0; i < SEAT_IDS.length; i++) {
@@ -584,11 +637,11 @@ function drawPlayerBar(ctx, st, m) {
     rr(ctx, x, y - h / 2, w, h, 4); ctx.fill();
     ctx.strokeStyle = isMe ? '#ffd700' : 'rgba(255,255,255,0.30)'; ctx.lineWidth = 1;
     rr(ctx, x, y - h / 2, w, h, 4); ctx.stroke();
-    text(ctx, st.names[i], x + w * 0.30, y, Math.max(9, Math.round(m.vh * 0.030)),
+    text(ctx, st.names[i], x + w * 0.32, y,
       isMe ? '#3a2408' : '#ffffff', 'center', true);
     var tag = isMain ? '主' : (isSecond ? '次' : '');
     if (tag) {
-      text(ctx, tag, x + w * 0.74, y, Math.max(9, Math.round(m.vh * 0.028)),
+      text(ctx, tag, x + w * 0.72, y,
         isMain ? '#ffd98a' : '#9fd0ff', 'center', true);
     }
     out.push({ x: x, y: y - h / 2, w: w, h: h, id: pid });

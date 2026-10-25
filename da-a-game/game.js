@@ -538,9 +538,14 @@ function uiHintCandidates() {
 }
 
 // 组合的牌力取其中最大的一张
+// 组合的牌力取其中最大的一张
+// [2026-10-25] **大A 要算进去**(大A > 大王) -> 提示候选里大A 排在最前
 function _uiComboPower(cards) {
   var mx = 0;
-  (cards || []).forEach(function (c) { var p = uiRender.cardPower(c); if (p > mx) mx = p; });
+  (cards || []).forEach(function (c) {
+    var p = uiRender.cardPower(c, g.uiIsMainAce(c));
+    if (p > mx) mx = p;
+  });
   return mx;
 }
 
