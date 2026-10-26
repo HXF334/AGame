@@ -204,40 +204,66 @@ function drawTopBar(ctx, st, m, memoIcon) {
 //   2) 上排只写「什么牌」(大A/大王/小王/3/2/A/K/...)，**不画花色**
 //   3) 下排只写剩余数字, 按花色着色(红桃/方块=红, 黑桃/梅花=黑)
 //   4) 紧凑小格; 显示不下就自动缩小列宽
+// 记牌器 —— 参照图3样式:
+//   1) **只显示在顶部深棕色那一条**(顶栏)里, 不再压在牌桌上
+//   2) 大A 用**花色**表示; 大王=红色 JOKER, 小王=黑色 JOKER(竖排)
+//   3) 下面只写剩余数字, **黑色**
+//   4) 整体缩小
 function drawMemo(ctx, st, m) {
   if (!st.memoOpen) return;
   var items = st.memoItems || [];
   var n = items.length;
   if (!n) return;
-  var cw = Math.round(m.vw * 0.038);
-  var availW = m.vw - Math.round(m.vw * 0.06);
-  if (n * cw > availW) cw = Math.max(11, Math.floor(availW / n));
-  var cardW = Math.round(cw * 0.86);
-  var cardH = Math.round(cardW * 1.30);
-  var numH = Math.round(cardH * 0.95);
+  var topH = m.top.h;
+  var cw = Math.round(m.vw * 0.040);
+  var availW = m.vw - Math.round(m.vw * 0.05);
+  if (n * cw > availW) cw = Math.max(9, Math.floor(availW / n));
+  var cardW = Math.round(cw * 0.82);
+  var cardH = Math.round(topH * 0.56);
+  var numH = Math.round(topH * 0.30);
   var total = n * cw;
-  var px = m.vw - total - Math.round(m.vw * 0.02);
-  var y = m.top.h + Math.round(m.vh * 0.012);
-  var pad = Math.round(m.vw * 0.010);
-  var panelH = cardH + numH + pad * 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.88)';
-  rr(ctx, px - pad, y, total + pad * 2, panelH, 6); ctx.fill();
+  var x0 = (m.vw - total) / 2;
+  var y = Math.round(m.vh * 0.004);
+  // 面板 = 顶栏那一条深棕底
+  ctx.fillStyle = 'rgba(0,0,0,0.92)';
+  rr(ctx, x0 - 4, y, total + 8, cardH + numH + 4, 4); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 1;
-  rr(ctx, px - pad, y, total + pad * 2, panelH, 6); ctx.stroke();
+  rr(ctx, x0 - 4, y, total + 8, cardH + numH + 4, 4); ctx.stroke();
+  var suit = st.mainAceSuit;
   for (var i = 0; i < n; i++) {
     var it = items[i];
-    var cx = px + i * cw + cw / 2;
-    // 上排: 白底小牌面, **只写牌名**(不画花色)
+    var cx = x0 + i * cw + cw / 2;
+    // 上排: 白底小牌面
     ctx.fillStyle = '#fdfdf6';
-    rr(ctx, cx - cardW / 2, y + pad, cardW, cardH, 2); ctx.fill();
+    rr(ctx, cx - cardW / 2, y + 2, cardW, cardH, 2); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
-    rr(ctx, cx - cardW / 2, y + pad, cardW, cardH, 2); ctx.stroke();
-    text(ctx, it.label || '', cx, y + pad + cardH * 0.52,
-      Math.max(8, Math.round(cardW * 0.60)), '#1a1a1a', 'center', true);
-    // 下排: 剩余数字(按花色着色)
-    var nbY = y + pad + cardH + 1;
+    rr(ctx, cx - cardW / 2, y + 2, cardW, cardH, 2); ctx.stroke();
+    var lbl = it.label || '';
+    if (lbl === '大A') {
+      // 大A: 用**主A 的花色**表示
+      text(ctx, suit ? (SUIT_CHAR[suit] || '?') : '?', cx, y + 2 + cardH * 0.52,
+        Math.max(9, Math.round(cardH * 0.55)), suitColor(suit), 'center', true);
+    } else if (lbl === '大王' || lbl === '小王') {
+      // 大王=红色 JOKER, 小王=黑色 JOKER(竖排)
+      var jc = (lbl === '大王') ? '#c8102e' : '#1a1a1a';
+      var letters = 'JOKER';
+      var fs2 = Math.max(5, Math.round(cardH * 0.17));
+      var lh2 = fs2 * 1.0;
+      var gh = lh2 * (letters.length - 1);
+      var sy = y + 2 + cardH / 2 - gh / 2;
+      for (var li = 0; li < letters.length; li++) {
+        text(ctx, letters[li], cx, sy + li * lh2, fs2, jc, 'center', true);
+      }
+    } else {
+      text(ctx, lbl, cx, y + 2 + cardH * 0.52,
+        Math.max(8, Math.round(cardH * 0.50)), '#1a1a1a', 'center', true);
+    }
+    // 下排: 剩余数字(白底 + **黑字**)
+    var nbY = y + 2 + cardH + 1;
+    ctx.fillStyle = '#f4f0e6';
+    rr(ctx, cx - cardW / 2, nbY, cardW, numH, 2); ctx.fill();
     text(ctx, String(it.value), cx, nbY + numH / 2,
-      Math.max(9, Math.round(numH * 0.80)), it.suitColor || '#1a1a1a', 'center', true);
+      Math.max(8, Math.round(numH * 0.72)), '#000000', 'center', true);
   }
 }
 

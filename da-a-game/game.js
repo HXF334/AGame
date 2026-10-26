@@ -33,6 +33,7 @@ var uiPrevHandLens = {};    // pid -> 上次的手牌张数(用来发现谁出�
 var uiTrickId = 0;          // 当前轮次
 var uiPlaysTrick = {};      // pid -> 那手牌属于第几轮
 var uiPrevTableIds = {};    // 上一帧桌牌上的牌 id 集合
+var uiBigAcePlayed = {};    // pid -> 该玩家**打出**过几张主方大A(头像角标用)
 
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
@@ -842,7 +843,14 @@ function _uiCamps() {
   var g = gameState;
   var out = { main: null, second: null, secondOpen: false };
   if (g['主A'] && g['主A'].establishedBy) out.main = g['主A'].establishedBy;
-  if (g['次方']) { out.second = g['次方']; out.secondOpen = (g['次方公开'] === true); }
+  if (g['次方']) {
+    out.second = g['次方'];
+    // [2026-10-26] **2V3_明打 模式下次方身份「始终公开」** —— 但引擎**不会**把
+    //   state.次方公开 置成 true(无需再触发) -> 只看该字段会误判成「未亮明」,
+    //   导致顶栏「次X」是灰色、头像角标也不出现。引擎 transition.js 注释写明这一点。
+    var _mode = g.mode || '';
+    out.secondOpen = (g['次方公开'] === true) || (_mode.indexOf('2V3_明打') >= 0);
+  }
   return out;
 }
 
@@ -867,8 +875,13 @@ function _uiMainAceMarks() {
     if (main) out[main] = n;
   } else {
     if (zhu.establishedBy) out[zhu.establishedBy] = 1;
-    if (g['次方'] && g['次方公开'] === true) out[g['次方']] = 1;
+    // [2026-10-26] 2V3_明打 模式下次方**始终公开**(引擎不会把 state.次方公开 置 true)
+    if (g['次方'] && (g['次方公开'] === true || mode.indexOf('2V3_明打') >= 0)) out[g['次方']] = 1;
   }
+  // [2026-10-26] 合并「**打出过**主方大A」的玩家 -> 头像左上角角标
+  Object.keys(uiBigAcePlayed).forEach(function (pid) {
+    out[pid] = (out[pid] || 0) + uiBigAcePlayed[pid];
+  });
   return out;
 }
 
@@ -918,12 +931,16 @@ function _uiTestMode() {
 }
 
 // 一轮结束(有人过牌导致) -> 清掉各家最新出牌
-// [2026-10-26] 一轮结束 -> 「不出」标记也全清
-//   (用户: 轮后要清; 推风时引擎清空桌牌也走这里 -> 「不出」+ 桌牌一起清)
-function _uiRoundEnded(beforeLen) {
+// [2026-10-26] 一轮结束 -> 「不出」标记也清空, **但保留刚过牌的那个人**
+//   (他确实刚过牌, 「不出」要一直显示到他**自己出牌**为止; 之前连他一起清掉了
+//    -> 用户看到的现象是「其他玩家过牌后都不显示不出文字」)
+//   推风时引擎清空桌牌也走这里 -> 桌牌和「不出」一起清
+function _uiRoundEnded(beforeLen, keepPid) {
   if (beforeLen > 0 && (gameState.table || []).length === 0) {
     uiPlays = {};
+    var keep = keepPid ? uiPassed[keepPid] : false;
     uiPassed = {};
+    if (keep) uiPassed[keepPid] = true;
     return true;
   }
   return false;
@@ -1187,7 +1204,7 @@ function doPass() {
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
     delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
     // [2026-10-25] 有人过牌导致本轮结束 -> 清掉**全部**各家的出牌显示
-    _uiRoundEnded(_hadTable ? 1 : 0);
+    _uiRoundEnded(_hadTable ? 1 : 0, currentPlayer);   // 保留刚过牌的人
     // [2026-10-26] 过牌 -> 标记「不出」。
     //   **必须放在 _uiRoundEnded 之后** —— _uiRoundEnded 会清空全部 uiPassed,
     //   放前面的话刚置位的会被自己清掉 -> 「不出」永远不显示(用户连着报了两条)。
@@ -1314,6 +1331,10 @@ function runAI() {
           _uiSyncTrick();   // 可能开了新一轮 -> 先清掉旧一轮的显示
     uiPlays[currentPlayer] = _uiCardsByIds(action.cardIds, gameState);
     uiPlaysTrick[currentPlayer] = uiTrickId;
+    // [2026-10-26] 统计该玩家**打出**过几张主方大A -> 头像左上角角标
+    var _bigN = 0;
+    (uiPlays[currentPlayer] || []).forEach(function (c) { if (c && c.is主方大A) _bigN++; });
+    if (_bigN) uiBigAcePlayed[currentPlayer] = (uiBigAcePlayed[currentPlayer] || 0) + _bigN;
         } else if (action.type === ACTIONS.PASS) {
           delete uiPlays[currentPlayer];
         }
