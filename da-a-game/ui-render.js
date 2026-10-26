@@ -54,7 +54,7 @@ function layout(W, H) {
     hand: { y: vh * 0.700, maxW: vw * 0.70, cardH: vh * 0.188, ratio: 0.70 },
     me: { x: safe + r + 30, r: r, y: vh * 0.700 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
-    memo: { iconX: vw * 0.22, iconY: vh * 0.062, iconR: Math.round(vh * 0.036) }
+    memo: { iconX: vw * 0.28, iconY: vh * 0.062, iconR: Math.round(vh * 0.036) }
   };
 }
 
@@ -172,11 +172,11 @@ function drawTopBar(ctx, st, m, memoIcon) {
   text(ctx, '大A ' + zhuTxt, x, y1, fs, '#ffd98a', 'left', true);
   if (st.testMode) {
     var camp = st.camps || {};
-    var tx = x + fs * 4.6;                // 「大A 花色」后面隔两个空格
+    var tx = x + fs * 3.4;                // 「大A 花色」后面隔一点
     if (camp.main) {
       var t1 = '主' + st.names[SEAT_IDS.indexOf(camp.main)];
       text(ctx, t1, tx, y1, fs, '#ffd98a', 'left', true);
-      tx += fs * 2 + t1.length * fs * 0.6;
+      tx += fs * 2.4;                  // 主甲 -> 次乙 也收紧
     }
     if (camp.second) {
       var t2 = '次' + st.names[SEAT_IDS.indexOf(camp.second)];
@@ -272,10 +272,12 @@ function suitColor(suit) {
   return (suit === 'H' || suit === 'D') ? '#c8102e' : '#1a1a1a';
 }
 
+// 玩家座位: 真人以外的 4 人按逆时针环排填 4 个固定槽位(2 左 2 右)
+// [2026-10-26] 名字和牌数徽章**同一水平线**(垂直居中于头像),
+//   敌友钮在名字的**斜上方外侧**(不压名字, 也不像叠罗汉)
 function drawSeats(ctx, st, m) {
   var g = st.gameState;
   var r = Math.round(m.vh * 0.052);
-  var passMap = st.uiPassed || {};   // [2026-10-25] 「不出」由 UI 层维护
   var scores = st.scores || {};
   var so = seatOrder(st.humanPlayer);
   var slots = { L1: m.seats[0], L2: m.seats[1], R1: m.seats[2], R2: m.seats[3] };
@@ -294,7 +296,7 @@ function drawSeats(ctx, st, m) {
     seatMap[pid] = pos;
     var p = g.players.filter(function (x) { return x.id === pid; })[0];
     var isCur = st.currentPlayer === pid;
-    var isPassed = !!passMap[pid];
+    var isPassed = !!((st.uiPassed || {})[pid]);
     var isOut = p && p.hand && p.hand.length === 0;
     var rr_ = Math.round(r * (isCur ? 1.14 : 1));
     var cx = pos.x, cy = pos.y;
@@ -311,12 +313,12 @@ function drawSeats(ctx, st, m) {
     var nm = st.names[SEAT_IDS.indexOf(pid)];
     var nameX = cx + outw * (rr_ + 6);
     var nameA = pos.side === 'L' ? 'right' : 'left';
-    var nameY = cy - rr_ * 0.02;
-    text(ctx, nm, nameX, nameY, fs, isCur ? '#ffd700' : '#ffffff', nameA, isCur);
+    // 名字和牌数徽章: 同一水平线, 垂直居中于头像
     var cnt = p && p.hand ? p.hand.length : 0;
     var bw = Math.round(r * 0.92), bh = Math.round(r * 0.60);
     var bx = pos.side === 'L' ? (cx - rr_ - 6 - bw) : (cx + rr_ + 6);
-    var by = cy + rr_ * 0.50;
+    var by = cy - bh / 2;
+    text(ctx, nm, nameX, cy, fs, isCur ? '#ffd700' : '#ffffff', nameA, isCur);
     ctx.fillStyle = isOut ? '#555' : '#2f6fb5';
     rr(ctx, bx, by, bw, bh, 4); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
@@ -336,13 +338,12 @@ function drawSeats(ctx, st, m) {
       }
     }
     drawScore(ctx, st, pid, scores[pid], cx, cy + rr_ + Math.round(m.vh * 0.036));
-    // 敌友钮: 玩家名**上方**, 再上移一点避免压到名字
+    // 敌友钮: 名字的**斜上方外侧**(压不到名字, 也不会和名字/牌数挤成一条线)
     var mr = Math.round(m.vh * 0.020);
-    var mkx = pos.side === 'L' ? (nameX - fs * 0.9) : (nameX + fs * 0.9);
-    var mky = nameY - fs * 1.30;
+    var mkx = pos.side === 'L' ? (nameX - fs * 1.15) : (nameX + fs * 1.15);
+    var mky = cy - rr_ * 1.02;
     drawAllyMark(ctx, st, m, mkx, mky, mr, myMarks[pid] || null);
     markHits.push({ x: mkx - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
-    // 大A图标: 浅底 + **自己花色**的颜色
     if (st.mainAceMarks && st.mainAceMarks[pid]) {
       var n = st.mainAceMarks[pid];
       var suit = st.mainAceSuit;
@@ -559,6 +560,8 @@ function drawMiniCard(ctx, card, x, y, w, h, st, visibleW) {
 //   真人没有敌友钮, 头像**右上**放一个「切」按钮(点击循环切换真人视角)
 // [2026-10-25 用户] 真人玩家: 头像/名字/牌数 与**左侧玩家一致** -> 名字和牌数在**左侧**(外侧)
 //   **没有敌友钮**; 「切」按钮已删除(用户问它意义 -> 去掉)
+// [2026-10-26] 真人玩家: 头像/名字/牌数 与**左侧玩家一致** -> 名字和牌数在**左侧**(外侧),
+//   同一水平线; 顶部右上是**大A图标**; 没有敌友钮
 function drawMeSeat(ctx, st, m) {
   var g = st.gameState;
   var me = g.players.filter(function (p) { return p.id === st.humanPlayer; })[0];
@@ -575,11 +578,10 @@ function drawMeSeat(ctx, st, m) {
   circle(ctx, cx, cy, rr_); ctx.stroke();
   var fs = Math.max(10, Math.round(m.vh * 0.034));
   var nameX = cx - rr_ - 6;
-  var nameY = cy - rr_ * 0.02;
-  text(ctx, st.names[SEAT_IDS.indexOf(st.humanPlayer)], nameX, nameY, fs,
+  text(ctx, st.names[SEAT_IDS.indexOf(st.humanPlayer)], nameX, cy, fs,
     st.currentPlayer === st.humanPlayer ? '#ffd700' : '#ffffff', 'right', true);
   var bw = Math.round(r * 0.92), bh = Math.round(r * 0.60);
-  var bx = cx - rr_ - 6 - bw, by = cy + rr_ * 0.50;
+  var bx = cx - rr_ - 6 - bw, by = cy - bh / 2;
   ctx.fillStyle = '#2f6fb5';
   rr(ctx, bx, by, bw, bh, 4); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
@@ -674,10 +676,12 @@ function drawToast(ctx, st, m) {
 //   2) 下面那行「谁先出完」(res.reason) 不要了
 //   3) 「下一局」按钮画在**面板内下方中央**
 //   4) **把所有未出完牌玩家的手牌一次性摊开显示**(不管是否合理)
+// ===== 结算 =====
+// [2026-10-26] 剩余手牌**放大**(原来 10x14 根本看不清), 行距收紧(上下只留一点边距)
 function drawSettlement(ctx, st, m) {
   var d = st.settlement;
   if (!d) return null;
-  var pw = Math.min(520, m.vw * 0.88), ph = Math.min(300, m.vh * 0.90);
+  var pw = Math.min(540, m.vw * 0.90), ph = Math.min(270, m.vh * 0.82);
   var px = (m.vw - pw) / 2, py = (m.vh - ph) / 2 - m.vh * 0.03;
   ctx.fillStyle = 'rgba(20,8,4,0.92)';
   rr(ctx, px, py, pw, ph, 10); ctx.fill();
@@ -685,10 +689,11 @@ function drawSettlement(ctx, st, m) {
   rr(ctx, px, py, pw, ph, 10); ctx.stroke();
   var w = (d.res && d.res.winner) || 'draw';
   var title = (w === 'draw') ? '平局' : (w + '胜');
-  text(ctx, '本局结束 · ' + title, px + pw / 2, py + 30, Math.max(15, Math.round(m.vh * 0.052)), '#ffd98a', 'center', true);
+  text(ctx, '本局结束 · ' + title, px + pw / 2, py + 26, Math.max(15, Math.round(m.vh * 0.050)), '#ffd98a', 'center', true);
   var camps = (st.gameState['主方'] || []);
-  var rowY = py + 66, rowH = Math.round(m.vh * 0.082);
-  var cw = 10, ch = 14, cstep = 7;
+  var rowH = Math.round(m.vh * 0.070);
+  var rowY = py + 50;
+  var cw = 17, ch = 24, cstep = 12;
   for (var i = 0; i < SEAT_IDS.length; i++) {
     var pid = SEAT_IDS[i];
     var y = rowY + i * rowH;
@@ -697,14 +702,13 @@ function drawSettlement(ctx, st, m) {
     var delta = d.scores ? d.scores[pid] : undefined;
     var dtxt = (delta === undefined) ? '—' : ((delta > 0 ? '+' : '') + delta);
     ctx.fillStyle = (i % 2 === 0) ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
-    rr(ctx, px + 14, y - rowH * 0.40, pw - 28, rowH * 0.80, 4); ctx.fill();
-    text(ctx, st.names[i] + (pid === st.humanPlayer ? '(你)' : ''), px + 24, y, Math.max(12, Math.round(m.vh * 0.038)), '#ffffff', 'left', true);
-    text(ctx, camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0), px + 96, y, Math.max(10, Math.round(m.vh * 0.030)), '#aaaaaa', 'left', false);
-    // 剩余手牌: 一次性摊开(不管是否合理)
+    rr(ctx, px + 12, y - rowH * 0.46, pw - 24, rowH * 0.92, 3); ctx.fill();
+    text(ctx, st.names[i] + (pid === st.humanPlayer ? '(你)' : ''), px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), '#ffffff', 'left', true);
+    text(ctx, camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0), px + 92, y, Math.max(9, Math.round(m.vh * 0.028)), '#aaaaaa', 'left', false);
     var hand = (p && p.hand) ? p.hand : [];
     if (hand.length) {
-      var hx = px + 178;
-      var nShow = Math.min(hand.length, 14);
+      var hx = px + 170;
+      var nShow = Math.min(hand.length, 12);
       for (var j = 0; j < nShow; j++) {
         drawMiniCard(ctx, hand[j], hx + j * cstep, y - ch / 2, cw, ch, st, cstep);
       }
@@ -713,16 +717,16 @@ function drawSettlement(ctx, st, m) {
           Math.max(9, Math.round(m.vh * 0.026)), '#cccccc', 'left', false);
       }
     }
-    text(ctx, dtxt, px + pw - 24, y, Math.max(12, Math.round(m.vh * 0.042)),
+    text(ctx, dtxt, px + pw - 22, y, Math.max(11, Math.round(m.vh * 0.038)),
          (delta > 0) ? '#7ee08a' : ((delta < 0) ? '#ff8888' : '#cccccc'), 'right', true);
   }
-  var bw2 = Math.round(m.vw * 0.26), bh2 = Math.round(m.vh * 0.085);
-  var bx2 = px + (pw - bw2) / 2, by2 = py + ph - bh2 - Math.round(m.vh * 0.030);
+  var bw2 = Math.round(m.vw * 0.26), bh2 = Math.round(m.vh * 0.080);
+  var bx2 = px + (pw - bw2) / 2, by2 = py + ph - bh2 - Math.round(m.vh * 0.024);
   ctx.fillStyle = '#8a5a2b';
   rr(ctx, bx2, by2, bw2, bh2, Math.round(bh2 * 0.30)); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 2;
   rr(ctx, bx2, by2, bw2, bh2, Math.round(bh2 * 0.30)); ctx.stroke();
-  text(ctx, '下一局', bx2 + bw2 / 2, by2 + bh2 / 2, Math.max(11, Math.round(m.vh * 0.038)), '#ffffff', 'center', true);
+  text(ctx, '下一局', bx2 + bw2 / 2, by2 + bh2 / 2, Math.max(11, Math.round(m.vh * 0.036)), '#ffffff', 'center', true);
   return { x: bx2, y: by2, w: bw2, h: bh2, id: 'newGame' };
 }
 

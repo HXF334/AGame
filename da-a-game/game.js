@@ -26,7 +26,6 @@ var uiRender = require('./ui-render.js');
 //   这里的 uiPrevHandLens 在启动时也被读 -> 同样必须提前。
 var uiPassed = {};          // pid -> true (该玩家点了「不出」)
 var uiPrevHandLens = {};    // pid -> 上次的手牌张数(用来发现谁出牌了)
-var uiPrevTableIds = {};    // 上次桌牌上的牌 id 集合(用来发现桌牌被收走=新一轮/推风)
 
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
@@ -799,21 +798,16 @@ function _uiIsMainAce(card) { return !!(card && card['is主方大A'] === true); 
 function _uiSyncPassState() {
   var g = gameState;
   if (!g || !g.players) return;
+  // 只清**他自己**的「不出」(他出牌了)
+  // [2026-10-26] 这里**绝对不要碰 uiPlays**: 我之前加的"旧桌牌一张都不在了就清空"会误判 ——
+  //   打大A 里**每个点数变化都会收走桌牌** -> 每次都触发 -> 各家刚出的牌被清掉
+  //   -> 桌面上的牌一直看不见(用户报的 bug)。一轮结束的清理由 _uiRoundEnded 负责
+  //   (那才是引擎给出的准确信号)。
   g.players.forEach(function (p) {
     var prev = uiPrevHandLens[p.id];
     if (prev !== undefined && p.hand.length < prev) delete uiPassed[p.id];
     uiPrevHandLens[p.id] = p.hand.length;
   });
-  var cur = {};
-  (g.table || []).forEach(function (c) { cur[c.id] = 1; });
-  var hadOld = Object.keys(uiPrevTableIds).length > 0;
-  var anyLeft = false;
-  for (var oid in uiPrevTableIds) { if (cur[oid]) { anyLeft = true; break; } }
-  if (hadOld && !anyLeft && Object.keys(cur).length > 0) {
-    uiPassed = {};      // 新一轮 / 推风 -> 「不出」全清
-    uiPlays = {};       // 桌牌显示也清空
-  }
-  uiPrevTableIds = cur;
 }
 
 function _uiCamps() {
@@ -890,8 +884,14 @@ function _uiTestMode() {
 }
 
 // 一轮结束(有人过牌导致) -> 清掉各家最新出牌
+// [2026-10-26] 一轮结束 -> 「不出」标记也全清
+//   (用户: 轮后要清; 推风时引擎清空桌牌也走这里 -> 「不出」+ 桌牌一起清)
 function _uiRoundEnded(beforeLen) {
-  if (beforeLen > 0 && (gameState.table || []).length === 0) { uiPlays = {}; return true; }
+  if (beforeLen > 0 && (gameState.table || []).length === 0) {
+    uiPlays = {};
+    uiPassed = {};
+    return true;
+  }
   return false;
 }
 
