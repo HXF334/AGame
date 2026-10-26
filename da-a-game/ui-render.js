@@ -54,7 +54,7 @@ function layout(W, H) {
     hand: { y: vh * 0.700, maxW: vw * 0.70, cardH: vh * 0.188, ratio: 0.70 },
     me: { x: safe + r + 30, r: r, y: vh * 0.700 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
-    memo: { iconX: vw * 0.24, iconY: vh * 0.062, iconR: Math.round(vh * 0.036) }
+    memo: { iconX: vw * 0.24, iconY: vh * 0.052, iconR: Math.round(vh * 0.026) }
   };
 }
 
@@ -205,6 +205,9 @@ function drawMemo(ctx, st, m) {
   var n = items.length;
   if (!n) return;
   var cw = Math.round(m.vw * 0.049);
+  // [2026-10-26] 显示不下就缩小列宽
+  var availW = m.vw - Math.round(m.vw * 0.04);
+  if (n * cw > availW) cw = Math.max(12, Math.floor(availW / n));
   var total = n * cw;
   var x0 = (m.vw - total) / 2;
   var y = m.top.h + Math.round(m.vh * 0.008);
@@ -278,6 +281,10 @@ function suitColor(suit) {
 // 玩家座位: 真人以外的 4 人按逆时针环排填 4 个固定槽位(2 左 2 右)
 // [2026-10-26] 名字/牌数徽章**同一水平线**; 名字在徽章**外侧**(之前徽章盖住了名字!);
 //   敌友钮在名字的**斜上方外侧**
+// 玩家座位: 真人以外的 4 人按逆时针环排填 4 个固定槽位(2 左 2 右)
+// [2026-10-26] 1) 头像下的「主方/次方」标签**删掉**(顶栏已有同一份信息, 重复且挤占位置)
+//   2) 玩家名**最后画** -> 保证不会被徽章/敌友钮盖住
+//   3) 「不出」只在 PLAY 阶段显示(开局亮A阶段的自动过牌不该显示)
 function drawSeats(ctx, st, m) {
   var g = st.gameState;
   var r = Math.round(m.vh * 0.052);
@@ -287,11 +294,11 @@ function drawSeats(ctx, st, m) {
   var assign = {};
   assign[so.L1] = slots.L1; assign[so.L2] = slots.L2;
   assign[so.R1] = slots.R1; assign[so.R2] = slots.R2;
-  var camp = st.camps || {};
   var out = [], seatMap = {}, markHits = [];
   var myMarks = (st.marks || {})[st.humanPlayer] || {};
   var aceIconR = Math.round(m.vh * 0.019);
   var aceIconGap = Math.round(m.vh * 0.043);
+  var inPlay = (g.phase === 'PLAY');
   SEAT_IDS.forEach(function (pid) {
     if (pid === st.humanPlayer) return;
     var pos = assign[pid];
@@ -299,7 +306,7 @@ function drawSeats(ctx, st, m) {
     seatMap[pid] = pos;
     var p = g.players.filter(function (x) { return x.id === pid; })[0];
     var isCur = st.currentPlayer === pid;
-    var isPassed = !!((st.uiPassed || {})[pid]);
+    var isPassed = inPlay && !!((st.uiPassed || {})[pid]);
     var isOut = p && p.hand && p.hand.length === 0;
     var rr_ = Math.round(r * (isCur ? 1.14 : 1));
     var cx = pos.x, cy = pos.y;
@@ -321,15 +328,11 @@ function drawSeats(ctx, st, m) {
     var by = cy - bh / 2;
     var nameX = pos.side === 'L' ? (bx - 4) : (bx + bw + 4);
     var nameA = pos.side === 'L' ? 'right' : 'left';
-    text(ctx, nm, nameX, cy, fs, isCur ? '#ffd700' : '#ffffff', nameA, isCur);
     ctx.fillStyle = isOut ? '#555' : '#2f6fb5';
     rr(ctx, bx, by, bw, bh, 4); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
     rr(ctx, bx, by, bw, bh, 4); ctx.stroke();
     text(ctx, String(cnt), bx + bw / 2, by + bh / 2, Math.max(9, Math.round(m.vh * 0.030)), '#ffffff', 'center', true);
-    var ly = by + bh + Math.round(m.vh * 0.026);
-    if (camp.main === pid) { text(ctx, '主方', nameX, ly, Math.max(9, Math.round(m.vh * 0.028)), '#ffd98a', nameA, false); }
-    else if (camp.second === pid) { text(ctx, '次方', nameX, ly, Math.max(9, Math.round(m.vh * 0.028)), '#9fd0ff', nameA, false); }
     var plays = st.uiPlays || {};
     var hasPlay = plays[pid] && plays[pid].length;
     if (!hasPlay) {
@@ -361,6 +364,8 @@ function drawSeats(ctx, st, m) {
           Math.max(9, Math.round(m.vh * 0.026)), suitColor(suit), 'center', true);
       }
     }
+    // **玩家名最后画** -> 不会被上面任何元素盖住
+    text(ctx, nm, nameX, cy, fs, isCur ? '#ffd700' : '#ffffff', nameA, true);
     out.push({ x: cx - rr_, y: cy - rr_, w: rr_ * 2, h: rr_ * 2, id: pid });
   });
   drawSeatPlays(ctx, st, m, seatMap);
@@ -506,8 +511,8 @@ function drawCard(ctx, card, x, y, w, h, isSel, st, visibleW) {
   }
   var numFs = Math.max(10, Math.round(w * 0.42));
   var suitFs = Math.max(11, Math.round(w * 0.46));
-  var numY = y + h / 2 - numFs * 0.62;
-  var suitY = y + h / 2 + suitFs * 0.60;
+  var numY = y + h / 2 - numFs * 0.78;   // [2026-10-26] 牌面文字整体上移
+  var suitY = y + h / 2 + suitFs * 0.46;   // 跟着上移
   text(ctx, st.rankDesc(card), cx, numY, numFs, col, 'center', true);
   text(ctx, SUIT_CHAR[card.suit] || '', cx, suitY, suitFs, col, 'center', true);
 }
@@ -556,8 +561,8 @@ function drawMiniCard(ctx, card, x, y, w, h, st, visibleW) {
   }
   var numFs = Math.max(8, Math.round(w * 0.40));
   var suitFs = Math.max(9, Math.round(w * 0.44));
-  var numY = y + h / 2 - numFs * 0.62;
-  var suitY = y + h / 2 + suitFs * 0.60;
+  var numY = y + h / 2 - numFs * 0.78;
+  var suitY = y + h / 2 + suitFs * 0.46;
   text(ctx, st.rankDesc(card), cx, numY, numFs, col, 'center', true);
   text(ctx, SUIT_CHAR[card.suit] || '', cx, suitY, suitFs, col, 'center', true);
 }
@@ -571,6 +576,7 @@ function drawMiniCard(ctx, card, x, y, w, h, st, visibleW) {
 // [2026-10-26] 真人玩家: 头像/名字/牌数 与**左侧玩家一致** -> 名字和牌数在**左侧**(外侧),
 //   同一水平线; 顶部右上是**大A图标**; 没有敌友钮
 // [2026-10-26] 真人玩家: 名字/牌数在**左侧外侧**、同一水平线(徽章紧贴头像, 名字在徽章外侧)
+// [2026-10-26] 真人玩家: 名字/牌数在左侧外侧、同一水平线; 名字最后画
 function drawMeSeat(ctx, st, m) {
   var g = st.gameState;
   var me = g.players.filter(function (p) { return p.id === st.humanPlayer; })[0];
@@ -589,8 +595,6 @@ function drawMeSeat(ctx, st, m) {
   var bw = Math.round(r * 0.92), bh = Math.round(r * 0.60);
   var bx = cx - rr_ - 6 - bw, by = cy - bh / 2;
   var nameX = bx - 4;
-  text(ctx, st.names[SEAT_IDS.indexOf(st.humanPlayer)], nameX, cy, fs,
-    st.currentPlayer === st.humanPlayer ? '#ffd700' : '#ffffff', 'right', true);
   ctx.fillStyle = '#2f6fb5';
   rr(ctx, bx, by, bw, bh, 4); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
@@ -613,6 +617,9 @@ function drawMeSeat(ctx, st, m) {
         Math.max(9, Math.round(m.vh * 0.026)), suitColor(suit), 'center', true);
     }
   }
+  // 玩家名最后画
+  text(ctx, st.names[SEAT_IDS.indexOf(st.humanPlayer)], nameX, cy, fs,
+    st.currentPlayer === st.humanPlayer ? '#ffd700' : '#ffffff', 'right', true);
   return null;
 }
 

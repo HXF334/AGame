@@ -1152,12 +1152,14 @@ function doPass() {
     gameState = r.state;
     var _roundEnded = _hadTable && (gameState.table || []).length === 0;
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
-    // [2026-10-26] 过牌 -> 标记「不出」。
-    //   之前只有真人点【不出】才置位 -> AI/其他人过牌时「不出」根本不显示。
-    uiPassed[currentPlayer] = true;
     delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
     // [2026-10-25] 有人过牌导致本轮结束 -> 清掉**全部**各家的出牌显示
     _uiRoundEnded(_hadTable ? 1 : 0);
+    // [2026-10-26] 过牌 -> 标记「不出」。
+    //   **必须放在 _uiRoundEnded 之后** —— _uiRoundEnded 会清空全部 uiPassed,
+    //   放前面的话刚置位的会被自己清掉 -> 「不出」永远不显示(用户连着报了两条)。
+    //   之前也只有真人点【不出】那条路径置位, AI/其他人过牌根本不显示。
+    uiPassed[currentPlayer] = true;
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
