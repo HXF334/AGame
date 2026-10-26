@@ -26,6 +26,13 @@ var uiRender = require('./ui-render.js');
 //   这里的 uiPrevHandLens 在启动时也被读 -> 同样必须提前。
 var uiPassed = {};          // pid -> true (该玩家点了「不出」)
 var uiPrevHandLens = {};    // pid -> 上次的手牌张数(用来发现谁出牌了)
+// [2026-10-26] **轮次跟踪**: 打大A 里每换一个点数, 引擎就收走旧桌牌 = 新的一轮开始。
+//   旧一轮的「各家最新出牌」必须清掉, 否则:
+//   - 桌面上一直显示上一轮的陈牌(用户: 乙出完牌一轮结束了, 牌面还没清)
+//   - hasPlay 恒为真 -> **「不出」文字永远不显示**(用户: 不出文字一直没改好)
+var uiTrickId = 0;          // 当前轮次
+var uiPlaysTrick = {};      // pid -> 那手牌属于第几轮
+var uiPrevTableIds = {};    // 上一帧桌牌上的牌 id 集合
 
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
@@ -796,6 +803,26 @@ function _uiIsMainAce(card) { return !!(card && card['is主方大A'] === true); 
 // [2026-10-25] 同步「不出」显示状态
 //   1) 某个玩家手牌变少 -> 他出牌了 -> **只清他一个人的**「不出」
 //   2) 桌牌上的牌**一张都不在了**(桌牌被收走 = 新一轮 or 推风) -> 所有人「不出」清掉, 各家出牌显示也清掉
+// [2026-10-26] 同步「当前轮」
+//   桌牌上的牌被**整体换掉**(和上一帧没有任何一张重叠) = 引擎收走了旧桌牌 = 新的一轮
+//   -> 清掉**旧一轮**各家的出牌显示(否则桌面显示陈牌, 且「不出」被抑制)
+//   引擎侧的推风整轮清空由 _uiRoundEnded 负责
+function _uiSyncTrick() {
+  var g = gameState;
+  var cur = {};
+  (g.table || []).forEach(function (c) { cur[c.id] = 1; });
+  var had = Object.keys(uiPrevTableIds).length > 0;
+  var overlap = false;
+  for (var oid in uiPrevTableIds) { if (cur[oid]) { overlap = true; break; } }
+  if (had && !overlap && Object.keys(cur).length > 0) {
+    uiTrickId++;
+    Object.keys(uiPlays).forEach(function (pid) {
+      if (uiPlaysTrick[pid] !== uiTrickId) delete uiPlays[pid];
+    });
+  }
+  uiPrevTableIds = cur;
+}
+
 function _uiSyncPassState() {
   var g = gameState;
   if (!g || !g.players) return;
@@ -856,7 +883,8 @@ function _uiMemo() {
     if (_uiIsMainAce(c)) bigAce++;
     if (c.isBigJoker) { bigJoker++; return; }
     if (c.isSmallJoker) { smallJoker++; return; }
-    byRank[c.rank] = (byRank[c.rank] || 0) + 1;
+    if (!byRank[c.rank]) byRank[c.rank] = { red: 0, black: 0 };
+    if (c.suit === 'H' || c.suit === 'D') byRank[c.rank].red++; else byRank[c.rank].black++;
   }
   (gameState.players || []).forEach(function (p) {
     (p.hand || []).forEach(add);
@@ -864,13 +892,18 @@ function _uiMemo() {
   });
   var suit = gameState['主A'] ? gameState['主A'].suit : null;
   var items = [];
-  items.push({ label: '大A', icon: suit ? (uiRender.SUIT_CHAR[suit] || '?') : '?', value: bigAce, color: '#ffd700' });
-  items.push({ label: '大王', icon: '大', value: bigJoker, color: '#c8102e' });
-  items.push({ label: '小王', icon: '小', value: smallJoker, color: '#ffffff' });
+  // [2026-10-26] 参照图3: 上排只写牌名(不画花色), 下排数字按**花色**着色(红桃/方块=红, 黑桃/梅花=黑)
+  var aceCol = (suit === 'H' || suit === 'D') ? '#c8102e' : '#1a1a1a';
+  items.push({ label: '大A', value: bigAce, suitColor: aceCol });
+  items.push({ label: '大王', value: bigJoker, suitColor: '#c8102e' });
+  items.push({ label: '小王', value: smallJoker, suitColor: '#1a1a1a' });
   var order = [3, 2, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4];
   var names = { 3: '3', 2: '2', 14: 'A', 13: 'K', 12: 'Q', 11: 'J', 10: '10', 9: '9', 8: '8', 7: '7', 6: '6', 5: '5', 4: '4' };
   order.forEach(function (rk) {
-    items.push({ label: names[rk], value: byRank[rk] || 0, suitChar: '♠', suitColor: '#1a1a1a' });
+    var d = byRank[rk] || { red: 0, black: 0 };
+    var col = (d.red > 0 && d.black === 0) ? '#c8102e'
+            : ((d.black > 0 && d.red === 0) ? '#1a1a1a' : '#888888');
+    items.push({ label: names[rk], value: (d.red + d.black), suitColor: col });
   });
   return { items: items };
 }
@@ -1278,7 +1311,9 @@ function runAI() {
       if (r1 && r1.ok) {
         // [2026-10-24] 记录 AI 最新出牌 -> 显示在它自己座位前方
         if (action.type === ACTIONS.PLAY && action.cardIds && action.cardIds.length) {
-          uiPlays[currentPlayer] = _uiCardsByIds(action.cardIds, gameState);
+          _uiSyncTrick();   // 可能开了新一轮 -> 先清掉旧一轮的显示
+    uiPlays[currentPlayer] = _uiCardsByIds(action.cardIds, gameState);
+    uiPlaysTrick[currentPlayer] = uiTrickId;
         } else if (action.type === ACTIONS.PASS) {
           delete uiPlays[currentPlayer];
         }
