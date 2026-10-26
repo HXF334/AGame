@@ -54,7 +54,7 @@ function layout(W, H) {
     hand: { y: vh * 0.755, maxW: vw * 0.70, cardH: vh * 0.170, ratio: 0.70 },
     me: { x: safe + r + 30, r: r, y: vh * 0.755 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
-    memo: { iconX: vw * 0.235, iconY: vh * 0.075, iconR: Math.round(vh * 0.034) }
+    memo: { iconX: vw * 0.235, iconY: vh * 0.062, iconR: Math.round(vh * 0.034) }
   };
 }
 

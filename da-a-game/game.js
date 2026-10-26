@@ -886,6 +886,16 @@ function _uiRecordPlay(pid, cards) {
   uiPlaysTrick[pid] = uiTrickId;
 }
 
+// [2026-10-26] 过牌后的收尾(真人和 AI 两条路径共用)
+//   1) 标记「不出」
+//   2) 清掉**上一轮**留下的出牌显示 —— 他这轮不出, 上一轮那手牌不该还挂在桌面上,
+//      而且那手牌会**把「不出」文字挡住**(用户: pass后牌没清, 不出文字被压住了)
+//      **本轮**出的牌要保留(他出了牌, 牌就在桌上)
+function _uiPassCleanup(pid) {
+  uiPassed[pid] = true;
+  if (uiPlaysTrick[pid] !== uiTrickId) delete uiPlays[pid];
+}
+
 function _uiCamps() {
   var g = gameState;
   var out = { main: null, second: null, secondOpen: false };
@@ -921,9 +931,10 @@ function _uiMainAceMarks() {
     }
     if (main) out[main] = n;
   } else {
-    // [2026-10-26] **2V3 不显示大A角标** —— 只有**独打(1V4)**才出现大A图标。
-    //   2V3 双方都持牌(4 张同花色 A 分给主方+次方), 挂角标会让人误以为他是独打。
-    //   (用户: 只有独打才会出现两个大A图标, 2V3 甲头像上怎么也有两个)
+    // [2026-10-26] 2V3: **亮过大A 的人显示 1 个角标**
+    //   (之前我理解错了, 直接把 2V3 的角标全去掉了 -> 用户报「甲亮A后头像上没有大A图标」)
+    //   **2 个**角标是**独打(1V4)**才有(他手里 2 张主方大A); 2V3 亮A 的人只标 1 个。
+    if (zhu.establishedBy) out[zhu.establishedBy] = 1;
   }
   // [2026-10-26] **不再累加**「打出过大A」的次数 —— 那是累计值, 打几次就几个图标,
   //   而且跨局不清 -> 用户看到「双大A的图标出了4个」。角标只表示**持有几张主方大A**。
@@ -1262,11 +1273,11 @@ function doPass() {
     //   旧逻辑(2026-10-24)是为清掉「轮到真人时显示自己的旧牌」, 但过牌时删错了
     // [2026-10-25] 有人过牌导致本轮结束 -> 清掉**全部**各家的出牌显示
     _uiRoundEnded(_hadTable ? 1 : 0, currentPlayer);   // 保留刚过牌的人
-    // [2026-10-26] 过牌 -> 标记「不出」。
+    // [2026-10-26] 过牌 -> 标记「不出」, 并清掉上一轮的出牌显示
     //   **必须放在 _uiRoundEnded 之后** —— _uiRoundEnded 会清空全部 uiPassed,
     //   放前面的话刚置位的会被自己清掉 -> 「不出」永远不显示(用户连着报了两条)。
     //   之前也只有真人点【不出】那条路径置位, AI/其他人过牌根本不显示。
-    uiPassed[currentPlayer] = true;
+    _uiPassCleanup(currentPlayer);
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
@@ -1399,11 +1410,12 @@ function runAI() {
     (uiPlays[currentPlayer] || []).forEach(function (c) { if (c && c.is主方大A) _bigN++; });
     if (_bigN) uiBigAcePlayed[currentPlayer] = (uiBigAcePlayed[currentPlayer] || 0) + _bigN;
         } else if (action.type === ACTIONS.PASS) {
-          // [2026-10-26] 过牌**不删**自己的出牌显示(他的牌还在桌上)
-          // [2026-10-26] **置位「不出」** —— AI 的 PASS 走的是**这条路径**(不是 doPass),
+          // [2026-10-26] 过牌**不删**本轮自己的出牌显示(他的牌还在桌上);
+          //   但**上一轮**的出牌显示要清掉(不然会挡住「不出」文字)
+          //   [2026-10-26] AI 的 PASS 走的是**这条路径**(不是 doPass),
           //   之前只在 doPass 里置位 -> AI/其他人过牌时「不出」永远不显示。
           //   我的回归测试也只覆盖了 doPass(真人过牌) -> 漏掉了这条路径。
-          uiPassed[currentPlayer] = true;
+          _uiPassCleanup(currentPlayer);
         }
         // [fix] PASS 动作无 cardIds, 需守卫避免 TypeError
         var wasEmpty = !!(ai && ai.hand && action.cardIds && ai.hand.length === action.cardIds.length);
