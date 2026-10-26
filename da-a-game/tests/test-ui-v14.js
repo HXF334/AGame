@@ -150,10 +150,11 @@ check('6.4 大A 用淡黄底', drawCardSrc.indexOf('#fdf3c8') >= 0);
 check('6.5 牌背存在(深色底+图案)', src.indexOf('function drawCardBack(') >= 0 && src.indexOf('#1f3a63') >= 0);
 
 // ---------- 7. 布局安全区 ----------
-section('7. 刘海屏安全区: 左右各 6% 不放文字');
+// [2026-10-27 用户] 左右侧留的边距**太多** -> 安全区 6% -> 3.5%
+section('7. 刘海屏安全区: 左右各 3.5% 不放文字');
 var lay = uiRender.layout(844, 390);
-check('7.1 左右安全区 = 6%',
-  Math.abs(lay.safeL / lay.vw - 0.06) < 0.001 && Math.abs(lay.safeR / lay.vw - 0.06) < 0.001,
+check('7.1 左右安全区 = 3.5%',
+  Math.abs(lay.safeL / lay.vw - 0.035) < 0.001 && Math.abs(lay.safeR / lay.vw - 0.035) < 0.001,
   'L=' + lay.safeL + ' R=' + lay.safeR);
 check('7.2 左侧座位在安全区之外', lay.seats[0].x > lay.safeL, 'x=' + lay.seats[0].x);
 check('7.3 右侧座位在安全区之外', lay.seats[2].x < lay.vw - lay.safeR, 'x=' + lay.seats[2].x);

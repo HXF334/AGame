@@ -380,7 +380,7 @@ function gateAutoAdvance() {
 }
 
 // 真人亮A决策。doIt=true 亮, false 不亮。返回是否消费了本次决策。
-function humanLiangA(doIt) {
+function humanLiangA(doIt, suit) {
   if (!gateChoice || gateChoice.kind !== 'LIANG_A' || !gateChoice.eligible) return false;
   var cards = gateChoice.cards;
   gateChoice = null;              // 先消费, 防同一次决策被执行两次
@@ -391,7 +391,13 @@ if (!doIt) {
   if (ctx) draw();
   return true;
 }
-  var card = cards && cards[0];
+  // [2026-10-26] 指定花色就亮那个花色的 A(花色按钮); 没指定就沿用原来「第一张 A」
+  var card = null;
+  if (suit) {
+    card = (cards || []).filter(function (c) { return c && c.suit === suit; })[0] || null;
+  } else {
+    card = cards && cards[0];
+  }
   if (!card) { log('  亮A失败: 无可用A牌'); return true; }
   var r = transition(gameState, { type: ACTIONS.LIANG_A,
     payload: { playerId: humanPlayer, cardId: card.id } });
@@ -675,7 +681,21 @@ function uiButtons() {
   if (!playing && !ended) {
     // 阶段选择：亮A / 反A / 次方身份，按 gateChoice 的 kind 决定显示哪组
     if (c && c.kind === 'LIANG_A') {
-      out.push({ id: 'liangA', label: '亮A', enabled: !!c.eligible });
+      // [2026-10-26 用户] 亮A 阶段: 把「亮A」按钮换成**花色按钮** ——
+      //   手上有几个花色的 A 就加几个按钮, 点哪个花色 = 亮哪个花色的大A
+      var _suits = [];
+      ['S', 'H', 'D', 'C'].forEach(function (s) {
+        var _has = (c.cards || []).some(function (card) { return card && card.suit === s; });
+        if (_has) _suits.push(s);
+      });
+      if (!_suits.length && c.cards && c.cards.length) _suits.push(c.cards[0].suit);
+      _suits.forEach(function (s) {
+        out.push({
+          id: 'liangA:' + s,
+          label: (uiRender.SUIT_CHAR && uiRender.SUIT_CHAR[s]) || s,
+          kind: 'suit', suit: s, enabled: !!c.eligible
+        });
+      });
       out.push({ id: 'noLiangA', label: '不亮', enabled: !!c.eligible });
     } else if (c && c.kind === 'FAN_A') {
       out.push({ id: 'fanA', label: '反A', enabled: !!c.eligible });
@@ -723,6 +743,10 @@ function uiButtonAt(x, y) {
 
 // 按 id 触发按钮动作。返回 true 表示已处理
 function uiClick(id) {
+  // [2026-10-26] 花色按钮: id = 'liangA:<花色>' -> 亮那个花色的大A
+  if (typeof id === 'string' && id.indexOf('liangA:') === 0) {
+    return humanLiangA(true, id.slice('liangA:'.length));
+  }
   switch (id) {
     case 'liangA':   return humanLiangA(true);
     case 'noLiangA': return humanLiangA(false);
@@ -1645,6 +1669,10 @@ if (typeof module !== 'undefined' && module.exports) {
     selectedCards: function () { return selectedCards; },
     handCardHitboxes: function () { return handCardHitboxes; },
     setHumanPlayer: function (p) { humanPlayer = p; },
+    // [测试注入] 直接设置当前**闸门决策**(亮A/反A/身份), 用于精确复现指定场景。
+    //   背景: 自然流程里闸门在**发牌后**随机决定(真人手里的 A 是随机的),
+    //   测试没法稳定造出「手里有两种花色的 A」-> 亮A 的花色按钮就没法固化。
+    __setGateChoice: function (obj) { gateChoice = obj || null; },
     // [测试注入] 注入构造好的 gameState, 用于**精确复现指定场景**。
     //   背景: game.js 初始化时会随机发牌并同步跑完 AI 回合, 测试无法控制局面,
     //   导致用户报过的 bug (推风跳阵营/单大A/连张) 只能随机撞上, 无法固化。

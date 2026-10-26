@@ -33,7 +33,9 @@ function seatOrder(humanId) {
 // ===== 布局常量(全部相对比例, 适配横屏) =====
 function layout(W, H) {
   var vw = W || 844, vh = H || 390;
-  var safe = vw * 0.06;                       // [刘海屏] 左右各 6% 不放文字
+  // [2026-10-26 用户] 左右侧留的边距**太多** -> 安全边距 6% -> 3.5%
+  //   (刘海在左侧, 内容从 ~41px 开始, 仍避开刘海)
+  var safe = vw * 0.035;
   var r = Math.round(vh * 0.052);
   return {
     vw: vw, vh: vh,
@@ -90,13 +92,24 @@ function handLayout(n, m) {
 function buttonLayout(list, m) {
   var gap = Math.round(m.vw * 0.012);
   var h = Math.round(m.btn.h);
-  var w = Math.max(58, Math.min(112, (m.vw - m.vw * 0.06 - gap * Math.max(0, list.length - 1)) / Math.max(1, list.length)));
-  var totalW = w * list.length + gap * Math.max(0, list.length - 1);
-  var x0 = (m.vw - totalW) / 2;
+  // [2026-10-26] **花色按钮窄一些**(一个花色符号不需要整行那么宽)
+  var nSuit = 0, nOther = 0;
+  for (var si = 0; si < list.length; si++) {
+    if (list[si].kind === 'suit') nSuit++; else nOther++;
+  }
+  var wSuit = Math.max(38, Math.round(h * 0.74));
+  var wOther = Math.max(58, Math.min(112,
+    (m.vw - m.vw * 0.06 - gap * Math.max(0, list.length - 1) - nSuit * wSuit) / Math.max(1, nOther)));
+  var totalW = 0;
+  for (var ti = 0; ti < list.length; ti++) totalW += (list[ti].kind === 'suit' ? wSuit : wOther);
+  totalW += gap * Math.max(0, list.length - 1);
+  var x = (m.vw - totalW) / 2;
   var out = [];
   for (var i = 0; i < list.length; i++) {
     var b = list[i];
-    b.x = x0 + i * (w + gap); b.y = m.btn.y; b.w = w; b.h = h;
+    var bw = (b.kind === 'suit' ? wSuit : wOther);
+    b.x = x; b.y = m.btn.y; b.w = bw; b.h = h;
+    x += bw + gap;
     out.push(b);
   }
   return out;
@@ -713,11 +726,15 @@ function drawButtons(ctx, st, m, list) {
   for (var i = 0; i < boxes.length; i++) {
     var b = boxes[i];
     var on = b.enabled;
-    ctx.fillStyle = on ? (b.id === 'hint' ? '#2f8f4f' : (b.id === 'play' ? '#1e6091' : '#8a5a2b')) : '#4a4a4a';
+    // [2026-10-26] 花色按钮: 浅色底 + 花色本身的颜色(像一张牌), 符号画大一点
+    var isSuit = (b.kind === 'suit');
+    ctx.fillStyle = on ? (isSuit ? '#f4f0e6' : (b.id === 'hint' ? '#2f8f4f' : (b.id === 'play' ? '#1e6091' : '#8a5a2b'))) : '#4a4a4a';
     rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.fill();
     ctx.strokeStyle = on ? '#ffd98a' : '#6a6a6a'; ctx.lineWidth = on ? 2 : 1;
     rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.stroke();
-    text(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, fs, on ? '#ffffff' : '#9a9a9a', 'center', true);
+    var fs2 = isSuit ? Math.max(16, Math.round(m.vh * 0.058)) : fs;
+    var col2 = on ? (isSuit ? suitColor(b.suit) : '#ffffff') : '#9a9a9a';
+    text(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, fs2, col2, 'center', true);
   }
   return boxes;
 }
