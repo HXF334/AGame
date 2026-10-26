@@ -1,6 +1,6 @@
 ---
 name: "git-safe-workflow"
-description: "Git 安全工作流——改前检查、差异审查、提交拆分、推送只推一次、tag/reset 回滚"
+description: "Git 安全工作流——改前检查、差异审查、提交拆分、推送只推一次（失败即停）、tag/reset 回滚"
 ---
 
 # Git 安全工作流
