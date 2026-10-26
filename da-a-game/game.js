@@ -35,6 +35,8 @@ var uiPlaysTrick = {};      // pid -> 那手牌属于第几轮
 var uiPrevTableIds = {};    // 上一帧桌牌上的牌 id 集合
 var uiBigAcePlayed = {};    // pid -> 该玩家**打出**过几张主方大A(头像角标用)
 var uiPrevPushWind = null;  // 上一次的「推风触发者」(用来识别推风)
+// [2026-10-26] 上一帧的桌牌张数(用来识别**轮末**: 引擎轮末会把桌牌清空)
+var uiPrevTableLen = 0;
 // [2026-10-26] AI 动作之间的停顿(毫秒)
 //   **只在真机上生效** —— node 无头测试里 setTimeout 不会执行, runAI 会反复重入
 //   (test-game-headless 出现过 steps=900); 开发者工具里也不延时(方便调试)。
@@ -859,6 +861,14 @@ function _uiSyncPassState() {
   var _pw = g['推风触发者'] || null;
   if (_pw && _pw !== uiPrevPushWind) uiPassed = {};
   uiPrevPushWind = _pw;
+  // [2026-10-26] **轮末检测统一放这里**(不再分散在各 action 路径):
+  //   引擎 src/play.js handlePass 的 allPassed 分支 -> 轮末时**桌牌被清空**
+  //   -> 「上一帧桌牌非空, 这一帧空了」= 轮末。
+  //   (之前只有真人 doPass 路径调 _uiRoundEnded -> **AI 过牌结束一轮时轮次不推进**,
+  //    轮末的清牌 / 「已出完」也就都不触发。)
+  var _tLen = (g.table || []).length;
+  if (uiPrevTableLen > 0 && _tLen === 0) _uiRoundEnded();
+  uiPrevTableLen = _tLen;
 }
 
 // [2026-10-26] **当前轮**各家的出牌显示(只传当前轮的!)
@@ -999,15 +1009,19 @@ function _uiTestMode() {
 //   (他确实刚过牌, 「不出」要一直显示到他**自己出牌**为止; 之前连他一起清掉了
 //    -> 用户看到的现象是「其他玩家过牌后都不显示不出文字」)
 //   推风时引擎清空桌牌也走这里 -> 桌牌和「不出」一起清
-function _uiRoundEnded(beforeLen, keepPid) {
-  if (beforeLen > 0 && (gameState.table || []).length === 0) {
-    // [2026-10-26] 一轮结束 -> **轮次 +1**(标记「这一轮过去了」)
-    //   **不清** uiPlays: 桌上的牌还在, 还得显示(用户: 别人出的牌看不见)
-    //   轮次 +1 之后, 上一轮出过牌的人就不算「本轮出过牌」-> 他的「不出」能显示出来
-    uiTrickId++;
-    return true;
-  }
-  return false;
+function _uiRoundEnded() {
+  // [2026-10-26 用户] 1) 轮次 +1(标记「这一轮过去了」)
+  //   2) **「不出」文字保留**(用户: 轮末不清不出文字) -> **不动 uiPassed**
+  //   3) **已经出完牌的人**: 清掉他留在桌面上的牌 -> 渲染层就会显示「已出完」
+  //      (用户: 已出完牌的人的桌面要清干净, 并提示已出完)
+  //   其它没出完的人: 桌面上的牌**保留**(用户: 别人出的牌看不见)
+  uiTrickId++;
+  (gameState.players || []).forEach(function (p) {
+    if (p && p.hand && p.hand.length === 0) {
+      delete uiPlays[p.id];
+      delete uiPlaysTrick[p.id];
+    }
+  });
 }
 
 function draw() {
@@ -1279,12 +1293,10 @@ function doPass() {
     // [2026-10-26] 过牌**不再删**自己的出牌显示 ——
     //   他的牌还在桌上(只是这轮没跟), 删了会导致「他出的对4/对6看不见」
     //   旧逻辑(2026-10-24)是为清掉「轮到真人时显示自己的旧牌」, 但过牌时删错了
-    // [2026-10-25] 有人过牌导致本轮结束 -> 清掉**全部**各家的出牌显示
-    _uiRoundEnded(_hadTable ? 1 : 0, currentPlayer);   // 保留刚过牌的人
-    // [2026-10-26] 过牌 -> 标记「不出」, 并清掉上一轮的出牌显示
-    //   **必须放在 _uiRoundEnded 之后** —— _uiRoundEnded 会清空全部 uiPassed,
-    //   放前面的话刚置位的会被自己清掉 -> 「不出」永远不显示(用户连着报了两条)。
-    //   之前也只有真人点【不出】那条路径置位, AI/其他人过牌根本不显示。
+    // [2026-10-26] 过牌 -> 标记「不出」, 并清掉他的出牌显示
+    //   (他这轮不出 -> 头像旁边显示「不出」, 之前那手牌不该还挂着挡住它)
+    //   轮末处理**不在这里**: 统一由 draw() 里的 _uiSyncPassState 检测引擎信号后做,
+    //   否则只有真人过牌这条路径会推进轮次, AI 过牌结束一轮时就不推进。
     _uiPassCleanup(currentPlayer);
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);

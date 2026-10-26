@@ -139,12 +139,28 @@ section('S1 推风必须同阵营 (§9.3)');
   console.log('   [取证] 最终手牌: ' + g.gameState().players.map(function (p) { return p.id + ':' + p.hand.length; }).join(' '));
 
   // 判定: 引擎给出的推风目标是 E(戊), 故**第一个行动的人必须是戊**。
-  var firstActor = (lg.split(' || ')[0] || '');
-  check('S1.3 推风后第一个行动的是戊(抓方最近未出完者), 而非主A 乙',
-    firstActor.indexOf('\u620a') >= 0, 'firstActor=' + firstActor);
-  check('S1.4 第一个行动者不是乙(主A)也不是丙(主方)',
-    firstActor.indexOf('\u4e59') < 0 && firstActor.indexOf('\u4e19') < 0, 'firstActor=' + firstActor);
+  // [2026-10-26 修正] 原来取 `lg.split(' || ')[0]` = 日志**第一行**(= '=== 对局初始化 ==='),
+  //   永远匹配不到推风那行 -> 这条断言一直**假失败**。
+  //   引擎本身是对的: 日志里写的是「推风完成: 触发=甲 同阵营=抓方[甲,丁,戊] 目标=戊」。
+  //   改成取**含「推风完成」的那一行**。
+  var _lines = lg.split(' || ');
+  var _pi = -1;
+  for (var _li = 0; _li < _lines.length; _li++) {
+    if (_lines[_li].indexOf('\u63a8\u98ce\u5b8c\u6210') >= 0) { _pi = _li; break; }
+  }
+  var pushLine = (_pi >= 0) ? _lines[_pi] : '';
+  check('S1.3 推风目标是戊(抓方最近未出完者), 而非主A 乙',
+    pushLine.indexOf('\u76ee\u6807=\u620a') >= 0, 'pushLine=' + pushLine);
+  check('S1.4 推风目标不是乙(主A)也不是丙(主方)',
+    pushLine.indexOf('\u76ee\u6807=\u4e59') < 0 && pushLine.indexOf('\u76ee\u6807=\u4e19') < 0, 'pushLine=' + pushLine);
   check('S1.5 currentPlayer 非空 (同步已发生)', !!after, String(after));
+  // 推风之后**第一个行动的人**必须是戊(戊 是 AI -> 引擎会替他行动, 日志里能看到)
+  var _wi = -1;
+  for (var _lj = 0; _lj < _lines.length; _lj++) {
+    if (/^(AI )?\u620a (\u51fa|PLAY|PASS)/.test(_lines[_lj])) { _wi = _lj; break; }
+  }
+  check('S1.6 推风之后第一个行动的是戊', _wi > _pi && _wi >= 0,
+    'pushIdx=' + _pi + ' wuIdx=' + _wi + ' lines=' + JSON.stringify(_lines.slice(_pi, _pi + 3)));
 }
 
 // ================= S2 33333 管单大A =================

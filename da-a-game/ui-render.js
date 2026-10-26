@@ -391,7 +391,11 @@ function drawSeats(ctx, st, m) {
       var n = st.mainAceMarks[pid];
       var suit = st.mainAceSuit;
       for (var k = 0; k < n; k++) {
-        var ax = (pos.side === 'L' ? (cx + rr_ * 0.42) : (cx - rr_ * 0.55)) + k * aceIconGap;
+        // [2026-10-26 用户] 右侧玩家的第 2 个大A角标画在**第 1 个的左侧**(往远离头像的方向排);
+        //   左侧玩家不变(往右排)
+        var ax = (pos.side === 'L')
+          ? (cx + rr_ * 0.42) + k * aceIconGap
+          : (cx - rr_ * 0.55) - k * aceIconGap;
         var ay = cy - rr_ * 0.72;
         ctx.fillStyle = '#f4f0e6';
         circle(ctx, ax, ay, aceIconR); ctx.fill();
@@ -736,7 +740,16 @@ function drawToast(ctx, st, m) {
 function drawSettlement(ctx, st, m) {
   var d = st.settlement;
   if (!d) return null;
-  var pw = Math.min(540, m.vw * 0.90), ph = Math.min(280, m.vh * 0.86);
+  // [2026-10-26 用户] 3) 结算画面**高度减小**; 戊那一行和「下一局」按钮**近一点**
+  //                   4) 玩家行的底纹**高度减小**
+  //   面板高度改成**按内容算**(标题 + 5 行 + 间距 + 按钮 + 下边距), 不再写死 280
+  var pw = Math.min(540, m.vw * 0.90);
+  var rowH = Math.round(m.vh * 0.062);        // 行高 -> 玩家底纹随之变矮
+  var titleH = Math.round(m.vh * 0.115);      // 标题带高度
+  var bw2 = Math.round(m.vw * 0.26), bh2 = Math.round(m.vh * 0.080);
+  var gapBtn = Math.round(m.vh * 0.016);      // 戊行 -> 「下一局」按钮 的间距
+  var padBottom = Math.round(m.vh * 0.016);   // 按钮 -> 面板下沿
+  var ph = Math.min(Math.round(m.vh * 0.80), titleH + 5 * rowH + gapBtn + bh2 + padBottom);
   var px = (m.vw - pw) / 2, py = (m.vh - ph) / 2 - m.vh * 0.03;
   ctx.fillStyle = 'rgba(20,8,4,0.92)';
   rr(ctx, px, py, pw, ph, 10); ctx.fill();
@@ -744,11 +757,10 @@ function drawSettlement(ctx, st, m) {
   rr(ctx, px, py, pw, ph, 10); ctx.stroke();
   var w = (d.res && d.res.winner) || 'draw';
   var title = (w === 'draw') ? '平局' : (w + '胜');
-  text(ctx, '本局结束 · ' + title, px + pw / 2, py + 28, Math.max(15, Math.round(m.vh * 0.050)), '#ffd98a', 'center', true);
+  text(ctx, '本局结束 · ' + title, px + pw / 2, py + Math.round(m.vh * 0.058), Math.max(15, Math.round(m.vh * 0.050)), '#ffd98a', 'center', true);
   var camps = (st.gameState['主方'] || []);
-  var rowH = Math.round(m.vh * 0.070);
-  var rowY = py + 68;
-  var cw = 17, ch = 24, cstep = 12;
+  var rowY = py + titleH;
+  var cw = 15, ch = 22, cstep = 11;   // 小牌也跟着变矮(要放得进变矮的行底纹)
   var isAce = st.isMainAce || function () { return false; };
   for (var i = 0; i < SEAT_IDS.length; i++) {
     var pid = SEAT_IDS[i];
@@ -774,8 +786,7 @@ function drawSettlement(ctx, st, m) {
     text(ctx, dtxt, px + pw - 22, y, Math.max(11, Math.round(m.vh * 0.038)),
          (delta > 0) ? '#7ee08a' : ((delta < 0) ? '#ff8888' : '#cccccc'), 'right', true);
   }
-  var bw2 = Math.round(m.vw * 0.26), bh2 = Math.round(m.vh * 0.080);
-  var bx2 = px + (pw - bw2) / 2, by2 = py + ph - bh2 - Math.round(m.vh * 0.024);
+  var bx2 = px + (pw - bw2) / 2, by2 = py + ph - bh2 - padBottom;
   ctx.fillStyle = '#8a5a2b';
   rr(ctx, bx2, by2, bw2, bh2, Math.round(bh2 * 0.30)); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 2;
