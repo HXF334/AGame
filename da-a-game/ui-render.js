@@ -54,7 +54,7 @@ function layout(W, H) {
     hand: { y: vh * 0.700, maxW: vw * 0.70, cardH: vh * 0.188, ratio: 0.70 },
     me: { x: safe + r + 30, r: r, y: vh * 0.700 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
-    memo: { iconX: vw * 0.24, iconY: vh * 0.052, iconR: Math.round(vh * 0.026) }
+    memo: { iconX: vw * 0.235, iconY: vh * 0.058, iconR: Math.round(vh * 0.034) }
   };
 }
 
@@ -214,6 +214,12 @@ function drawTopBar(ctx, st, m, memoIcon) {
 //   2) 大A 用**主A 的花色**; 大王=红 JOKER, 小王=黑 JOKER(竖排, 更短更小)
 //   3) 下面只写剩余数字, **灰色**
 //   4) **不要黑边**: 面板半透明, 只留一条细灰线; 牌面浅灰无描边
+// 记牌器 —— 参照图3样式, 按用户要求继续压缩;
+//   1) 只显示在**顶部深棕色那一条**(顶栏)里
+//   2) 大A 用**主A 的花色**; 大王=红 JOKER, 小王=黑 JOKER(竖排, 更短更小)
+//   3) 下面只写剩余数字, **灰色**
+//   4) **不要黑边**: 面板半透明, 只留一条细灰线; 牌面浅灰无描边
+//   5) [2026-10-26] 内容**左移到「记」按钮旁边**(原来居中, 离按钮很远)
 function drawMemo(ctx, st, m) {
   if (!st.memoOpen) return;
   var items = st.memoItems || [];
@@ -221,15 +227,18 @@ function drawMemo(ctx, st, m) {
   if (!n) return;
   var topH = m.top.h;
   var cw = Math.round(m.vw * 0.022);
-  var availW = m.vw - Math.round(m.vw * 0.04);
-  if (n * cw > availW) cw = Math.max(8, Math.floor(availW / n));
+  var total = n * cw;
+  // 面板紧跟在「记」按钮右边
+  var x0 = m.memo.iconX + m.memo.iconR + 8;
+  var maxRight = m.vw - Math.round(m.vw * 0.015);
+  if (x0 + total > maxRight) {
+    cw = Math.max(8, Math.floor((maxRight - x0) / n));
+    total = n * cw;
+  }
   var cardW = cw;
   var cardH = Math.round(topH * 0.50);
   var numH = Math.round(topH * 0.26);
-  var total = n * cw;
-  var x0 = (m.vw - total) / 2;
   var y = Math.round(m.vh * 0.004);
-  // 面板: 半透明底 + 一条细灰线(不要黑边)
   ctx.fillStyle = 'rgba(30,12,6,0.55)';
   rr(ctx, x0 - 3, y, total + 6, cardH + numH + 3, 3); ctx.fill();
   ctx.strokeStyle = 'rgba(200,200,200,0.45)'; ctx.lineWidth = 1;
@@ -238,7 +247,6 @@ function drawMemo(ctx, st, m) {
   for (var i = 0; i < n; i++) {
     var it = items[i];
     var cx = x0 + i * cw + cw / 2;
-    // 上排: 浅灰小牌面(无描边)
     ctx.fillStyle = 'rgba(235,231,222,0.92)';
     rr(ctx, cx - cardW / 2 + 0.5, y + 1.5, cardW - 1, cardH, 2); ctx.fill();
     var lbl = it.label || '';
@@ -249,7 +257,7 @@ function drawMemo(ctx, st, m) {
       var jc = (lbl === '大王') ? '#c8102e' : '#333333';
       var letters = 'JOKER';
       var fs2 = Math.max(4, Math.round(cardH * 0.15));
-      var lh2 = fs2 * 0.82;                       // 压缩行距 -> 更短
+      var lh2 = fs2 * 0.82;
       var gh = lh2 * (letters.length - 1);
       var sy = y + 1.5 + cardH / 2 - gh / 2;
       for (var li = 0; li < letters.length; li++) {
@@ -259,7 +267,6 @@ function drawMemo(ctx, st, m) {
       text(ctx, lbl, cx, y + 1.5 + cardH * 0.52,
         Math.max(7, Math.round(cardH * 0.50)), '#333333', 'center', true);
     }
-    // 下排: 剩余数字(**灰色**)
     var nbY = y + 1.5 + cardH;
     text(ctx, String(it.value), cx, nbY + numH / 2,
       Math.max(7, Math.round(numH * 0.80)), '#999999', 'center', true);
@@ -425,7 +432,7 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     if (!slot) return;
     var cardH = Math.round(m.vh * 0.115);
     var cardW = Math.round(cardH * m.hand.ratio);
-    var n = Math.min(cards.length, 4);
+    var n = Math.min(cards.length, 10);   // [2026-10-26] 不能只画 4 张(用户: 打出的手牌不能完全显示)
     var step = Math.round(cardW * 0.58);
     var totalW = cardW + step * (n - 1);
     var rr_ = Math.round(m.vh * 0.052);

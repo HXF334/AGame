@@ -58,5 +58,29 @@ check('轮末后轮次递增', g.uiTrickId() > trick0,
 var tk = g.uiPlaysTrick() || {};
 check('轮次跟踪可用', tk.A !== undefined, JSON.stringify(tk));
 
+// ===== 关键: **AI 过牌**路径也必须置位「不出」=====
+// 背景: v0.27.0 的回归只覆盖了 doPass(真人过牌), 漏掉了 applyAction(AI 过牌)那条路径
+//       -> AI 过牌时「不出」永远不显示(用户连报了好几轮)。这里用「日志性质」来兜:
+//       **每一条 PASS 日志, 都必须对应一个「不出」标记**, 不管走的是哪条路径。
+g.newGame();
+var NAME2ID = { '甲': 'A', '乙': 'B', '丙': 'C', '丁': 'D', '戊': 'E' };
+var ran = 0;
+for (var step = 0; step < 40; step++) {
+  var before = g.logHistory().length;
+  try { g.runAI(); } catch (e) { break; }
+  if (g.logHistory().length === before) break;   // 推进不动了
+  ran++;
+}
+var passNames = {};
+g.logHistory().forEach(function (l) {
+  var m = l.match(/^(?:AI )?([\u7532\u4e59\u4e19\u4e01\u620a]) PASS/);
+  if (m) passNames[m[1]] = true;
+});
+var pd2 = g.uiPassed() || {};
+var missing = Object.keys(passNames).filter(function (nm) { return !pd2[NAME2ID[nm]]; });
+check('每一条 PASS 日志都对应一个「不出」标记(含 AI 过牌路径)',
+  missing.length === 0, 'ran=' + ran + ' passNames=' + JSON.stringify(Object.keys(passNames)) +
+  ' missing=' + JSON.stringify(missing) + ' uiPassed=' + JSON.stringify(pd2));
+
 console.log('test-ui-pass-display: ' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

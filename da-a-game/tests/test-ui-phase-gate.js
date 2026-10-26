@@ -137,7 +137,12 @@ g.__setState(st, { human: 'D', currentPlayer: 'D', clearLog: true });
 g.selectedCards().push(g.gameState().players.filter(function (p) { return p.id === 'D'; })[0].hand[0].id);
 var handBefore = g.gameState().players.filter(function (p) { return p.id === 'D'; })[0].hand.length;
 g.doPlay();
-check('6.1 非法选择后出现提示【当前没有可用牌】', logStr().indexOf('当前没有可用牌') >= 0);
+// [2026-10-26 用户] 「出牌不符合规则时提示文字不对」—— 原来一律显示【当前没有可用牌】,
+//   实际原因可能是「牌型不合法」「管不上桌面的牌」「牌不在手里」... 现在按错误类型给具体文案。
+//   这里断言: 有提示, 且**不再**用那句笼统文案。
+check('6.1 非法选择后出现**具体**提示(不再笼统说【当前没有可用牌】)',
+  logStr().indexOf('提示:') >= 0 && logStr().indexOf('当前没有可用牌') < 0,
+  logStr().slice(-120));
 check('6.2 不再出现「回退逐张试」', logStr().indexOf('回退逐张试') < 0);
 check('6.3 没有自动换牌出手(手牌未减少)',
   g.gameState().players.filter(function (p) { return p.id === 'D'; })[0].hand.length === handBefore,

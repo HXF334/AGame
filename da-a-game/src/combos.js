@@ -44,7 +44,12 @@ function candidateCombos(hand) {
   for (i = 0; i < hand.length; i++) {
     var cc = hand[i];
     if (cc.isBigJoker || cc.isSmallJoker) continue;
-    if (cc.rank < 2 || cc.rank > 13) continue;      // 2..13 连续段
+    if (cc.rank < 2 || cc.rank > 14) continue;      // 2..14 连续段
+    // [2026-10-26] **A(14) 必须参与连张的高端点**(Q-K-A 连续段)。
+    //   原来写成 `> 13` 把 A 排除了 -> 手里有 3A+3K+3Q(连叠蛋)时**枚举不出候选**
+    //   -> 点「提示」说"当前没有可用牌"(用户: 打出的手牌不能完全显示/提示没选中)。
+    //   引擎的 identifyHand 本来就认 STRAIGHT_TRIPLE, 只是候选枚举漏了。
+    //   A 只能作为**高端点**(2..13 段里 14 只紧跟 13, 不会误组成 A23)。
     if (!byRank[cc.rank]) byRank[cc.rank] = [];
     byRank[cc.rank].push(cc.id);
   }

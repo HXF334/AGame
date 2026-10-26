@@ -505,8 +505,19 @@ var uiToast = null;   // { text, until }
 var NO_PLAYABLE_TEXT = '【当前没有可用牌】';
 
 function showNoPlayableMsg(err) {
-  uiToast = { text: NO_PLAYABLE_TEXT, until: Date.now() + 2000 };
-  log('  提示: ' + NO_PLAYABLE_TEXT + (err ? ' (' + (err.type || '') + ')' : ''));
+  // [2026-10-26] 提示文字要**按错误类型**分, 不能一律用「当前没有可用牌」
+  //   (用户: 出牌不符合规则时提示文字不对)
+  var t = (err && err.type) || '';
+  var txt = NO_PLAYABLE_TEXT;
+  if (t === 'INVALID_HAND') txt = '选的牌不是合法牌型';
+  else if (t === 'CARD_NOT_IN_HAND') txt = '选的牌不在手里';
+  else if (/BEAT/.test(t)) txt = '管不上桌上的牌';
+  else if (t === 'NO_CARDS' || t === 'EMPTY_HAND') txt = '手里没有牌';
+  else if (t === 'CARD_NOT_FOUND') txt = '找不到那张牌';
+  else if (t === 'SUIT_MISMATCH') txt = '花色不对';
+  else if (t) txt = '出不了这手牌(' + t + ')';
+  uiToast = { text: txt, until: Date.now() + 2000 };
+  log('  提示: ' + txt + (err ? ' (' + (err.type || '') + ')' : ''));
 }
 
 function uiToastNow() { return uiToast; }
@@ -904,10 +915,9 @@ function _uiMainAceMarks() {
     }
     if (main) out[main] = n;
   } else {
-    // [2026-10-26] 2V3: 4 张同花色 A, **主方 2 张 + 次方 2 张**(双大A) -> 角标显示 2 个
-    if (zhu.establishedBy) out[zhu.establishedBy] = 2;
-    // [2026-10-26] 2V3_明打 模式下次方**始终公开**(引擎不会把 state.次方公开 置 true)
-    if (g['次方'] && (g['次方公开'] === true || mode.indexOf('2V3_明打') >= 0)) out[g['次方']] = 2;
+    // [2026-10-26] **2V3 不显示大A角标** —— 只有**独打(1V4)**才出现大A图标。
+    //   2V3 双方都持牌(4 张同花色 A 分给主方+次方), 挂角标会让人误以为他是独打。
+    //   (用户: 只有独打才会出现两个大A图标, 2V3 甲头像上怎么也有两个)
   }
   // [2026-10-26] **不再累加**「打出过大A」的次数 —— 那是累计值, 打几次就几个图标,
   //   而且跨局不清 -> 用户看到「双大A的图标出了4个」。角标只表示**持有几张主方大A**。
@@ -1378,6 +1388,10 @@ function runAI() {
     if (_bigN) uiBigAcePlayed[currentPlayer] = (uiBigAcePlayed[currentPlayer] || 0) + _bigN;
         } else if (action.type === ACTIONS.PASS) {
           // [2026-10-26] 过牌**不删**自己的出牌显示(他的牌还在桌上)
+          // [2026-10-26] **置位「不出」** —— AI 的 PASS 走的是**这条路径**(不是 doPass),
+          //   之前只在 doPass 里置位 -> AI/其他人过牌时「不出」永远不显示。
+          //   我的回归测试也只覆盖了 doPass(真人过牌) -> 漏掉了这条路径。
+          uiPassed[currentPlayer] = true;
         }
         // [fix] PASS 动作无 cardIds, 需守卫避免 TypeError
         var wasEmpty = !!(ai && ai.hand && action.cardIds && ai.hand.length === action.cardIds.length);
