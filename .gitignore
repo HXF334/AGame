@@ -26,3 +26,9 @@ _pree.txt
 _r14.txt
 _r14e.txt
 tests/_chunk.js
+# [2026-10-26] `node tests/xxx.js > a1.txt` 这类**测试输出临时产物**
+#   (之前用 git add -A 误提交进仓库, 已清理; 这里加通配规则防复发)
+da-a-game/[a-z][0-9].txt
+da-a-game/[a-z]_*.txt
+da-a-game/z.txt
+da-a-game/*.tmp.txt
