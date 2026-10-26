@@ -891,7 +891,14 @@ function _uiRecordPlay(pid, cards) {
 //      **本轮**出的牌要保留(他出了牌, 牌就在桌上)
 function _uiPassCleanup(pid) {
   uiPassed[pid] = true;
-  if (uiPlaysTrick[pid] !== uiTrickId) delete uiPlays[pid];
+  // [2026-10-26] **无条件清掉他的出牌显示** ——
+  //   他过牌了 = 这一轮他不出 -> 头像旁边必须显示「不出」, 而不是他上一轮出的牌。
+  //   (用户: 甲出 AAAA, 乙不出、丙不出, 他们画面上应该显示「不出」, 不是之前的 QQQ)
+  //   之前靠 uiPlaysTrick === uiTrickId 判断「是不是本轮出的」, 但 uiTrickId 只在**轮末**递增,
+  //   而一轮里只要有人一直出牌就**永不变** -> 上一轮的牌永远清不掉 -> 一直显示旧牌。
+  //   既然 PASS 就代表这轮不打, 直接清掉最直接, 也不依赖轮次。
+  delete uiPlays[pid];
+  delete uiPlaysTrick[pid];
 }
 
 function _uiCamps() {

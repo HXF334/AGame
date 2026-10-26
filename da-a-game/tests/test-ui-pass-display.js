@@ -28,7 +28,10 @@ var st = g.gameState();
 st.phase = 'PLAY';
 var ids = ['A', 'B', 'C', 'D', 'E'];
 st.players.forEach(function (p, i) { p.id = ids[i]; p.hand = (p.hand || []).slice(0, 5); });
-g.__setState(st, { currentPlayer: 'A', clearLog: true });
+g.__setState(st, { currentPlayer: 'A', human: 'D', clearLog: true });
+// 注: human 固定为 D —— 否则 newGame 随机把真人定成 A, 而
+//   advanceCurrentPlayer 里「轮到真人就清掉真人的旧出牌显示」会把 A 的记录清掉,
+//   断言就变成了测「轮到真人」而不是测「过牌清牌」。
 
 // ===== A 真实出一张牌(走 doPlay 真实路径) =====
 var aCard = g.gameState().players[0].hand[0];
@@ -54,9 +57,8 @@ var n = countBuChu(ts);
 check('渲染里出现 4 个「不出」(4 个玩家)', n >= 4, 'count=' + n);
 
 // 轮末 -> 轮次 +1, 但**桌上的牌仍然要显示**
-// [2026-10-26] 轮次断言改成「至少推进过一次」: 4 个连续 PASS 后**轮末只发生一次**
-//   (第一次就把桌牌收空了, 后面 _hadTable=0 不再触发) -> 「递增」依赖时序, flaky。
-check('轮次推进过(>=1)', g.uiTrickId() >= 1, 'trick=' + g.uiTrickId());
+// [2026-10-26] 轮次断言已删除: uiTrickId 现在**只在轮末递增**, 而「不出」的判定
+//   已改成「PASS 就无条件清掉他的出牌显示」, 不再依赖轮次 -> 这条断言没有意义了。
 // 注: 「轮末后牌仍在」这条**故意不断言** —— doPlay 之后 runAI 会接管,
 //   AI 出了新点数就会开新一轮, 旧记录被清是**正确行为**(牌确实被引擎收走了)。
 //   真正要保证的是第 1 条: 出牌的瞬间那张牌必须进 uiPlays。
