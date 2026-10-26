@@ -5,7 +5,13 @@
 //   修法: 渲染层改用「本轮是否出过错牌」(uiPlaysTrick[pid] === uiTrickId)判断,
 //         上一轮的牌照常显示, 但不再抑制「不出」; 轮末 -> uiTrickId++。
 // 本测试**无头复现**该场景并断言。
+// [2026-10-26] 必须先装 mock-wx, game.js 才有 ctx -> runAI 才会真跑。
+//   否则 runAI 开头 `if (!ctx) return` 直接返回, 下面那条断言就是**空转**(一条 PASS 都没有)。
+var mock = require('./mock-wx.js');
+var m = mock.install({});
 var g = require('../game.js');
+// AI 动作间隔设为 0(否则每步等 1 秒, 测试会跑很久)
+g.__setAiDelay(0);
 
 var pass = 0, fail = 0;
 function check(name, ok, detail) {
@@ -58,6 +64,16 @@ check('轮末后轮次递增', g.uiTrickId() > trick0,
 var tk = g.uiPlaysTrick() || {};
 check('轮次跟踪可用', tk.A !== undefined, JSON.stringify(tk));
 
+// ===== 源码级守卫: **AI 过牌路径**(applyAction)必须置位 uiPassed =====
+// 背景: v0.27.0 只改了 doPass(真人过牌), 漏了 applyAction(AI 过牌)那条路径 ->
+//       AI 过牌时「不出」永远不显示(用户连报了好几轮)。
+//       行为级断言容易受随机局面影响, 这里再加一条**直接守住那行代码**的守卫。
+var _fs = require('fs');
+var _path = require('path');
+var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
+check('源码: applyAction 的 PASS 分支置位了 uiPassed',
+  /action\.type === ACTIONS\.PASS[\s\S]{0,600}uiPassed\[currentPlayer\] = true/.test(_src));
+
 // ===== 关键: **AI 过牌**路径也必须置位「不出」=====
 // 背景: v0.27.0 的回归只覆盖了 doPass(真人过牌), 漏掉了 applyAction(AI 过牌)那条路径
 //       -> AI 过牌时「不出」永远不显示(用户连报了好几轮)。这里用「日志性质」来兜:
@@ -65,19 +81,32 @@ check('轮次跟踪可用', tk.A !== undefined, JSON.stringify(tk));
 g.newGame();
 var NAME2ID = { '甲': 'A', '乙': 'B', '丙': 'C', '丁': 'D', '戊': 'E' };
 var ran = 0;
-for (var step = 0; step < 40; step++) {
+var ORDER = ['A', 'B', 'C', 'D', 'E'];
+for (var step = 0; step < 30; step++) {
   var before = g.logHistory().length;
+  // 强制让某个 AI 行动(新局后轮到真人, AI 不会自己动 -> 直接跑会 0 步)
+  var i0 = ORDER.indexOf(g.currentPlayer());
+  var next = null;
+  for (var kk = 1; kk <= 5; kk++) {
+    var cand = ORDER[(i0 + kk) % 5];
+    if (cand !== g.getHumanPlayer()) { next = cand; break; }
+  }
+  if (!next) break;
+  g.__setState(g.gameState(), { currentPlayer: next, clearLog: false });
   try { g.runAI(); } catch (e) { break; }
   if (g.logHistory().length === before) break;   // 推进不动了
   ran++;
 }
 var passNames = {};
 g.logHistory().forEach(function (l) {
-  var m = l.match(/^(?:AI )?([\u7532\u4e59\u4e19\u4e01\u620a]) PASS/);
-  if (m) passNames[m[1]] = true;
+  var m2 = l.match(/^(?:AI )?([\u7532\u4e59\u4e19\u4e01\u620a]) PASS/);
+  if (m2) passNames[m2[1]] = true;
 });
 var pd2 = g.uiPassed() || {};
 var missing = Object.keys(passNames).filter(function (nm) { return !pd2[NAME2ID[nm]]; });
+// 注: 这里**不**断言「AI 一定跑出了 PASS 日志」—— 随机局面下 AI 手里牌多,
+//   常常能管上, 不一定会过牌 -> 那条断言天然 flaky。
+//   真正守住这个 bug 的是上面的**源码级守卫** + 下面这条**性质断言**。
 check('每一条 PASS 日志都对应一个「不出」标记(含 AI 过牌路径)',
   missing.length === 0, 'ran=' + ran + ' passNames=' + JSON.stringify(Object.keys(passNames)) +
   ' missing=' + JSON.stringify(missing) + ' uiPassed=' + JSON.stringify(pd2));

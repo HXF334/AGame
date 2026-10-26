@@ -35,6 +35,11 @@ var uiPlaysTrick = {};      // pid -> 那手牌属于第几轮
 var uiPrevTableIds = {};    // 上一帧桌牌上的牌 id 集合
 var uiBigAcePlayed = {};    // pid -> 该玩家**打出**过几张主方大A(头像角标用)
 var uiPrevPushWind = null;  // 上一次的「推风触发者」(用来识别推风)
+// [2026-10-26] AI 动作之间的停顿(毫秒)
+//   **只在真机上生效** —— node 无头测试里 setTimeout 不会执行, runAI 会反复重入
+//   (test-game-headless 出现过 steps=900); 开发者工具里也不延时(方便调试)。
+var AI_STEP_DELAY = (typeof wx !== 'undefined' && !_uiTestMode()) ? 1000 : 0;
+var _lastAiActionAt = 0;
 
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
@@ -829,11 +834,12 @@ function _uiSyncTrick() {
   for (var oid in uiPrevTableIds) { if (cur[oid]) { overlap = true; break; } }
   if (had && !overlap && Object.keys(cur).length > 0) {
     uiTrickId++;
-    Object.keys(uiPlays).forEach(function (pid) {
-      if (uiPlaysTrick[pid] !== uiTrickId) delete uiPlays[pid];
-    });
-    // [2026-10-26] 新一轮: **不**清 uiPassed —— 「不出」只在该玩家**自己出牌**时清
-    //   (手牌变少检测), 否则新一轮一来别人过牌的标记就全没了
+    // [2026-10-26] **这里不再清空 uiPlays** ——
+    //   之前每换一个点数就清掉旧一轮各家的出牌显示 -> AI 连续出牌时
+    //   桌面**只剩最后一手**(用户: 打出的牌还没看到 / 只能看到最后一个有效牌)。
+    //   引擎收走的是「桌牌」, 但玩家打出去的牌应该**留在桌面上**让人看见。
+    //   uiPlays[pid] 本来就是「该家最新一手」, 所以最多 5 组, 不会无限累积。
+    //   「不出」的判定用 uiPlaysTrick[pid] === uiTrickId, 不受影响。
   }
   uiPrevTableIds = cur;
 }
@@ -1325,6 +1331,14 @@ function runAI() {
   if (!ctx) return;  // node 测试模式不进 AI
   var guard = 0;
   while (currentPlayer && currentPlayer !== humanPlayer && gameState.phase === PHASES.PLAY && guard++ < 200) {
+    // [2026-10-26] **AI 节奏**: 每个 AI 动作之间停顿 1 秒(用户: AI玩家出牌太快了)
+    //   不重构整个循环 —— 只在进入循环体前检查时间, 不够就 setTimeout 重入。
+    var _now = Date.now();
+    if (_now - _lastAiActionAt < AI_STEP_DELAY) {
+      setTimeout(runAI, AI_STEP_DELAY - (_now - _lastAiActionAt));
+      return;
+    }
+    _lastAiActionAt = _now;
     try {
       var ai = gameState.players.find(function (p) { return p.id === currentPlayer; });
       if (!ai || ai.hand.length === 0) {
@@ -1379,9 +1393,7 @@ function runAI() {
       if (r1 && r1.ok) {
         // [2026-10-24] 记录 AI 最新出牌 -> 显示在它自己座位前方
         if (action.type === ACTIONS.PLAY && action.cardIds && action.cardIds.length) {
-          _uiSyncTrick();   // 可能开了新一轮 -> 先清掉旧一轮的显示
-    uiPlays[currentPlayer] = _uiCardsByIds(action.cardIds, gameState);
-    uiPlaysTrick[currentPlayer] = uiTrickId;
+          _uiRecordPlay(currentPlayer, _uiCardsByIds(action.cardIds, gameState));
     // [2026-10-26] 统计该玩家**打出**过几张主方大A -> 头像左上角角标
     var _bigN = 0;
     (uiPlays[currentPlayer] || []).forEach(function (c) { if (c && c.is主方大A) _bigN++; });
@@ -1585,6 +1597,8 @@ if (typeof module !== 'undefined' && module.exports) {
     },
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
+    // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
+    __setAiDelay: function (ms) { AI_STEP_DELAY = ms; _lastAiActionAt = 0; },
     uiPassed: function () { return uiPassed; },
     uiTrickId: function () { return uiTrickId; },
     uiPlaysTrick: function () { return uiPlaysTrick; },

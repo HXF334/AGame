@@ -51,10 +51,10 @@ function layout(W, H) {
     turn: { x: vw * 0.5, y: vh * 0.468 },      // [2026-10-25] 上移, 不与按钮行重叠
     btn: { y: vh * 0.560, h: vh * 0.100 },
     // [2026-10-25] 手牌上移, 避开手机底部横条
-    hand: { y: vh * 0.700, maxW: vw * 0.70, cardH: vh * 0.188, ratio: 0.70 },
-    me: { x: safe + r + 30, r: r, y: vh * 0.700 + vh * 0.200 * 0.42 },
+    hand: { y: vh * 0.755, maxW: vw * 0.70, cardH: vh * 0.170, ratio: 0.70 },
+    me: { x: safe + r + 30, r: r, y: vh * 0.755 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
-    memo: { iconX: vw * 0.235, iconY: vh * 0.058, iconR: Math.round(vh * 0.034) }
+    memo: { iconX: vw * 0.235, iconY: vh * 0.075, iconR: Math.round(vh * 0.034) }
   };
 }
 
@@ -83,7 +83,7 @@ function handLayout(n, m) {
   if (step < 8) step = 8;
   var totalW = n <= 1 ? cardW : step * n;
   return { cardW: cardW, cardH: cardH, step: step, x0: (m.vw - totalW) / 2, y: m.hand.y, n: n,
-           totalW: totalW, lift: Math.round(cardH * 0.22) };
+           totalW: totalW, lift: Math.round(cardH * 0.12) };   // [2026-10-26] 抬起幅度减小
 }
 
 function buttonLayout(list, m) {
@@ -229,7 +229,7 @@ function drawMemo(ctx, st, m) {
   var cw = Math.round(m.vw * 0.022);
   var total = n * cw;
   // 面板紧跟在「记」按钮右边
-  var x0 = m.memo.iconX + m.memo.iconR + 8;
+  var x0 = m.memo.iconX + m.memo.iconR + 20;   // [2026-10-26] 内容往右移一点
   var maxRight = m.vw - Math.round(m.vw * 0.015);
   if (x0 + total > maxRight) {
     cw = Math.max(8, Math.floor((maxRight - x0) / n));
