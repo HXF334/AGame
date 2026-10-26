@@ -51,8 +51,9 @@ function layout(W, H) {
     turn: { x: vw * 0.5, y: vh * 0.468 },      // [2026-10-25] 上移, 不与按钮行重叠
     btn: { y: vh * 0.560, h: vh * 0.100 },
     // [2026-10-25] 手牌上移, 避开手机底部横条
-    hand: { y: vh * 0.755, maxW: vw * 0.70, cardH: vh * 0.170, ratio: 0.70 },
-    me: { x: safe + r + 30, r: r, y: vh * 0.755 + vh * 0.200 * 0.42 },
+    // [2026-10-26] 底部暗区变矮 -> 手牌整体下移(牌的上沿 0.72H 正好贴暗区顶边)
+    hand: { y: vh * 0.805, maxW: vw * 0.70, cardH: vh * 0.170, ratio: 0.70 },
+    me: { x: safe + r + 30, r: r, y: vh * 0.805 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
     memo: { iconX: vw * 0.235, iconY: vh * 0.062, iconR: Math.round(vh * 0.034) }
   };
@@ -130,7 +131,9 @@ function text(ctx, s, x, y, size, color, align, bold) {
 // ===== 牌桌 =====
 function drawTable(ctx, m) {
   ctx.fillStyle = '#5e2417'; ctx.fillRect(0, 0, m.vw, m.vh);
-  ctx.fillStyle = '#7a3220'; ctx.fillRect(0, 0, m.vw, m.vh * 0.66);
+  // [2026-10-26 用户] 底部手牌暗区**高度减小** -> 浅色牌桌区往下延伸, 暗区从 34% 缩到 28%
+  //   (暗区顶边 0.66H -> 0.72H; 手牌随之整体下移, 保证整排牌仍在暗区内)
+  ctx.fillStyle = '#7a3220'; ctx.fillRect(0, 0, m.vw, m.vh * 0.72);
   var t = m.table;
   ellipse(ctx, t.cx, t.cy, t.rx, t.ry);
   ctx.fillStyle = '#a8472e'; ctx.fill();
@@ -659,6 +662,19 @@ function drawMeSeat(ctx, st, m) {
         Math.max(9, Math.round(m.vh * 0.026)), suitColor(suit), 'center', true);
     }
   }
+  // [2026-10-26] 真人自己的座位也要显示「不出」/「已出完」
+  //   (之前只有 AI 座位有 -> 真人过牌后看不到自己的状态; 也漏了「已出完」提示)
+  //   位置: 头像**上方**(右边被手牌区占住)
+  var _playedThisTrick = (st.uiPlaysTrick || {})[st.humanPlayer] === st.uiTrickId;
+  var _isOut = me && me.hand && me.hand.length === 0;
+  var _isPassed = (g.phase === 'PLAY') && !!((st.uiPassed || {})[st.humanPlayer]);
+  if (!_playedThisTrick) {
+    var _s2 = _isOut ? '已出完' : (_isPassed ? '不出' : '');
+    if (_s2) {
+      text(ctx, _s2, cx, cy - rr_ - Math.round(m.vh * 0.030),
+        Math.max(12, Math.round(m.vh * 0.044)), _isOut ? '#9a9a9a' : '#ffd700', 'center', true);
+    }
+  }
   text(ctx, st.names[SEAT_IDS.indexOf(st.humanPlayer)], colX + fs * 0.5, cy, fs,
     st.currentPlayer === st.humanPlayer ? '#ffd700' : '#ffffff', 'right', true);
   return null;
@@ -741,15 +757,18 @@ function drawSettlement(ctx, st, m) {
   var d = st.settlement;
   if (!d) return null;
   // [2026-10-26 用户] 3) 结算画面**高度减小**; 戊那一行和「下一局」按钮**近一点**
-  //                   4) 玩家行的底纹**高度减小**
-  //   面板高度改成**按内容算**(标题 + 5 行 + 间距 + 按钮 + 下边距), 不再写死 280
+  //   面板高度改成**按内容算**(标题带 + 5 行 + 间距 + 按钮 + 下边距), 不再写死 280
+  // [2026-10-26 用户] 4) 玩家行的底纹高度**还原**(之前改小了) ——
+  //   用户说的「玩家阴影区域」指的是**底部手牌暗区**, 不是结算画面里的玩家行
+  // [2026-10-26 用户] 标题**不能压住甲那一行** -> 标题带留够高度, 标题在带内垂直居中
   var pw = Math.min(540, m.vw * 0.90);
-  var rowH = Math.round(m.vh * 0.062);        // 行高 -> 玩家底纹随之变矮
-  var titleH = Math.round(m.vh * 0.115);      // 标题带高度
+  var rowH = Math.round(m.vh * 0.070);        // 玩家行底纹高度(还原)
+  var titleFs = Math.max(15, Math.round(m.vh * 0.050));
+  var titleH = Math.round(m.vh * 0.135);      // 标题带高度(标题 + 与第一行的间距)
   var bw2 = Math.round(m.vw * 0.26), bh2 = Math.round(m.vh * 0.080);
   var gapBtn = Math.round(m.vh * 0.016);      // 戊行 -> 「下一局」按钮 的间距
   var padBottom = Math.round(m.vh * 0.016);   // 按钮 -> 面板下沿
-  var ph = Math.min(Math.round(m.vh * 0.80), titleH + 5 * rowH + gapBtn + bh2 + padBottom);
+  var ph = Math.min(Math.round(m.vh * 0.86), titleH + 5 * rowH + gapBtn + bh2 + padBottom);
   var px = (m.vw - pw) / 2, py = (m.vh - ph) / 2 - m.vh * 0.03;
   ctx.fillStyle = 'rgba(20,8,4,0.92)';
   rr(ctx, px, py, pw, ph, 10); ctx.fill();
@@ -757,10 +776,10 @@ function drawSettlement(ctx, st, m) {
   rr(ctx, px, py, pw, ph, 10); ctx.stroke();
   var w = (d.res && d.res.winner) || 'draw';
   var title = (w === 'draw') ? '平局' : (w + '胜');
-  text(ctx, '本局结束 · ' + title, px + pw / 2, py + Math.round(m.vh * 0.058), Math.max(15, Math.round(m.vh * 0.050)), '#ffd98a', 'center', true);
+  text(ctx, '本局结束 · ' + title, px + pw / 2, py + titleH * 0.5, titleFs, '#ffd98a', 'center', true);
   var camps = (st.gameState['主方'] || []);
   var rowY = py + titleH;
-  var cw = 15, ch = 22, cstep = 11;   // 小牌也跟着变矮(要放得进变矮的行底纹)
+  var cw = 17, ch = 24, cstep = 12;   // [2026-10-26] 还原原来的小牌尺寸
   var isAce = st.isMainAce || function () { return false; };
   for (var i = 0; i < SEAT_IDS.length; i++) {
     var pid = SEAT_IDS[i];

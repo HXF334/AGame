@@ -68,23 +68,29 @@ function candidateCombos(hand) {
   // 后果: 玩家手持大小王面对单大A (按 §6.4 双王可管), 若直接点"出牌"而未选牌,
   //   doPlay 的组合回退找不到双王 -> 报"手牌不可用" (用户 2026-10-21 实测报障)。
   //   引擎侧 identifyHand/canBeat 一直正确, 只是候选枚举漏了。
-  // 合法形态: 双王=1大1小; 三王=2大1小 或 1大2小; 四王=全部 4 张。
+  // 合法形态(SKILL L189/L190): 双王=**任意2张王**; 三王=**任意3张王**; 四王=全部 4 张。
+  //   (2026-10-26 修正: 原来只生成 1大1小/2大1小/1大2小 -> 双大王漏了)
   var jokers = hand.filter(function (c) { return c.isBigJoker || c.isSmallJoker; });
   if (jokers.length >= 2) {
-    var bigs = jokers.filter(function (c) { return c.isBigJoker; }).map(function (c) { return c.id; });
-    var smalls = jokers.filter(function (c) { return c.isSmallJoker; }).map(function (c) { return c.id; });
-    var mn = Math.min(bigs.length, smalls.length);
-    var mx = Math.max(bigs.length, smalls.length);
-    // 双王: 1大1小
-    if (mn >= 1) out.push([bigs[0], smalls[0]]);
-    // 三王: 2大1小 / 1大2小
-    if (mn >= 1 && mx >= 2) {
-      out.push([bigs[0], bigs[1], smalls[0]]);
-      if (smalls.length >= 2) out.push([bigs[0], smalls[0], smalls[1]]);
-    }
-    // 四王: 全部 4 张
-    if (jokers.length >= 4) {
-      out.push(bigs.concat(smalls).slice(0, 4));
+    // [2026-10-26] SKILL §6 牌型表 L189/L190:
+    //   「双王 | **任意2张王**」「三王 | **任意3张王**」-> 2 大王 / 3 大王 也是合法牌型
+    //   (引擎 identifyHand: 2 张全是王 -> DOUBLE_JOKER, 按其中大王数分级 0/1/2)
+    //   之前这里只生成「1大1小」「2大1小」「1大2小」-> **双大王从来没被枚举过**
+    //   -> 【提示】/ AI 选牌 / doPlay 组合回退 三条路径全都找不到双大王
+    //   (用户 2026-10-26 真机实测: 桌面 5 张 10(大蛋子), 手持双大王, 点【提示】
+    //    说「当前没有可用牌」—— 引擎 canBeat 明明允许双王管大蛋子)
+    // 现在枚举**所有** 2/3/4 张王的组合(大王小王任意搭配)
+    var _jokerCombos = function (k) {
+      var res = [];
+      (function rec(start, cur) {
+        if (cur.length === k) { res.push(cur.slice()); return; }
+        for (var j = start; j < jokers.length; j++) { cur.push(jokers[j].id); rec(j + 1, cur); cur.pop(); }
+      })(0, []);
+      return res;
+    };
+    for (var _jk = 2; _jk <= 4; _jk++) {
+      if (jokers.length < _jk) break;
+      _jokerCombos(_jk).forEach(function (ids) { out.push(ids); });
     }
   }
 
