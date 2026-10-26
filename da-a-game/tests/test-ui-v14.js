@@ -164,4 +164,4 @@ check('7.4 倒计时在按钮行中央正上方',
 
 console.log('\n' + '='.repeat(50));
 console.log('test-ui-v14: ' + pass + ' passed, ' + fail + ' failed');
-if (fail > 0) process.exit(1);
+process.exit(fail > 0 ? 1 : 0);
