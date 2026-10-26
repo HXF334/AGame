@@ -846,6 +846,29 @@ function _uiSyncPassState() {
   uiPrevPushWind = _pw;
 }
 
+// [2026-10-26] **当前轮**各家的出牌显示(只传当前轮的!)
+//   根因: uiPlays 里存的是「历史所有出牌」, 渲染层用 hasPlay 决定要不要显示「不出」
+//   -> 上一轮出过牌的人, 这一轮 PASS 了, 记录还在 -> 「不出」被抑制 -> 用户永远看不到
+//   -> 只把**当前轮**的给他, 上一轮出过的牌自然不挡着「不出」
+function _uiCurrentPlays() {
+  var out = {};
+  Object.keys(uiPlays).forEach(function (pid) {
+    if (uiPlaysTrick[pid] === uiTrickId) out[pid] = uiPlays[pid];
+  });
+  return out;
+}
+
+// [2026-10-26] 记录一次出牌到 UI 的「各家最新出牌」
+//   **根因**: doPlay 走自己的 transition 路径(多张/逐张两条), **不经过 applyAction**,
+//   而 uiPlays 只在 applyAction 里被更新 -> 真人/引擎出牌后桌面上看不到他出的牌
+//   (用户: 别人出的牌看不见)。applyAction 那边也改成走这个函数, 保证两条路径一致。
+function _uiRecordPlay(pid, cards) {
+  if (!cards || !cards.length) return;
+  _uiSyncTrick();                       // 可能开了新一轮 -> 先清掉旧一轮的显示
+  uiPlays[pid] = cards;
+  uiPlaysTrick[pid] = uiTrickId;
+}
+
 function _uiCamps() {
   var g = gameState;
   var out = { main: null, second: null, secondOpen: false };
@@ -881,14 +904,13 @@ function _uiMainAceMarks() {
     }
     if (main) out[main] = n;
   } else {
-    if (zhu.establishedBy) out[zhu.establishedBy] = 1;
+    // [2026-10-26] 2V3: 4 张同花色 A, **主方 2 张 + 次方 2 张**(双大A) -> 角标显示 2 个
+    if (zhu.establishedBy) out[zhu.establishedBy] = 2;
     // [2026-10-26] 2V3_明打 模式下次方**始终公开**(引擎不会把 state.次方公开 置 true)
-    if (g['次方'] && (g['次方公开'] === true || mode.indexOf('2V3_明打') >= 0)) out[g['次方']] = 1;
+    if (g['次方'] && (g['次方公开'] === true || mode.indexOf('2V3_明打') >= 0)) out[g['次方']] = 2;
   }
-  // [2026-10-26] 合并「**打出过**主方大A」的玩家 -> 头像左上角角标
-  Object.keys(uiBigAcePlayed).forEach(function (pid) {
-    out[pid] = (out[pid] || 0) + uiBigAcePlayed[pid];
-  });
+  // [2026-10-26] **不再累加**「打出过大A」的次数 —— 那是累计值, 打几次就几个图标,
+  //   而且跨局不清 -> 用户看到「双大A的图标出了4个」。角标只表示**持有几张主方大A**。
   return out;
 }
 
@@ -944,12 +966,10 @@ function _uiTestMode() {
 //   推风时引擎清空桌牌也走这里 -> 桌牌和「不出」一起清
 function _uiRoundEnded(beforeLen, keepPid) {
   if (beforeLen > 0 && (gameState.table || []).length === 0) {
-    uiPlays = {};
-    // [2026-10-26] 这里**不清** uiPassed: 轮末只表示「这一轮大家都过完了」,
-    //   下一轮还没人出牌 -> 之前过牌的人的「不出」应该继续显示,
-    //   直到**他自己出牌**(手牌变少时清)为止。之前的版本连刚过牌的人一起清了
-    //   -> 用户看到的现象是「其他玩家过牌后都不显示不出文字」。
-    if (keepPid) { /* 保留: 「不出」只在该玩家自己出牌时清 */ }
+    // [2026-10-26] 一轮结束 -> **轮次 +1**(标记「这一轮过去了」)
+    //   **不清** uiPlays: 桌上的牌还在, 还得显示(用户: 别人出的牌看不见)
+    //   轮次 +1 之后, 上一轮出过牌的人就不算「本轮出过牌」-> 他的「不出」能显示出来
+    uiTrickId++;
     return true;
   }
   return false;
@@ -973,6 +993,10 @@ function draw() {
     logHistory: logHistory,
     toast: uiToast,
     uiPlays: uiPlays,
+    // [2026-10-26] 渲染层要用「本轮是否出过错牌」来判定要不要显示「不出」
+    //   (上一轮出的牌**仍然显示**在桌上, 但不能因此抑制他的「不出」)
+    uiPlaysTrick: uiPlaysTrick,
+    uiTrickId: uiTrickId,
     marks: uiMarks,
     memoOpen: uiMemoOpen,
     memoItems: _uiMemo().items,
@@ -1066,6 +1090,10 @@ function doPlay() {
   // [D] 优先用 selectedCards (多选多牌型); 未选则逐张试
   var lastError = null;
   if (selectedCards.length > 0) {
+    // [2026-10-26] 先把要出的牌对象抓出来(transition 之后牌就不在手牌里了)
+    var _playedCards0 = selectedCards.map(function (id) {
+      return player.hand.concat(gameState['底牌'] || []).find(function (x) { return x.id === id; });
+    }).filter(function (c) { return !!c; });
     var r0 = transition(gameState, {
       type: ACTIONS.PLAY,
       payload: { playerId: currentPlayer, cardIds: selectedCards.slice() }
@@ -1077,6 +1105,7 @@ function doPlay() {
         return c ? cardDesc(c) : '?';
       }).join(' ');
       gameState = r0.state;
+      _uiRecordPlay(currentPlayer, _playedCards0);   // [2026-10-26] 桌面显示他的牌
       log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + cardText);
       selectedCards = [];
       // [P0 修复 2026-10-23] 原来读 me2.hand.length —— me2 是 transition **之前**
@@ -1124,6 +1153,7 @@ function doPlay() {
     });
     if (r && r.ok) {
       gameState = r.state;
+      _uiRecordPlay(currentPlayer, [card]);   // [2026-10-26] 桌面显示他的牌
       log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + cardDesc(card));
       // [P0 修复 2026-10-23] 同上: me3 同样是过期引用, 从新 state 重新取。
       var _meAfter = gameState.players.find(function (p) { return p.id === currentPlayer; });
@@ -1519,7 +1549,31 @@ if (typeof module !== 'undefined' && module.exports) {
     uiLayout: function () { return uiRender.layout(W || 844, H || 390); },
     uiHandLayout: function (n) { return uiRender.handLayout(n, uiRender.layout(W || 844, H || 390)); },
     uiButtonBoxes: function () { return btnStage || []; },
+    // [2026-10-26] 测试钩子: 渲染一帧并返回**所有画出的文本**
+    //   目的: 无头验证「不出」等 UI 文案到底有没有被画出来
+    __renderTexts: function () {
+      var texts = [];
+      var old = ctx;
+      ctx = {
+        canvas: { width: W || 844, height: H || 390 },
+        measureText: function (t) { return { width: String(t || '').length * 8 }; },
+        fillText: function (t) { texts.push(String(t)); },
+        save: function () {}, restore: function () {}, beginPath: function () {},
+        closePath: function () {}, moveTo: function () {}, lineTo: function () {}, arcTo: function () {},
+        arc: function () {}, fill: function () {}, stroke: function () {},
+        fillRect: function () {}, clearRect: function () {}, translate: function () {},
+        rotate: function () {}, scale: function () {}, setLineDash: function () {},
+        createLinearGradient: function () { return { addColorStop: function () {} }; },
+        fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', textBaseline: '', globalAlpha: 1
+      };
+      try { draw(); } finally { ctx = old; }
+      return texts;
+    },
     uiPlays: function () { return uiPlays; },
+    // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
+    uiPassed: function () { return uiPassed; },
+    uiTrickId: function () { return uiTrickId; },
+    uiPlaysTrick: function () { return uiPlaysTrick; },
     uiMemoItems: function () { return _uiMemo().items; },
     uiIsMainAce: _uiIsMainAce,
     uiMainAceMarks: _uiMainAceMarks,

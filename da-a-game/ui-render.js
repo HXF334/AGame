@@ -209,61 +209,60 @@ function drawTopBar(ctx, st, m, memoIcon) {
 //   2) 大A 用**花色**表示; 大王=红色 JOKER, 小王=黑色 JOKER(竖排)
 //   3) 下面只写剩余数字, **黑色**
 //   4) 整体缩小
+// 记牌器 —— 参照图3样式, 并按用户要求继续压缩:
+//   1) 只显示在**顶部深棕色那一条**(顶栏)里
+//   2) 大A 用**主A 的花色**; 大王=红 JOKER, 小王=黑 JOKER(竖排, 更短更小)
+//   3) 下面只写剩余数字, **灰色**
+//   4) **不要黑边**: 面板半透明, 只留一条细灰线; 牌面浅灰无描边
 function drawMemo(ctx, st, m) {
   if (!st.memoOpen) return;
   var items = st.memoItems || [];
   var n = items.length;
   if (!n) return;
   var topH = m.top.h;
-  var cw = Math.round(m.vw * 0.030);          // [2026-10-26] 缩到 3/4
-  var availW = m.vw - Math.round(m.vw * 0.05);
-  if (n * cw > availW) cw = Math.max(9, Math.floor(availW / n));
-  var cardW = cw;                        // 左右间距 0(格与格之间不留空)
-  var cardH = Math.round(topH * 0.56);
-  var numH = Math.round(topH * 0.30);
+  var cw = Math.round(m.vw * 0.022);
+  var availW = m.vw - Math.round(m.vw * 0.04);
+  if (n * cw > availW) cw = Math.max(8, Math.floor(availW / n));
+  var cardW = cw;
+  var cardH = Math.round(topH * 0.50);
+  var numH = Math.round(topH * 0.26);
   var total = n * cw;
   var x0 = (m.vw - total) / 2;
   var y = Math.round(m.vh * 0.004);
-  // 面板 = 顶栏那一条深棕底
-  ctx.fillStyle = 'rgba(0,0,0,0.92)';
-  rr(ctx, x0 - 4, y, total + 8, cardH + numH + 4, 4); ctx.fill();
-  ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 1;
-  rr(ctx, x0 - 4, y, total + 8, cardH + numH + 4, 4); ctx.stroke();
+  // 面板: 半透明底 + 一条细灰线(不要黑边)
+  ctx.fillStyle = 'rgba(30,12,6,0.55)';
+  rr(ctx, x0 - 3, y, total + 6, cardH + numH + 3, 3); ctx.fill();
+  ctx.strokeStyle = 'rgba(200,200,200,0.45)'; ctx.lineWidth = 1;
+  rr(ctx, x0 - 3, y, total + 6, cardH + numH + 3, 3); ctx.stroke();
   var suit = st.mainAceSuit;
   for (var i = 0; i < n; i++) {
     var it = items[i];
     var cx = x0 + i * cw + cw / 2;
-    // 上排: 白底小牌面
-    ctx.fillStyle = '#fdfdf6';
-    rr(ctx, cx - cardW / 2, y + 2, cardW, cardH, 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
-    rr(ctx, cx - cardW / 2, y + 2, cardW, cardH, 2); ctx.stroke();
+    // 上排: 浅灰小牌面(无描边)
+    ctx.fillStyle = 'rgba(235,231,222,0.92)';
+    rr(ctx, cx - cardW / 2 + 0.5, y + 1.5, cardW - 1, cardH, 2); ctx.fill();
     var lbl = it.label || '';
     if (lbl === '大A') {
-      // 大A: 用**主A 的花色**表示
-      text(ctx, suit ? (SUIT_CHAR[suit] || '?') : '?', cx, y + 2 + cardH * 0.52,
-        Math.max(9, Math.round(cardH * 0.55)), suitColor(suit), 'center', true);
+      text(ctx, suit ? (SUIT_CHAR[suit] || '?') : '?', cx, y + 1.5 + cardH * 0.52,
+        Math.max(8, Math.round(cardH * 0.56)), suitColor(suit), 'center', true);
     } else if (lbl === '大王' || lbl === '小王') {
-      // 大王=红色 JOKER, 小王=黑色 JOKER(竖排)
-      var jc = (lbl === '大王') ? '#c8102e' : '#1a1a1a';
+      var jc = (lbl === '大王') ? '#c8102e' : '#333333';
       var letters = 'JOKER';
-      var fs2 = Math.max(5, Math.round(cardH * 0.17));
-      var lh2 = fs2 * 1.0;
+      var fs2 = Math.max(4, Math.round(cardH * 0.15));
+      var lh2 = fs2 * 0.82;                       // 压缩行距 -> 更短
       var gh = lh2 * (letters.length - 1);
-      var sy = y + 2 + cardH / 2 - gh / 2;
+      var sy = y + 1.5 + cardH / 2 - gh / 2;
       for (var li = 0; li < letters.length; li++) {
         text(ctx, letters[li], cx, sy + li * lh2, fs2, jc, 'center', true);
       }
     } else {
-      text(ctx, lbl, cx, y + 2 + cardH * 0.52,
-        Math.max(8, Math.round(cardH * 0.50)), '#1a1a1a', 'center', true);
+      text(ctx, lbl, cx, y + 1.5 + cardH * 0.52,
+        Math.max(7, Math.round(cardH * 0.50)), '#333333', 'center', true);
     }
-    // 下排: 剩余数字(白底 + **黑字**)
-    var nbY = y + 2 + cardH + 1;
-    ctx.fillStyle = '#f4f0e6';
-    rr(ctx, cx - cardW / 2, nbY, cardW, numH, 2); ctx.fill();
+    // 下排: 剩余数字(**灰色**)
+    var nbY = y + 1.5 + cardH;
     text(ctx, String(it.value), cx, nbY + numH / 2,
-      Math.max(8, Math.round(numH * 0.72)), '#000000', 'center', true);
+      Math.max(7, Math.round(numH * 0.80)), '#999999', 'center', true);
   }
 }
 
@@ -368,9 +367,11 @@ function drawSeats(ctx, st, m) {
     drawAllyMark(ctx, st, m, colX, mky, mr, myMarks[pid] || null);
     markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
     // 「不出」在头像内侧
+    // 「不出」/「已出完」: 判据是**本轮**是否出过错牌
+    //   (上一轮出的牌仍然显示在桌上, 但不能因此抑制他的「不出」)
+    var playedThisTrick = (st.uiPlaysTrick || {})[pid] === st.uiTrickId;
     var plays = st.uiPlays || {};
-    var hasPlay = plays[pid] && plays[pid].length;
-    if (!hasPlay) {
+    if (!playedThisTrick) {
       var s2 = isOut ? '已出完' : (isPassed ? '不出' : '');
       if (s2) {
         var ix = cx + inw * (rr_ + 10);
