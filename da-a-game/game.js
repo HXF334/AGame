@@ -99,7 +99,8 @@ function log(msg) {
   //   devtools 模拟器沙箱不落盘), 继续保留只会造成"以为在记日志"的错觉。
   //   需要排查时用户从调试器 Console 复制给我。
   logHistory.push(msg);
-  if (logHistory.length > 200) logHistory.shift();   // 内存上限, 防无限增长
+  // [2026-10-26] 上限提到 1000: 原来 200 条很快被挤掉(每次动作好几条) -> 用户看着像「日志被清空」
+  if (logHistory.length > 1000) logHistory.shift();   // 内存上限, 防无限增长
   console.log('[da-a-game] ' + msg);
 }
 
@@ -482,7 +483,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   lastEmptiedPlayer = null;
   currentPlayer = null;
   gameState = engine.newGameState();
-  logHistory = [];                   // 新局重置日志
+  logHistory = [];                   // 新局重置日志(契约: 新局后第一条必须是「对局初始化」)
   initGame();                        // 重新走阶段闸门(内部会重置 gateIdx/gateChoice)
 log('新局已开始, 真人=' + pn(humanPlayer) + '(随机座位)');
   if (ctx) draw();
@@ -704,7 +705,7 @@ function uiClick(id) {
     case 'idHidden': return humanChooseIdentity(false);
 case 'next':     log('  【下】已移除(各阶段自动推进)'); return false;
     case 'play':     doPlay(); return true;
-    case 'pass':     doPass(); uiPassed[humanPlayer] = true; return true;
+    case 'pass':     doPass(); return true;
     case 'hint':     return uiHint();
     case 'newGame':  newGame(); return true;
     default: return false;
@@ -1151,10 +1152,12 @@ function doPass() {
     gameState = r.state;
     var _roundEnded = _hadTable && (gameState.table || []).length === 0;
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
+    // [2026-10-26] 过牌 -> 标记「不出」。
+    //   之前只有真人点【不出】才置位 -> AI/其他人过牌时「不出」根本不显示。
+    uiPassed[currentPlayer] = true;
     delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
     // [2026-10-25] 有人过牌导致本轮结束 -> 清掉**全部**各家的出牌显示
     _uiRoundEnded(_hadTable ? 1 : 0);
-    delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
@@ -1470,7 +1473,8 @@ if (typeof module !== 'undefined' && module.exports) {
       currentPlayer = o.currentPlayer !== undefined ? o.currentPlayer
                     : (determineFirstPlayer(st) || 'A');
       lastEmptiedPlayer = o.lastEmptiedPlayer || null;
-      if (o.clearLog !== false) logHistory = [];
+      // [2026-10-26] 只有**显式**要求才清日志(原来默认每次都清 -> 用户看到日志一直被清空)
+      if (o.clearLog === true) logHistory = [];
       selectedCards = [];
       handCardHitboxes = [];
       if (o.human) humanPlayer = o.human;
