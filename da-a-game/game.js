@@ -34,6 +34,7 @@ var uiTrickId = 0;          // 当前轮次
 var uiPlaysTrick = {};      // pid -> 那手牌属于第几轮
 var uiPrevTableIds = {};    // 上一帧桌牌上的牌 id 集合
 var uiBigAcePlayed = {};    // pid -> 该玩家**打出**过几张主方大A(头像角标用)
+var uiPrevPushWind = null;  // 上一次的「推风触发者」(用来识别推风)
 
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
@@ -820,6 +821,8 @@ function _uiSyncTrick() {
     Object.keys(uiPlays).forEach(function (pid) {
       if (uiPlaysTrick[pid] !== uiTrickId) delete uiPlays[pid];
     });
+    // [2026-10-26] 新一轮: **不**清 uiPassed —— 「不出」只在该玩家**自己出牌**时清
+    //   (手牌变少检测), 否则新一轮一来别人过牌的标记就全没了
   }
   uiPrevTableIds = cur;
 }
@@ -837,6 +840,10 @@ function _uiSyncPassState() {
     if (prev !== undefined && p.hand.length < prev) delete uiPassed[p.id];
     uiPrevHandLens[p.id] = p.hand.length;
   });
+  // [2026-10-26] **推风成功** -> 「不出」全清(引擎这时会清空桌牌)
+  var _pw = g['推风触发者'] || null;
+  if (_pw && _pw !== uiPrevPushWind) uiPassed = {};
+  uiPrevPushWind = _pw;
 }
 
 function _uiCamps() {
@@ -938,9 +945,11 @@ function _uiTestMode() {
 function _uiRoundEnded(beforeLen, keepPid) {
   if (beforeLen > 0 && (gameState.table || []).length === 0) {
     uiPlays = {};
-    var keep = keepPid ? uiPassed[keepPid] : false;
-    uiPassed = {};
-    if (keep) uiPassed[keepPid] = true;
+    // [2026-10-26] 这里**不清** uiPassed: 轮末只表示「这一轮大家都过完了」,
+    //   下一轮还没人出牌 -> 之前过牌的人的「不出」应该继续显示,
+    //   直到**他自己出牌**(手牌变少时清)为止。之前的版本连刚过牌的人一起清了
+    //   -> 用户看到的现象是「其他玩家过牌后都不显示不出文字」。
+    if (keepPid) { /* 保留: 「不出」只在该玩家自己出牌时清 */ }
     return true;
   }
   return false;
@@ -1202,7 +1211,9 @@ function doPass() {
     gameState = r.state;
     var _roundEnded = _hadTable && (gameState.table || []).length === 0;
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
-    delete uiPlays[currentPlayer];   // [2026-10-24] 过牌 -> 清掉自己那格
+    // [2026-10-26] 过牌**不再删**自己的出牌显示 ——
+    //   他的牌还在桌上(只是这轮没跟), 删了会导致「他出的对4/对6看不见」
+    //   旧逻辑(2026-10-24)是为清掉「轮到真人时显示自己的旧牌」, 但过牌时删错了
     // [2026-10-25] 有人过牌导致本轮结束 -> 清掉**全部**各家的出牌显示
     _uiRoundEnded(_hadTable ? 1 : 0, currentPlayer);   // 保留刚过牌的人
     // [2026-10-26] 过牌 -> 标记「不出」。
@@ -1336,7 +1347,7 @@ function runAI() {
     (uiPlays[currentPlayer] || []).forEach(function (c) { if (c && c.is主方大A) _bigN++; });
     if (_bigN) uiBigAcePlayed[currentPlayer] = (uiBigAcePlayed[currentPlayer] || 0) + _bigN;
         } else if (action.type === ACTIONS.PASS) {
-          delete uiPlays[currentPlayer];
+          // [2026-10-26] 过牌**不删**自己的出牌显示(他的牌还在桌上)
         }
         // [fix] PASS 动作无 cardIds, 需守卫避免 TypeError
         var wasEmpty = !!(ai && ai.hand && action.cardIds && ai.hand.length === action.cardIds.length);

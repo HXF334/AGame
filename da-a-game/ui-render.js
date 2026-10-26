@@ -215,10 +215,10 @@ function drawMemo(ctx, st, m) {
   var n = items.length;
   if (!n) return;
   var topH = m.top.h;
-  var cw = Math.round(m.vw * 0.040);
+  var cw = Math.round(m.vw * 0.030);          // [2026-10-26] 缩到 3/4
   var availW = m.vw - Math.round(m.vw * 0.05);
   if (n * cw > availW) cw = Math.max(9, Math.floor(availW / n));
-  var cardW = Math.round(cw * 0.82);
+  var cardW = cw;                        // 左右间距 0(格与格之间不留空)
   var cardH = Math.round(topH * 0.56);
   var numH = Math.round(topH * 0.30);
   var total = n * cw;
@@ -325,7 +325,7 @@ function drawSeats(ctx, st, m) {
   var out = [], seatMap = {}, markHits = [];
   var myMarks = (st.marks || {})[st.humanPlayer] || {};
   var aceIconR = Math.round(m.vh * 0.019);
-  var aceIconGap = Math.round(m.vh * 0.043);
+    var aceIconGap = Math.round(m.vh * 0.032);   // [2026-10-26] 两个图标贴紧(轻微重叠)
   var inPlay = (g.phase === 'PLAY');
   SEAT_IDS.forEach(function (pid) {
     if (pid === st.humanPlayer) return;
@@ -383,7 +383,7 @@ function drawSeats(ctx, st, m) {
       var n = st.mainAceMarks[pid];
       var suit = st.mainAceSuit;
       for (var k = 0; k < n; k++) {
-        var ax = (pos.side === 'L' ? (cx + rr_ * 0.55) : (cx - rr_ * 0.55)) + k * aceIconGap;
+        var ax = (pos.side === 'L' ? (cx + rr_ * 0.42) : (cx - rr_ * 0.55)) + k * aceIconGap;
         var ay = cy - rr_ * 0.72;
         ctx.fillStyle = '#f4f0e6';
         circle(ctx, ax, ay, aceIconR); ctx.fill();
@@ -635,9 +635,9 @@ function drawMeSeat(ctx, st, m) {
     var n = st.mainAceMarks[st.humanPlayer];
     var suit = st.mainAceSuit;
     var aceIconR = Math.round(m.vh * 0.019);
-    var aceIconGap = Math.round(m.vh * 0.043);
+    var aceIconGap = Math.round(m.vh * 0.032);   // [2026-10-26] 两个图标贴紧(轻微重叠)
     for (var k = 0; k < n; k++) {
-      var ax = cx + rr_ * 0.55 + k * aceIconGap;
+      var ax = cx + rr_ * 0.42 + k * aceIconGap;
       var ay = cy - rr_ * 0.72;
       ctx.fillStyle = '#f4f0e6';
       circle(ctx, ax, ay, aceIconR); ctx.fill();
