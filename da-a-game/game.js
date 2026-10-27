@@ -50,7 +50,7 @@ var _lastAiActionAt = 0;
 //   "Cannot set properties of undefined (setting 'A')"(且只在某些发牌下出现 -> flaky)。
 var uiPlays = {};
 var uiMarks = {};
-var uiMemoOpen = false;
+var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
 
 // === 工具 ===
 // 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
@@ -219,6 +219,10 @@ function _errOf(r) { return (r && r.error && r.error.message) || '未知错误';
 //   现在把「设首出权 + 触发 AI」收敛到这一个函数, 所有可能进入 PLAY 的地方都调它。
 function enterPlayIfNeeded() {
   if (gameState.phase !== PHASES.PLAY) return false;
+  // [2026-10-27 用户] 进 PLAY 阶段 -> 清掉「不出」标记
+  //   亮A/反A/身份阶段引擎会**自动过牌**(那些玩家没亮/没选), 标记留到牌局里
+  //   -> 我亮了大A而且有首出权, 但甲头上还挂着「不出」(用户真机)
+  uiPassed = {};
   if (!currentPlayer) {
     // 补跑 PLAY 档(设首出权)。PLAY 档跑完 currentPlayer 已有值, 递归会终止。
     runGateStage();
@@ -251,7 +255,7 @@ var e1 = canLiangA(gameState, humanPlayer);
 log('  真人亮A资格: ' + (e1.ok ? '有' : '无') + ' — ' + e1.reason);
 if (e1.ok) {
   // 有A -> 等真人点【亮A】/【不亮A】, 决策完自动进入下一阶段
-  gateChoice = { kind: 'LIANG_A', eligible: true, reason: e1.reason, cards: e1.cards };
+  _uiSetGateChoice({ kind: 'LIANG_A', eligible: true, reason: e1.reason, cards: e1.cards });
 } else {
   // 没有A -> 由 AI 依次尝试亮A, 完成后自动进入下一阶段
   _aiLiangARound();
@@ -307,6 +311,7 @@ if (e1.ok) {
 
     case 'PLAY':
       if (gameState.phase === PHASES.PLAY) {
+        uiPassed = {};                 // [2026-10-27] 开局清「不出」(亮A 阶段的自动过牌不算)
         currentPlayer = determineFirstPlayer(gameState) || 'A';
         log('  首出权 → ' + pn(currentPlayer) + ' (§5)');
         logState('开局');
@@ -384,6 +389,7 @@ function humanLiangA(doIt, suit) {
   if (!gateChoice || gateChoice.kind !== 'LIANG_A' || !gateChoice.eligible) return false;
   var cards = gateChoice.cards;
   gateChoice = null;              // 先消费, 防同一次决策被执行两次
+  _uiLiangCountdownStop();        // [2026-10-27] 决策了就取消倒计时
 if (!doIt) {
   log('  真人选择: 不亮A');
   _aiLiangARound();     // 真人放弃 -> AI 依次尝试亮A
@@ -498,8 +504,9 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiToast = null;                   // 清残留提示
   uiLogVisible = false;             // 日志面板默认隐藏
   uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
-  uiMemoOpen = false;               // 记牌器默认收起
+  uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
   uiPlays = {};                     // 清掉各家出牌显示
+  uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
   selectedCards = [];
   handCardHitboxes = [];
   lastEmptiedPlayer = null;
@@ -598,6 +605,23 @@ function uiHintCandidates() {
   return out;
 }
 
+// [2026-10-27 用户] 选中一张牌后, 自动补成**最小可用牌型**
+//   规则: 在**引擎认可**(真能出)的候选里, 取 张数最少 / 同张数牌力最小 且**包含这张牌** 的那个
+//   例: 手上有 8 9 9 10 10 J J Q Q, 桌面是 567 -> 选一张 9 -> 自动选中 8 9 10(3 张连张)
+function _uiExpandSelection(cardId) {
+  var cands;
+  try { cands = uiHintCandidates(); } catch (e) { return; }
+  var best = null, bestLen = 1e9, bestPow = 1e9;
+  for (var i = 0; i < cands.length; i++) {
+    var c = cands[i];
+    if (!c.ids || c.ids.indexOf(cardId) < 0) continue;
+    var len = c.ids.length;
+    var pw = _uiComboPower(c.cards);
+    if (len < bestLen || (len === bestLen && pw < bestPow)) { best = c; bestLen = len; bestPow = pw; }
+  }
+  if (best && bestLen > 1) selectedCards = best.ids.slice();
+}
+
 // 组合的牌力取其中最大的一张
 // 组合的牌力取其中最大的一张
 // [2026-10-25] **大A 要算进去**(大A > 大王) -> 提示候选里大A 排在最前
@@ -658,7 +682,48 @@ function uiTurnTick() {
 
 function uiStartTicker() {
   if (uiTicker || typeof setInterval === "undefined") return;
-  uiTicker = setInterval(function () { if (ctx && uiTurnDeadline) draw(); }, 250);
+  uiTicker = setInterval(function () { if (ctx && (uiTurnDeadline || uiLiangDeadline)) draw(); }, 250);
+}
+
+// ===== 亮A 决策倒计时 (2026-10-27 用户) =====
+// 亮A 阶段取消【不亮】按钮, 改成 5 秒倒计时; 到点没人亮 -> 自动跳过亮A进入强制排查
+var uiLiangDeadline = 0;
+var uiLiangTotal = 5000;
+var uiLiangTimer = null;
+
+function _uiLiangCountdownStart() {
+  if (uiLiangTimer) return;
+  uiLiangDeadline = Date.now() + uiLiangTotal;
+  if (typeof setTimeout === 'undefined') return;
+  uiLiangTimer = setTimeout(function () {
+    uiLiangTimer = null;
+    _uiLiangTimeout();
+  }, uiLiangTotal);
+}
+
+function _uiLiangCountdownStop() {
+  if (uiLiangTimer && typeof clearTimeout !== 'undefined') clearTimeout(uiLiangTimer);
+  uiLiangTimer = null;
+  uiLiangDeadline = 0;
+}
+
+// 设置闸门决策的**单一入口**(生产流程和测试注入都走它)
+//   亮A 的闸门 -> 同时启动 5 秒倒计时(到点没人亮 -> 自动进强制排查)
+function _uiSetGateChoice(choice) {
+  gateChoice = choice || null;
+  if (gateChoice && gateChoice.kind === 'LIANG_A' && gateChoice.eligible) _uiLiangCountdownStart();
+  else _uiLiangCountdownStop();
+}
+
+// 超时: 没人亮A -> 和原来的【不亮】一样: AI 依次尝试亮A, 然后自动进入强制排查
+function _uiLiangTimeout() {
+  uiLiangDeadline = 0;
+  if (!gateChoice || gateChoice.kind !== 'LIANG_A' || !gateChoice.eligible) return;
+  log('  亮A 5 秒倒计时结束(没人亮) -> 自动进入强制排查');
+  gateChoice = null;
+  _aiLiangARound();
+  gateAutoAdvance();
+  if (ctx) draw();
 }
 
 function uiStopTicker() {
@@ -683,20 +748,17 @@ function uiButtons() {
     if (c && c.kind === 'LIANG_A') {
       // [2026-10-26 用户] 亮A 阶段: 把「亮A」按钮换成**花色按钮** ——
       //   手上有几个花色的 A 就加几个按钮, 点哪个花色 = 亮哪个花色的大A
-      var _suits = [];
+      // [2026-10-27 用户] **列出全部 4 个花色** —— 没有的 A 按钮置灰(不可点),
+      //   有哪个 A 哪个按钮可点; 「不亮」按钮取消 -> 换成 5 秒倒计时, 到点自动进强制排查
+      var _hasSuit = {};
+      (c.cards || []).forEach(function (card) { if (card && card.suit) _hasSuit[card.suit] = true; });
       ['S', 'H', 'D', 'C'].forEach(function (s) {
-        var _has = (c.cards || []).some(function (card) { return card && card.suit === s; });
-        if (_has) _suits.push(s);
-      });
-      if (!_suits.length && c.cards && c.cards.length) _suits.push(c.cards[0].suit);
-      _suits.forEach(function (s) {
         out.push({
           id: 'liangA:' + s,
           label: (uiRender.SUIT_CHAR && uiRender.SUIT_CHAR[s]) || s,
-          kind: 'suit', suit: s, enabled: !!c.eligible
+          kind: 'suit', suit: s, enabled: !!c.eligible && !!_hasSuit[s]
         });
       });
-      out.push({ id: 'noLiangA', label: '不亮', enabled: !!c.eligible });
     } else if (c && c.kind === 'FAN_A') {
       out.push({ id: 'fanA', label: '反A', enabled: !!c.eligible });
       out.push({ id: 'noFanA', label: '不反', enabled: !!c.eligible });
@@ -1081,8 +1143,9 @@ function draw() {
     uiPassed: uiPassed,
     scores: _uiScores(),
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
-    turnDeadline: uiTurnDeadline,
-    turnTotal: uiTurnTotal,
+    // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
+    turnDeadline: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangDeadline : uiTurnDeadline,
+    turnTotal: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangTotal : uiTurnTotal,
     phase: gameState.phase
   });
   btnLog = out.btnLog;
@@ -1600,7 +1663,12 @@ if (typeof wx !== 'undefined') {
         if (!hb.cardId) continue;          // 底牌占位但不可点
         var idx2 = selectedCards.indexOf(hb.cardId);
         if (idx2 >= 0) selectedCards.splice(idx2, 1);
-        else selectedCards.push(hb.cardId);
+        else {
+          selectedCards.push(hb.cardId);
+          // [2026-10-27 用户] 选一张牌 -> 自动补成**最小可用牌型**
+          //   「我选择一个9, 默认把8和10一起选中起来」(手上有 8 9 9 10 10 J J Q Q, 桌面 567)
+          _uiExpandSelection(hb.cardId);
+        }
         draw();
         return;
       }
@@ -1656,6 +1724,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
     __setAiDelay: function (ms) { AI_STEP_DELAY = ms; _lastAiActionAt = 0; },
     uiPassed: function () { return uiPassed; },
+    uiMemoOpen: function () { return uiMemoOpen; },   // [2026-10-27] 记牌器默认展开 -> 给测试读
     uiTrickId: function () { return uiTrickId; },
     uiPlaysTrick: function () { return uiPlaysTrick; },
     uiMemoItems: function () { return _uiMemo().items; },
@@ -1672,7 +1741,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // [测试注入] 直接设置当前**闸门决策**(亮A/反A/身份), 用于精确复现指定场景。
     //   背景: 自然流程里闸门在**发牌后**随机决定(真人手里的 A 是随机的),
     //   测试没法稳定造出「手里有两种花色的 A」-> 亮A 的花色按钮就没法固化。
-    __setGateChoice: function (obj) { gateChoice = obj || null; },
+    __setGateChoice: function (obj) { _uiSetGateChoice(obj); },   // [2026-10-27] 和生产流程同一条路(会启动倒计时)
+    uiLiangDeadline: function () { return uiLiangDeadline; },   // 亮A 倒计时截止时间
     // [测试注入] 注入构造好的 gameState, 用于**精确复现指定场景**。
     //   背景: game.js 初始化时会随机发牌并同步跑完 AI 回合, 测试无法控制局面,
     //   导致用户报过的 bug (推风跳阵营/单大A/连张) 只能随机撞上, 无法固化。

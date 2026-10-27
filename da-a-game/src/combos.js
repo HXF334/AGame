@@ -54,12 +54,28 @@ function candidateCombos(hand) {
     byRank[cc.rank].push(cc.id);
   }
   var present = Object.keys(byRank).map(Number).sort(function (a, b) { return a - b; });
+  // [2026-10-27] **连张每个点数只能取一张** ——
+  //   原来用 seq.concat(byRank[rank]) 把该点数的**所有**牌都塞进同一段:
+  //   手里 9 有两张时, 枚举出 [8,9,9,10,10,J] 这种**含重复点数**的组合,
+  //   引擎 identifyHand 判 INVALID -> 真正能压桌面的 [9,10,J] **从来没被枚举过**
+  //   -> 点【提示】说「当前没有可用牌」(用户真机: 桌面 567, 手上有 9 10 J)
+  //   引擎侧一直是对的: identifyHand([9,10,J]) = STRAIGHT, canBeat(STRAIGHT, STRAIGHT) = true
+  // 现在: 每个点数**各取一张**, 枚举笛卡尔积(逐层 emit, 短的连续段也覆盖到)
+  var SEQ_COMBO_CAP = 400;   // 每层的组合数上限(防 2^n 爆炸)
   for (i = 0; i < present.length; i++) {
-    var seq = [];
+    var acc = [[]];
     for (var j = i; j < present.length; j++) {
       if (j > i && present[j] !== present[j - 1] + 1) break;   // 断点
-      seq = seq.concat(byRank[present[j]]);
-      if (seq.length >= MIN_SEQ && seq.length <= MAX_SEQ) out.push(seq.slice());
+      var _opts = byRank[present[j]];
+      var _next = [];
+      for (var _a = 0; _a < acc.length; _a++) {
+        for (var _b = 0; _b < _opts.length; _b++) _next.push(acc[_a].concat([_opts[_b]]));
+      }
+      acc = _next;
+      if (acc.length > SEQ_COMBO_CAP) acc = acc.slice(0, SEQ_COMBO_CAP);
+      for (var _e = 0; _e < acc.length; _e++) {
+        if (acc[_e].length >= MIN_SEQ && acc[_e].length <= MAX_SEQ) out.push(acc[_e]);
+      }
     }
   }
 

@@ -433,7 +433,8 @@ function drawSeats(ctx, st, m) {
 function drawScore(ctx, st, pid, delta, x, y) {
   var v = (delta === undefined || delta === null) ? 0 : delta;
   var col = v > 0 ? '#7ee08a' : (v < 0 ? '#ff8888' : '#bbbbbb');
-  text(ctx, (v > 0 ? '+' : '') + v + '分', x, y,
+  // [2026-10-27 用户] 头像下面的积分: **正分不带加号**(「2分」而不是「+2分」)
+  text(ctx, (v > 0 ? '' : '') + v + '分', x, y,
     Math.max(10, Math.round((st.H || 390) * 0.033)), col, 'center', true);
 }
 
@@ -770,6 +771,29 @@ function drawToast(ctx, st, m) {
 // [2026-10-26] 剩余手牌**放大**(原来 10x14 根本看不清), 行距收紧(上下只留一点边距)
 // ===== 结算 =====
 // [2026-10-26] 行往下移(离标题远一点); 显示**全部**剩余手牌(顺序同手牌区); 平局显示 0 分
+// [2026-10-27] 结算画面几何 —— 抽成**纯函数**(单一来源: 绘制和测试都用它)
+//   标题带 0.165H(标题离下面明细远一点) / 行高 0.070H / 戊行到按钮 0.016H / 下边距 0.016H
+//   面板高度按内容算, 整体位置比居中**偏下** 0.02H(用户: 结算画面整体往下一点)
+function settlementLayout(m) {
+  var titleFs = Math.max(15, Math.round(m.vh * 0.050));
+  var titleH = Math.round(m.vh * 0.165);
+  var rowH = Math.round(m.vh * 0.070);
+  var gapBtn = Math.round(m.vh * 0.016);
+  var padBottom = Math.round(m.vh * 0.016);
+  var btnH = Math.round(m.vh * 0.080);
+  var btnW = Math.round(m.vw * 0.26);
+  var ph = Math.min(Math.round(m.vh * 0.88), titleH + 5 * rowH + gapBtn + btnH + padBottom);
+  var pw = Math.min(540, m.vw * 0.90);
+  return {
+    pw: pw, ph: ph,
+    px: (m.vw - pw) / 2,
+    py: (m.vh - ph) / 2 + m.vh * 0.02,
+    titleFs: titleFs, titleH: titleH, rowH: rowH,
+    gapBtn: gapBtn, padBottom: padBottom,
+    btnW: btnW, btnH: btnH
+  };
+}
+
 function drawSettlement(ctx, st, m) {
   var d = st.settlement;
   if (!d) return null;
@@ -778,15 +802,11 @@ function drawSettlement(ctx, st, m) {
   // [2026-10-26 用户] 4) 玩家行的底纹高度**还原**(之前改小了) ——
   //   用户说的「玩家阴影区域」指的是**底部手牌暗区**, 不是结算画面里的玩家行
   // [2026-10-26 用户] 标题**不能压住甲那一行** -> 标题带留够高度, 标题在带内垂直居中
-  var pw = Math.min(540, m.vw * 0.90);
-  var rowH = Math.round(m.vh * 0.070);        // 玩家行底纹高度(还原)
-  var titleFs = Math.max(15, Math.round(m.vh * 0.050));
-  var titleH = Math.round(m.vh * 0.135);      // 标题带高度(标题 + 与第一行的间距)
-  var bw2 = Math.round(m.vw * 0.26), bh2 = Math.round(m.vh * 0.080);
-  var gapBtn = Math.round(m.vh * 0.016);      // 戊行 -> 「下一局」按钮 的间距
-  var padBottom = Math.round(m.vh * 0.016);   // 按钮 -> 面板下沿
-  var ph = Math.min(Math.round(m.vh * 0.86), titleH + 5 * rowH + gapBtn + bh2 + padBottom);
-  var px = (m.vw - pw) / 2, py = (m.vh - ph) / 2 - m.vh * 0.03;
+  var SL = settlementLayout(m);
+  var pw = SL.pw, ph = SL.ph, px = SL.px, py = SL.py;
+  var titleFs = SL.titleFs, titleH = SL.titleH, rowH = SL.rowH;
+  var gapBtn = SL.gapBtn, padBottom = SL.padBottom;
+  var bw2 = SL.btnW, bh2 = SL.btnH;
   ctx.fillStyle = 'rgba(20,8,4,0.92)';
   rr(ctx, px, py, pw, ph, 10); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 2;
@@ -805,7 +825,8 @@ function drawSettlement(ctx, st, m) {
     var camp = camps.indexOf(pid) >= 0 ? '主方' : '抓方';
     var delta = d.scores ? d.scores[pid] : undefined;
     // [2026-10-26] 平局/无数据 -> 显示 0 分(不是 —)
-    var dtxt = (delta === undefined) ? '0' : ((delta > 0 ? '+' : '') + delta);
+    // [2026-10-27 用户] 结算画面积分后面加「分」字
+    var dtxt = (delta === undefined) ? '0分' : ((delta > 0 ? '+' : '') + delta + '分');
     ctx.fillStyle = (i % 2 === 0) ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
     rr(ctx, px + 12, y - rowH * 0.46, pw - 24, rowH * 0.92, 3); ctx.fill();
     text(ctx, st.names[i] + (pid === st.humanPlayer ? '(你)' : ''), px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), '#ffffff', 'left', true);
@@ -871,5 +892,6 @@ function noopCtx() {
 module.exports = {
   render: render, layout: layout, handLayout: handLayout, buttonLayout: buttonLayout,
   cardPower: cardPower, seatOrder: seatOrder, noopCtx: noopCtx,
-  SEAT_IDS: SEAT_IDS, SUIT_CHAR: SUIT_CHAR, RANKS_DESC: RANKS_DESC
+  SEAT_IDS: SEAT_IDS, SUIT_CHAR: SUIT_CHAR, RANKS_DESC: RANKS_DESC,
+  settlementLayout: settlementLayout
 };

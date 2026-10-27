@@ -108,9 +108,11 @@ var ts = texts();
 var nBuChu = buChuCount(ts);
 check('渲染画面里有 2 个「不出」(乙、丙)', nBuChu >= 2,
   'count=' + nBuChu + ' ' + JSON.stringify(ts.filter(function (t) { return t === '不出'; })));
-// 乙 的 QQQ 已经出了(不在任何人手里), 所以画面里不该再出现 Q
+// 乙 的 QQQ 已经出了(不在任何人手里), 所以画面里不该再出现**那一手 3 个 Q**
+// [2026-10-27 断言改法] 记牌器现在**默认展开**, 面板里自带一张「Q」的牌面标签 ->
+//   「一个 Q 都没有」不再成立。改成「**少于 3 个**」: 乙那手 QQQ 会画出 3 个 Q。
 var qHits = ts.filter(function (t) { return String(t).indexOf('Q') >= 0; });
-check('渲染画面里不再有 Q(乙的旧牌已消失)', qHits.length === 0, 'hits=' + JSON.stringify(qHits));
+check('渲染画面里不再有 3 个 Q(乙的旧牌已消失)', qHits.length < 3, 'hits=' + JSON.stringify(qHits));
 
 // ===== 源码级守卫: 守住「无条件清掉」这个行为 =====
 var _fs = require('fs');
