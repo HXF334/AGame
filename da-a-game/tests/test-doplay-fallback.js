@@ -135,8 +135,11 @@ section('3. 未选中牌 → 直接逐张试出第一张可出的');
 
   var lg = logStr();
   check('3.1 无「不合法」日志', lg.indexOf('不合法') < 0, tail(4));
-  check('3.2 出掉 1 张', handOf('A').hand.length === before - 1,
+  // [2026-10-27 用户] 「没选中牌的时候点出牌要弹提示, 不能直接出牌」
+  //   -> 未选中时**不再自动出牌**(原来会「逐张检查手牌」替他出一张, 玩家不知道出了啥)
+  check('3.2 **不出牌**(手牌没少)', handOf('A').hand.length === before,
     'before=' + before + ' now=' + handOf('A').hand.length);
+  check('3.3 提示「请先选牌」', lg.indexOf('请先选牌') >= 0, tail(4));
   console.log('   [取证] ' + tail(3));
 }
 
@@ -153,6 +156,11 @@ section('4. 桌面 ♠3(第二大牌), 手上只有4 → 全都不可用, 必须
   var before = handOf('A').hand.length;
   var tableBefore = g.gameState().table.length;
 
+  // [2026-10-27 规格变更] 未选中时不再「自动出牌」-> 这里改成**选中**那两张压不过的 4 再点出牌
+  var sel4 = g.selectedCards();
+  sel4.length = 0;
+  handOf('A').hand.slice(0, 2).forEach(function (c) { sel4.push(c.id); });
+
   g.doPlay();
 
   var lg = logStr();
@@ -160,9 +168,9 @@ section('4. 桌面 ♠3(第二大牌), 手上只有4 → 全都不可用, 必须
   //   P3 依据: 该行在**组合回退也失败之后**才打(组合回退块在 doPlay 内, 成功即 return)，
   //   而「最后: <err>」来自组合尝试 -> 原措辞把「单张扫描」与「组合尝试」混成一句，
   //   读起来像「一张都出不了」。故改为「压不过桌面(单张与组合均已尝试)」。
-  check('4.1 出现「压不过桌面」', lg.indexOf('压不过桌面') >= 0, tail(4));
-  check('4.1b 明确说明单张与组合均已尝试',
-    lg.indexOf('单张与组合均已尝试') >= 0, tail(4));
+  // [2026-10-27 规格变更] 「压不过桌面(单张与组合均已尝试)」是**旧的自动出牌回退**的措辞,
+  //   那条路径已按用户要求取消(未选中 -> 只弹提示) -> 改成断言引擎给的**具体**错误
+  check('4.1 出现「不合法」提示', lg.indexOf('不合法') >= 0, tail(4));
   check('4.2 报出最后的错误类型', /CANNOT_BEAT|INVALID_HAND/.test(lg), tail(4));
   check('4.3 手牌未减少', handOf('A').hand.length === before,
     'before=' + before + ' now=' + handOf('A').hand.length);
@@ -212,14 +220,25 @@ section('6. 单张压不过但组合能压 → 成功打出, 且不得再打失�
   setup(st, 'A');
   var before = handOf('A').hand.length;
 
+  // [2026-10-27 规格变更] 「没选中牌的时候点出牌要弹提示, 不能直接出牌」
+  //   -> **自动组合回退**取消了(未选中时只弹「请先选牌」)
+  //   所以这里改成: 真人**手动选中**那四张 5 再点出牌 -> 应该正常打出
+  var sel6 = g.selectedCards();
+  sel6.length = 0;
+  handOf('A').hand.filter(function (c) { return c.rank === 5; })
+    .forEach(function (c) { sel6.push(c.id); });
+  check('6.0 前置: 已选中 4 张 5', sel6.length === 4, 'sel=' + sel6.length);
+
   g.doPlay();
 
   var lg = logStr();
-  check('6.1 组合回退打出了牌', lg.indexOf('(组合回退)') >= 0, tail(5));
-  check('6.2 手牌确实减少', handOf('A').hand.length < before,
+  check('6.1 选中的组合成功打出', handOf('A').hand.length < before,
+    'before=' + before + ' now=' + handOf('A').hand.length);
+  check('6.2 手牌确实减少', handOf('A').hand.length <= before - 4,
     'before=' + before + ' now=' + handOf('A').hand.length);
   check('6.3 **成功后不得出现「失败」日志**(IIFE return 只退出了 IIFE 的老 bug)',
     lg.indexOf('失败') < 0, tail(6));
+  check('6.4 不得出现「请先选牌」(确实选中了)', lg.indexOf('请先选牌') < 0, tail(6));
   console.log('   [取证] ' + tail(5));
 }
 

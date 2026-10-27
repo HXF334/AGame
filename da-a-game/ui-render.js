@@ -701,7 +701,9 @@ function drawTurnInfo(ctx, st, m) {
   var total = st.turnTotal || 20000;
   var left = Math.max(0, st.turnDeadline - Date.now());
   var sec = Math.ceil(left / 1000);
-  var r = Math.round(m.vh * 0.048);
+  // [2026-10-27 用户] 亮A 的 5 秒倒计时**要看得见**: 表盘更大 + 数字更大 + 下面写明后果
+  var isLiang = !!st.turnIsLiang;
+  var r = Math.round(m.vh * (isLiang ? 0.062 : 0.048));
   // 铃铛耳朵
   ctx.strokeStyle = '#d9a05b'; ctx.lineWidth = Math.max(2, m.vh * 0.007);
   ctx.beginPath();
@@ -714,8 +716,13 @@ function drawTurnInfo(ctx, st, m) {
   ctx.strokeStyle = '#d9a05b'; ctx.lineWidth = Math.max(2, m.vh * 0.008);
   circle(ctx, c.x, c.y, r); ctx.stroke();
   // 秒数
-  text(ctx, String(sec), c.x, c.y, Math.max(12, Math.round(m.vh * 0.046)),
+  text(ctx, String(sec), c.x, c.y,
+       isLiang ? Math.max(22, Math.round(m.vh * 0.076)) : Math.max(12, Math.round(m.vh * 0.046)),
        sec <= 5 ? '#c8102e' : '#5e2417', 'center', true);
+  if (isLiang) {
+    text(ctx, '秒后自动跳过亮A', c.x, c.y + r * 1.55,
+      Math.max(11, Math.round(m.vh * 0.036)), '#ffd98a', 'center', true);
+  }
 }
 
 // ===== 按钮 =====
@@ -746,12 +753,14 @@ function drawToast(ctx, st, m) {
   if (!t || !t.text || t.until <= Date.now()) return;
   var fs = Math.max(11, Math.round(m.vh * 0.036));
   var tw = (typeof ctx.measureText === 'function') ? ctx.measureText(t.text).width + fs * 2 : 180;
-  var tx = m.vw / 2 - tw / 2, ty = m.top.h + Math.round(m.vh * 0.010);
+  // [2026-10-27 用户] 提示条原来贴在**顶栏下面**, 太靠上 -> 改成**屏幕正中**
+  var th = Math.round(m.vh * 0.072);
+  var tx = m.vw / 2 - tw / 2, ty = Math.round((m.vh - th) / 2);
   ctx.fillStyle = 'rgba(0,0,0,0.82)';
-  rr(ctx, tx, ty, tw, Math.round(m.vh * 0.072), 6); ctx.fill();
+  rr(ctx, tx, ty, tw, th, 6); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 1.5;
-  rr(ctx, tx, ty, tw, Math.round(m.vh * 0.072), 6); ctx.stroke();
-  text(ctx, t.text, tx + tw / 2, ty + Math.round(m.vh * 0.036), fs, '#ffd700', 'center', true);
+  rr(ctx, tx, ty, tw, th, 6); ctx.stroke();
+  text(ctx, t.text, tx + tw / 2, ty + th / 2, fs, '#ffd700', 'center', true);
 }
 
 // ===== 结算 =====

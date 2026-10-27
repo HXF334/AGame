@@ -263,7 +263,13 @@ if (e1.ok) {
       break;
 
     case 'FORCED_CHECK':
-      if (gameState['主A']) { log('  跳过(主A已确立, 真人已亮A)'); gateIdx++; return runGateStage(); }
+      if (gameState['主A']) {
+        // [2026-10-27 用户] 原来写死「跳过(主A已确立, 真人已亮A)」——
+        //   但主A也可能是**AI**亮的(亮A倒计时结束后 AI 乙亮了) -> 说法自相矛盾
+        var _za0 = gameState['主A'];
+        log('  跳过(主A已确立: ' + pn(_za0.establishedBy) + ' ' + pvia(_za0.viaMethod) + ') -> 不用再强制排查');
+        gateIdx++; return runGateStage();
+      }
       r = transition(gameState, { type: ACTIONS.FORCED_CHECK, payload: {} });
       if (r && r.ok) {
         gameState = r.state;
@@ -501,6 +507,7 @@ function newGame() {
   log('=== 点击【下一局】===');
 humanPlayer = _randomSeat();      // 真人每局随机座位
   uiStopTicker();                   // 清理倒计时定时器
+  uiStartTicker();                  // [2026-10-27] 重新起 ticker(原来只停不启 -> 下一局后倒计时不刷新, 玩家看不到)
   uiToast = null;                   // 清残留提示
   uiLogVisible = false;             // 日志面板默认隐藏
   uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
@@ -719,7 +726,7 @@ function _uiSetGateChoice(choice) {
 function _uiLiangTimeout() {
   uiLiangDeadline = 0;
   if (!gateChoice || gateChoice.kind !== 'LIANG_A' || !gateChoice.eligible) return;
-  log('  亮A 5 秒倒计时结束(没人亮) -> 自动进入强制排查');
+  log('  亮A 5 秒倒计时结束(没人亮) -> 由 AI 依次尝试亮A(没人能亮就进强制排查)');
   gateChoice = null;
   _aiLiangARound();
   gateAutoAdvance();
@@ -1146,6 +1153,7 @@ function draw() {
     // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
     turnDeadline: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangDeadline : uiTurnDeadline,
     turnTotal: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangTotal : uiTurnTotal,
+    turnIsLiang: !!(gateChoice && gateChoice.kind === 'LIANG_A'),   // [2026-10-27] 亮A 倒计时画大一点
     phase: gameState.phase
   });
   btnLog = out.btnLog;
@@ -1223,8 +1231,16 @@ function doPlay() {
     if (ctx) draw();
     return;
   }
-  // [D] 优先用 selectedCards (多选多牌型); 未选则逐张试
+  // [D] 优先用 selectedCards (多选多牌型)
   var lastError = null;
+  // [2026-10-27 用户] **没选中牌点【出牌】-> 弹提示, 不自动出牌**
+  //   (原来会「逐张检查手牌」自动替他出一张, 玩家根本不知道自己出了什么)
+  if (selectedCards.length === 0) {
+    showToast('请先选牌');
+    log('  提示: 请先选牌(没有选中任何牌)');
+    if (ctx) draw();
+    return;
+  }
   if (selectedCards.length > 0) {
     // [2026-10-26] 先把要出的牌对象抓出来(transition 之后牌就不在手牌里了)
     var _playedCards0 = selectedCards.map(function (id) {
