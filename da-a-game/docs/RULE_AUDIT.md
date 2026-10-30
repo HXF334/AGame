@@ -1,6 +1,6 @@
 # 规则 ↔ 实现 ↔ 测试 对账表
 
-**生成日期**：2026-10-24 · **对账基线**：规则手册 §13 的 20 条必测用例（仓库唯一来源 `skills/da-a-game-rules/SKILL.md`）
+**生成日期**：2026-10-30 · **对账基线**：规则手册 §13 的 20 条必测用例（仓库唯一来源 `skills/da-a-game-rules/SKILL.md`）
 
 ## 为什么要做这个
 
@@ -90,3 +90,15 @@
 
 **相关**：`skills/da-a-game-rules`（规则唯一来源）· `skills/game-ui-engine-contract` §2.3
 （探针/grep 三方向都不足为据）· `scripts/preflight.js`（提交前体检）
+
+---
+
+## <!-- 2026-10-30-batch --> 对账增补（2026-10-30）
+
+| 规则 | 实现 | 测试 |
+|---|---|---|
+| 双王 = 任意 2 张王（SKILL L189），可压大蛋子 | src/hand-types.js 的 identifyHand/canBeat 一直正确；**候选枚举** src/combos.js 曾漏 2 大王，已修为枚举所有 2/3/4 张王组合 | tests/test-ui-hint-straight.js（双大王压 5 张 10）|
+| 连张每点数只能取 1 张（SKILL §6.1）| src/combos.js 连段枚举曾把同点数多张牌塞进一段 → 枚举出的连张全 INVALID，已修为每点数取一张的笛卡尔积 | tests/test-ui-hint-straight.js（9-10-J 压 567）|
+| 过牌后不再显示该玩家上一手牌（UI 契约）| game.js _uiPassCleanup 改为无条件清出牌显示 | tests/test-ui-pass-replace.js（确定局面）+ test-ui-roundend-out.js |
+| 亮A 只能亮自己手里花色的 A | uiButtons 按手里 A 的花色生成花色按钮，没有的置灰；5 秒倒计时到点自动跳过亮A | tests/test-ui-liang-a-suit.js + test-ui-liang-countdown.js |
+

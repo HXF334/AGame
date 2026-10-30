@@ -1,7 +1,7 @@
 # 测试报告
 
-**更新时间**：2026-10-24 01:20 (Asia/Shanghai) · 版本 **v0.10.0**
-**总测试套件**：**55** · 全量回归 **55/55 PASS**
+**更新时间**：2026-10-30 21:00 (Asia/Shanghai) · 版本 **v0.32.0**
+**总测试套件**：**67** · 相关回归全绿（16 个套件）· 全量回归待跑
 **入口**：`docs/VERSION.md` §2（启动/测试/构建）
 
 ---
@@ -124,3 +124,14 @@ test-perf.js            test-push-wind-camp.js
 - 像素级真机表现（`test-ui-touch-contract` 只锁逻辑契约）
 - IDE 人工对局的完整录像级回归
 - 长时间运行的内存/性能曲线（`test-perf.js` 只跑局数与吞吐）
+
+---
+
+## <!-- 2026-10-30-batch --> 测试刷新（2026-10-30 21:00 (Asia/Shanghai)）
+
+- **套件总数**：67（本批新增 6 个：test-ui-hint-straight / test-ui-liang-a-suit / test-ui-liang-countdown / test-ui-display-batch / test-ui-toast-countdown / test-ui-roundend-out）。
+- **本批相关回归全绿**：test-ui-pass-replace 14/0、test-ui-pass-display 9/0、test-ui-roundend-out 5/0、test-ui-hint-straight 5/0、test-ui-liang-a-suit 16/0、test-ui-liang-countdown 6/0、test-ui-display-batch 13/0、test-ui-toast-countdown 10/0、test-doplay-fallback 28/0、test-ui-phase-gate 57/0、test-ui-v14 40/0、test-game-headless 24/0、test-game-touch 27/0、test-game-scenarios 36/0、test-combos 20/0、test-ai 9/0、test-audit-ui 16/0、test-eligibility-rules 23/0。
+- **变异测试**：连张枚举退回旧实现 → 精确失败 3 条（复现「提示: 当前没有可用牌」）；双大王枚举退回 → 精确失败 3 条；轮末清牌退回 → 精确失败 1 条。
+- **flaky 治理**：test-ui-pass-display 原来随机手牌 + AI 无头同步抢跑 → 同一份代码跑出 9/0、7/2、5/4 三种结果。已改成指定手牌 + 固定 human，连跑 3 次都是 9/0。
+- **待办**：全量回归（67 套件）还没跑。
+
