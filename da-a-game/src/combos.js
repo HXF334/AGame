@@ -54,27 +54,44 @@ function candidateCombos(hand) {
     byRank[cc.rank].push(cc.id);
   }
   var present = Object.keys(byRank).map(Number).sort(function (a, b) { return a - b; });
-  // [2026-10-27] **连张每个点数只能取一张** ——
-  //   原来用 seq.concat(byRank[rank]) 把该点数的**所有**牌都塞进同一段:
-  //   手里 9 有两张时, 枚举出 [8,9,9,10,10,J] 这种**含重复点数**的组合,
-  //   引擎 identifyHand 判 INVALID -> 真正能压桌面的 [9,10,J] **从来没被枚举过**
-  //   -> 点【提示】说「当前没有可用牌」(用户真机: 桌面 567, 手上有 9 10 J)
-  //   引擎侧一直是对的: identifyHand([9,10,J]) = STRAIGHT, canBeat(STRAIGHT, STRAIGHT) = true
-  // 现在: 每个点数**各取一张**, 枚举笛卡尔积(逐层 emit, 短的连续段也覆盖到)
+  // [2026-11-01 修复] **同一段内每个点数取相同张数 k** ——
+  //   k=1 -> 连张 (STRAIGHT)           每点 1 张
+  //   k=2 -> 双龙 (DOUBLE_STRAIGHT)    每点 2 张
+  //   k=3 -> 连珠蛋 (STRAIGHT_TRIPLE)  每点 3 张
+  // 历史: 10-26 用「该点数的所有牌都塞进同一段」-> 手里 9 有两张时枚举出
+  //   [8,9,9,10,10,J] 这种**混合张数**组合, 引擎判 INVALID -> 真正能压的
+  //   [9,10,J] 从没被枚举过 -> 点【提示】说「当前没有可用牌」(真机: 桌面 567, 手上有 9 10 J)
+  //   10-27 改成「每点各取一张」-> 连张修好了, 但**双龙/连珠蛋再也枚举不到**
+  //   -> AI 起手只会出单连张 (test-ai-lead-combo 1.3 期望双龙, 实得 STRAIGHT)
+  // 现在: 混合张数天然枚举不出来, 且每种张数都覆盖到。
   var SEQ_COMBO_CAP = 400;   // 每层的组合数上限(防 2^n 爆炸)
-  for (i = 0; i < present.length; i++) {
-    var acc = [[]];
-    for (var j = i; j < present.length; j++) {
-      if (j > i && present[j] !== present[j - 1] + 1) break;   // 断点
-      var _opts = byRank[present[j]];
-      var _next = [];
-      for (var _a = 0; _a < acc.length; _a++) {
-        for (var _b = 0; _b < _opts.length; _b++) _next.push(acc[_a].concat([_opts[_b]]));
-      }
-      acc = _next;
-      if (acc.length > SEQ_COMBO_CAP) acc = acc.slice(0, SEQ_COMBO_CAP);
-      for (var _e = 0; _e < acc.length; _e++) {
-        if (acc[_e].length >= MIN_SEQ && acc[_e].length <= MAX_SEQ) out.push(acc[_e]);
+  var SEQ_K_MIN_LEN = { 1: MIN_SEQ, 2: 6, 3: 9 };  // k=2 至少3对, k=3 至少3组
+  function _pickCombos(pool, k) {
+    var res = [];
+    (function rec(start, cur) {
+      if (cur.length === k) { res.push(cur.slice()); return; }
+      for (var t = start; t < pool.length; t++) { cur.push(pool[t]); rec(t + 1, cur); cur.pop(); }
+    })(0, []);
+    return res;
+  }
+  for (var _k = 1; _k <= 3; _k++) {
+    for (i = 0; i < present.length; i++) {
+      var acc = [[]];
+      for (var j = i; j < present.length; j++) {
+        if (j > i && present[j] !== present[j - 1] + 1) break;   // 断点
+        var _pool = byRank[present[j]];
+        if (_pool.length < _k) break;          // 该点凑不出 k 张 -> 这段到此为止
+        var _opts = _pickCombos(_pool, _k);
+        var _next = [];
+        for (var _a = 0; _a < acc.length && _next.length <= SEQ_COMBO_CAP; _a++) {
+          for (var _b = 0; _b < _opts.length && _next.length <= SEQ_COMBO_CAP; _b++) {
+            _next.push(acc[_a].concat(_opts[_b]));
+          }
+        }
+        acc = _next;
+        for (var _e = 0; _e < acc.length; _e++) {
+          if (acc[_e].length >= SEQ_K_MIN_LEN[_k] && acc[_e].length <= MAX_SEQ) out.push(acc[_e]);
+        }
       }
     }
   }

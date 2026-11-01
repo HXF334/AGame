@@ -112,7 +112,11 @@ function runGame(seed) {
       var p = st.players.filter(function (x) { return x.id === HUMAN; })[0];
       if (!p || p.hand.length === 0) break;
       var h0 = g.gameState().players.filter(function (x) { return x.id === HUMAN; })[0].hand.length;
-      g.doPlay();
+      // [2026-11-01] 2026-10-27 起 doPlay() **不再自动替玩家出牌**(没选牌 -> 弹「请先选牌」),
+      //   这里必须走和人手一样的路径: uiHint() 选一个**引擎认可**的候选 -> doPlay()。
+      //   uiHint() 内部用引擎 transition 逐个校验, 所以选中的候选一定能出出去。
+      var _picked = g.uiHint();
+      if (_picked) g.doPlay();
       var after = g.gameState().players.filter(function (x) { return x.id === HUMAN; })[0].hand.length;
       if (after === h0) g.doPass();                 // 真的一张都出不去 -> 过牌
       var p3 = g.gameState().players.filter(function (x) { return x.id === HUMAN; })[0];
