@@ -1,6 +1,6 @@
 # 内蒙古打大A · 项目状态报告
 
-**更新时间**：2026-10-30 21:00 (Asia/Shanghai) · 版本 **v0.32.0**
+**更新时间**：2026-11-01 14:30 (Asia/Shanghai) · 版本 **v0.33.0**
 **项目路径**：`C:\Users\MyFirstAI\.openclaw\workspace-work\AGame\da-a-game\`
 **入口文档**：`docs/VERSION.md`（最准）· 交接须知：`docs/HANDOFF.md`
 
@@ -22,7 +22,7 @@ da-a-game/
 │  ├─ transition.js  状态机 + handler（+ 4 个资格判定纯函数）
 │  ├─ play.js / capture.js / hand-types.js / win-loss.js / scoring.js …
 ├─ game.js         界面与驱动（唯一有真实状态机的层，~1300 行）
-├─ tests/          55 个套件 + mock-wx.js + lib/state-builder.js
+├─ tests/          65 个套件 + mock-wx.js + lib/state-builder.js
 ├─ skills/         项目内 Skill 文档（见 §5）
 └─ docs/           VERSION / HANDOFF / PROJECT_STATUS / PROGRESS / TEST_REPORT / KNOWN_ISSUES
 ```
@@ -129,7 +129,7 @@ tag     v0.10.0 -> 6b958b1      v0.9.0 -> e115ac3
 ## <!-- 2026-10-30-batch --> 状态刷新（2026-10-30 21:00 (Asia/Shanghai)）
 
 - **版本**：v0.32.0（真机验收修 UI + 引擎候选枚举修复）
-- **测试**：67 个套件；本批相关 16 个全绿；全量回归待跑。
+- **测试**：65 个套件；**全量回归 65/65 全绿**。
 - **git**：已推；工作区干净。
 - **本批核心**：引擎侧只有 1 处真 bug（combos.js 候选枚举把同点数多张牌塞进一段 → 连张/双王漏枚举）；其余全是 UI 层。
 - **下一步**：① 跑一次全量回归；② 真机验收（花色按钮+5秒倒计时、提示条居中、空选弹出牌、结算几何与积分文案、左右边距、双大A角标方向）。

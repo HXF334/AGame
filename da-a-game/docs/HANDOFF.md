@@ -1,6 +1,6 @@
 # 交接文档（HANDOFF）
 
-**最后更新**：2026-10-30 21:00 (Asia/Shanghai) · 版本 **v0.32.0**
+**最后更新**：2026-11-01 14:30 (Asia/Shanghai) · 版本 **v0.33.0**
 **目标读者**：未来接手本项目的开发者 / AI 协作会话
 **项目路径**：`C:\Users\MyFirstAI\.openclaw\workspace-work\AGame\da-a-game\`
 
@@ -16,7 +16,7 @@
 ```
 src/*.js   规则引擎（CommonJS, 纯逻辑, 无 wx.* 依赖）—— 12 模块
 game.js    界面与驱动（唯一有真实状态机的一层）
-tests/     55 个套件, node 直接跑
+tests/     65 个套件, node 直接跑
 ```
 
 **牌对象**：`{ suit: 'H', rank: 14, is主方大A: false }` —— 与其他项目的
@@ -182,7 +182,7 @@ node scripts/sync-skills.js --check  # 只校验是否一致(退出码 1 = 不�
 ## <!-- 2026-10-30-batch --> 当前状态（2026-10-30 21:00 (Asia/Shanghai)）
 
 - **代码**：v0.32.0，git 已推（origin/main 与本地一致，工作区干净）。
-- **测试**：67 个套件；本批相关的 16 个全绿；全量回归待跑。
+- **测试**：65 个套件；**全量回归 65/65 全绿**（含本批 2 处回归的修复 + 变异测试证据）。
 - **规则唯一来源**：skills/da-a-game-rules/SKILL.md（改规则先改它，别在代码里私设规则）。
 
 ### 接手须知（本批踩到的坑）
