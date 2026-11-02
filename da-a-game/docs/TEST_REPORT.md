@@ -1,7 +1,7 @@
 # 测试报告
 
-**更新时间**：2026-11-01 14:30 (Asia/Shanghai) · 版本 **v0.33.0**
-**总测试套件**：**65** · **全量回归 65/65 全绿** · 含本批 2 处回归的修复与变异测试证据
+**更新时间**：2026-11-02 18:00 (Asia/Shanghai) · 版本 **v0.34.0**
+**总测试套件**：**68** · **全量回归 68/68 全绿** · 含本批 3 条用户反馈的修复与 4 项变异测试证据
 **入口**：`docs/VERSION.md` §2（启动/测试/构建）
 
 ---
@@ -11,7 +11,7 @@
 ```bash
 cd da-a-game
 
-node tests/_runall.js            # 全量（55 套件）
+node tests/_runall.js            # 全量（68 套件）
 node tests/_runall.js 3          # 3 轮
 node tests/_runall.js 10 20      # 只跑第 11~20 个（1-based 闭区间）
 node tests/test-ui-phase-gate.js # 单个套件

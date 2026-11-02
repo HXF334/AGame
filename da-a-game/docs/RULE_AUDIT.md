@@ -102,3 +102,14 @@
 | 过牌后不再显示该玩家上一手牌（UI 契约）| game.js _uiPassCleanup 改为无条件清出牌显示 | tests/test-ui-pass-replace.js（确定局面）+ test-ui-roundend-out.js |
 | 亮A 只能亮自己手里花色的 A | uiButtons 按手里 A 的花色生成花色按钮，没有的置灰；5 秒倒计时到点自动跳过亮A | tests/test-ui-liang-a-suit.js + test-ui-liang-countdown.js |
 
+---
+
+## <!-- 2026-11-02-batch --> 对账增补（2026-11-02）
+
+| 规则 | 实现 | 测试 |
+|---|---|---|
+| 假八 = 2 组连续的四张同点数牌（SKILL §6 牌型库），可压双王（§6.3 假八 > 双王）| src/hand-types.js 的 identifyHand/canBeat **一直正确**；**候选枚举** src/combos.js 曾把连段枚举的 k 上界只到 3 → 「每点取 4 张」的假八**从未被枚举**，已修为 k 上界 4 + SEQ_K_MIN_LEN[4]=8（2 组=8 张假八 / 3 组=12 张三连假八）| tests/test-combos-fake-eight.js（JJJJ+QQQQ 压双王 + 12 张三连假八 + 【提示】能选中）|
+| 反A 的两张同花色 A **不能与主A同花色**（SKILL §4.4，用户 2026-10-24 裁定）| 引擎 src/transition.js handleFanA 校验 `state.主A.suit === payload.suit` → 命中即 SUIT_MISMATCH 拒绝，**一直与规则一致**；UI 层资格判定同源（engine.canFanA）| tests/test-fan-a.js + test-fan-a-e2e.js |
+| 真人自己出的牌要画在牌面上，且**轮到真人时不清掉自己上一手牌**（UI 契约）| ui-render.js drawSeatPlays 只按 seatMap 绘制 → 已给真人加牌桌中央显示位（side:'C'）；game.js advanceCurrentPlayer 已删掉过早的 `delete uiPlays[humanPlayer]` → 保留到**自己再出牌/过牌**为止 | tests/test-ui-human-play-display.js（牌面中央画得出 + 轮到真人时不被清）|
+| AI 出牌停顿（UI 节奏契约）| game.js 判定抽成纯函数 `_computeAiDelay(wx)`：真机与**开发者工具模拟器** 1000ms、node 无头 0ms（靠 tests/mock-wx.js 的 __isMock 标记区分，不能靠 platform —— mock 也报 devtools）| tests/test-ui-ai-delay.js（各环境取值 + 源码守卫）|
+

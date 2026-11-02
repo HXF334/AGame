@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-01 20:00 (Asia/Shanghai) · 对应代码版本 **v0.33.0** · Git HEAD `c2fa978`
+> 最后更新：2026-11-02 18:00 (Asia/Shanghai) · 对应代码版本 **v0.34.0** · Git HEAD `8e868d1`
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。细节进度见 `docs/` 下 7 份文档。
 
 ---
@@ -24,7 +24,7 @@ ui-render.js                 纯几何渲染层（不含规则判断）
 src/                         规则引擎 14 个模块（纯逻辑，无 wx.* 依赖）
   ai.js capture.js card.js combos.js deal.js hand-types.js index.js
   phases.js play.js push-wind.js scoring.js transition.js util.js win-loss.js
-tests/                       65 个 test-*.js 套件 + mock-wx.js + lib/state-builder.js
+tests/                       68 个 test-*.js 套件 + mock-wx.js + lib/state-builder.js
 docs/                        7 份交接文档（见 §4）
 skills/                      8 个 skill 仓库副本（与 ~/.openclaw 镜像同源）
 scripts/                     commit-gate.js import-skills.js preflight.js sync-skills.js
@@ -124,27 +124,37 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
   k=1 连张 / k=2 双龙 / k=3 连珠蛋；混合张数组合（如 `[8,9,9,10,10,J]`）不再产生。
   配套 `SEQ_K_MIN_LEN = { 1: MIN_SEQ, 2: 6, 3: 9 }` 与 `_pickCombos()` 组合上限。
 - **e2e 驱动修复**（v0.33.0，同提交）：`test-pushwind-human-e2e.js` 改走 `uiHint()` → `doPlay()` 的真人路径。
-- **全量回归**：65 个套件 **65/65 全绿**（2026-11-01）。
-- **交接文档**：7 份 `docs/*.md` 已更新到 v0.33.0（提交 `c2fa978`）。
+- **用户 3 条反馈修复**（v0.34.0，提交 `8e868d1`）：
+  - **假八【提示】**：连段枚举 k 上界 3→4（`SEQ_K_MIN_LEN[4]=8`）→「每点取 4 张」的假八/
+    三连假八终于被枚举（引擎侧识别一直是对的，**只漏在枚举层**）。
+  - **AI 出牌 1 秒停顿**：判定从 `_uiTestMode()` 换成纯函数 `_computeAiDelay(wx)`，靠
+    `tests/mock-wx.js` 的 `__isMock` 标记区分 → **开发者工具模拟器也停 1 秒**（原来恰好 0ms）。
+  - **真人出牌显示 + 清理时机**：给真人加牌桌中央显示位（原来 `seatMap` 只有 4 个 AI 座位，
+    真人的牌**永远不画**）；删掉 `advanceCurrentPlayer()` 里过早的 `delete uiPlays[humanPlayer]`
+    → 真人出的牌保留到**自己再出牌/过牌**为止（与 AI 座位一致）。
+- **全量回归**：68 个套件 **68/68 全绿**（2026-11-02）。
+- **交接文档**：7 份 `docs/*.md` + 本文已更新到 v0.34.0（提交 `8e868d1`）。
 
-### 当前状态（2026-11-01 20:00 实测）
+### 当前状态（2026-11-02 18:00 实测）
 
 | 项 | 值 |
 |---|---|
-| Git HEAD | `c2fa978`（文档）+ `d785da7`（代码） |
+| Git HEAD | `8e868d1`（代码 + 文档） |
 | 工作区 | **干净**，未提交 0 |
-| 未推送 | **0**（与 origin/main 一致） |
+| 未推送 | **1**（`8e868d1`，待用户确认后推） |
 | 分支 | 仅 `main` |
-| 全量回归 | 65/65 passed |
+| 全量回归 | 68/68 passed |
 | 运行方式 | 微信开发者工具导入 `.../AGame/da-a-game`，基础库 3.17.5，无构建 |
 
 ---
 
 ## 6. 未完成事项
 
-### 6.1 用户 2026-11-01 提出的 3 条反馈 —— **尚未修改，仅定位根因**
+### 6.1 用户 2026-11-01 提出的 3 条反馈 —— ✅ **已全部修复**（v0.34.0，提交 `8e868d1`）
 
-> 这 3 条是**当前最高优先级**。用户已明确「暂停修改，先写交接文档」，所以代码**未动**。
+> 三条都按「写复现脚本 → 定点修改 → 相关套件 → 变异测试」逐条走完，全量回归 68/68 全绿。
+> 根因分析与回归证据见 `docs/KNOWN_ISSUES.md`（B29~B31）与 `docs/TEST_REPORT.md`。
+> 下面保留**修复前**的根因记录，便于追溯「当时为什么错」。
 
 **(1) 别人出双王，我方手上有 JJJJ+QQQQQ 时，【提示】说「当前没有可用牌」**
 
@@ -154,8 +164,9 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
   - 但 `src/combos.js` 的连段枚举是 `for (var _k = 1; _k <= 3; _k++)` —— **k 上界只到 3**，
     「每点取 4 张」的假八**根本枚举不到** → 【提示】拿不出候选 → 报「当前没有可用牌」。
   - 复现脚本已验证：`candidateCombos()` 枚举出的牌型里 **不含 `FAKE_EIGHT`**，而引擎直判该手牌 `= FAKE_EIGHT` 且能压双王。
-- 修法方向：k 上界扩到 4（并补 `SEQ_K_MIN_LEN[4]`，假八需 2 组 × 4 张 = 8 张起）；
-  注意组合爆炸（每点多选 4 张的组合数），现有 `SEQ_COMBO_CAP=400` 与 `_pickCombos()` 上限需一并评估。
+- **已修**：k 上界扩到 4 + 补 `SEQ_K_MIN_LEN[4]=8`（假八需 2 组 × 4 张 = 8 张起）。
+  组合爆炸已实测可控：报障手牌候选 7→8；极端手牌（8J+8Q+6K）1205→2408、提示路径 67ms。
+- 新增套件 `tests/test-combos-fake-eight.js`（8 张假八 + 12 张三连假八 + transition 接受 + 【提示】能选中）。
 
 **(2) AI 出牌增加 1 秒等待，**包括测试环境****
 
@@ -163,8 +174,12 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
   → 开发者工具（`platform==='devtools'`）与 node 环境都被归零，**只有真机是 1 秒**。
 - 相关事实：`runAI()` 开头 `if (!ctx) return;`（node 测试模式不进 AI）；无头套件普遍 `g.__setAiDelay(0)`；
   `game-ui-engine-contract` 规约 §3d 专门讲「操作入口语义变更后无头驱动怎么改」。
-- 约束：改延迟**不能让 65 个套件超时**（无头套件已把延迟设为 0，多数不受影响，需实测确认）。
-- **待核实**：「测试环境」具体指**微信开发者工具模拟器**，还是 **node 无头测试环境**；两者改法不同。
+- 约束：改延迟**不能让套件超时**（修完实测 68 个套件仍全绿；无头套件的延迟由 `__setAiDelay(0)` 归零）。
+- **已澄清**（用户 2026-11-02）：「测试环境」= **微信开发者工具模拟器** → 模拟器里也要停 1 秒。
+- **已修**：判定从 `_uiTestMode()` 换成纯函数 `_computeAiDelay(wx)`：无 wx / `wx.__isMock` → 0ms；
+  真机与**开发者工具模拟器** → 1000ms。判据靠 `tests/mock-wx.js` 打的 `__isMock` 标记
+  （**`platform` 分不开**：mock 也报 `devtools`）。node 无头测试仍 0ms，68 个套件不会被拖慢。
+- 新增套件 `tests/test-ui-ai-delay.js`（各环境取值 + 源码守卫）。
 
 **(3) 真人出的牌在牌面上看不见，直接显示「不出」等；应等到自己出牌时才清空自己前面的桌面状态**
 
@@ -174,8 +189,11 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
   → 轮到自己时就把**自己上一次的出牌显示**清掉，与「自己出牌时才清」相反。
 - 另需核对：`drawMeSeat()` 已画真人自己的「不出 / 已出完」（L679~690 附近）；真人出牌显示位需新增，且与
   `_uiCurrentPlays()` 的当前轮过滤、`_uiPassCleanup()` 的 PASS 清理、`_uiRoundEnded()` 的轮末清理三者不打架。
-- **待核实**：用户截图那一局的逐张牌面未逐张核对（画面上同时有戊的 6666、乙的 JJ QQ 等），
-  复现前请按 §6.1(1) 的方式**构造确定局面**再断言。
+- **已修**：(A) 给真人加**牌桌中央**显示位（`seatMap[st.humanPlayer] = { x: m.center.x, y: m.center.y, side: 'C' }`，
+  整排居中画在桌面中央）；(B) 删掉 `advanceCurrentPlayer()` 里过早的 `delete uiPlays[humanPlayer]`
+  → 真人出的牌保留到**自己再出牌**（`_uiRecordPlay` 覆盖）或**过牌**（`_uiPassCleanup` 清）为止，与 AI 座位一致。
+  PASS 仍清、轮末仍清已出完者 → 三者不打架。
+- 新增套件 `tests/test-ui-human-play-display.js`（牌面中央画得出 + 轮到真人时不被清 + 源码守卫）。
 
 ### 6.2 其它
 
@@ -188,14 +206,18 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
 
 ## 7. 下一步任务建议（**不要在未确认前执行**）
 
-1. **按 §6.1 顺序修 3 条反馈**，每条：写复现脚本 → 定点修改 → 相关套件 → 变异测试。
-   - (1) 改动面最小，优先；做完直接用 JJJJ+QQQQQ 局面验证提示能给出假八。
-   - (3) 涉及渲染层 + 状态清理时机，风险最高，**改完必须真机看**。
-2. 修完跑一次**全量 65 套件**（收尾动作，不是每个小改动都跑）。
-3. 提交 + 更新 7 份 `docs/` + 升版本号（当前 v0.33.0 → 建议 v0.34.0）。
-4. 清理根目录被跟踪的临时 txt（**先问用户**）。
-5. `session.reset` 兜底属 **OpenClaw 侧**（工作区根 `AGENTS.md` / `MEMORY.md`），不属于本项目代码；
+1. ✅ **3 条反馈已修完**（v0.34.0，提交 `8e868d1`）—— 每条都走了「复现脚本 → 定点修改 →
+   相关套件 → 变异测试」，全量回归 68/68 全绿。
+2. **真机 / 开发者工具模拟器目视确认**：第 (3) 条改了渲染层与状态清理时机（真人自己的牌画在牌桌中央），
+   无头测试只能证明「画得出」，**画面好不好看要人看**。重点看：真人出的牌是否居中、
+   轮到真人时自己的上一手牌是否**还在**（不该被清）、过牌后是否正确显示「不出」。
+3. 清理根目录被跟踪的临时 txt（**先问用户**）。
+4. `session.reset` 兜底属 **OpenClaw 侧**（工作区根 `AGENTS.md` / `MEMORY.md`），不属于本项目代码；
    如要做，单独提，别混进游戏提交。
+5. **skills 镜像漂移待用户裁决**（与本次修复无关，既有漂移）：`scripts/sync-skills.js --check` 报 5 个
+   skill 镜像与仓库不一致，且**镜像比仓库多内容**（如 `dada-a-game-impl` 镜像多出 §12~§15，
+   其中 §14/§15 正是「先验证引擎再验证候选枚举」「每点几张×几组按 §6 牌型表逐条对」这两条结论）。
+   全量同步会**覆盖掉镜像里这些多出来的内容** → 需先决定「保镜像」还是「以仓库为准覆盖」。
 
 ---
 
@@ -218,10 +240,13 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
 # 单个套件
 cd .../AGame/da-a-game && node tests/test-ai-lead-combo.js
 
-# 全量（65 个）：逐个 node 跑，统计通过数
+# 全量（68 个）：逐个 node 跑，统计通过数
+#   或: node tests/_runall.js          # 项目自带批量跑测脚本
 ```
 
 - 无头测试用 `tests/mock-wx.js` 模拟微信运行时；`tests/lib/state-builder.js` 造确定局面。
+- **mock-wx 会打 `__isMock` 标记**：game.js 用它区分「AI 要不要等 1 秒」——
+  node 无头测试 = 0ms（否则 68 个套件会被拖慢），真机与**开发者工具模拟器** = 1000ms。
 - **不要** `npm install` / 构建 / 升级依赖 —— 本项目没有依赖，也不需要。
 
 ### 8.3 不能擅自修改的东西

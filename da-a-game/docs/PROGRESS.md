@@ -258,3 +258,15 @@ doc  KNOWN_ISSUES.md 更新至 B30
   - 根因 2：`doPlay()` 不再自动替玩家出牌后，e2e 的裸 `g.doPlay()` 变成空操作 → 真人席位永不出牌 → 6 局未结束/6 局卡死/推风 0 次。
   - 修复后 **65/65 全绿**；两条变异测试都**精确失败**（非全挂），还原后复跑全绿。提交 `d785da7`，版本升 **v0.33.0**。
 
+---
+
+## 批次：用户 3 条反馈修复（2026-11-01 ~ 2026-11-02）
+
+- **11-01**：用户提 3 条反馈（假八【提示】说「当前没有可用牌」/ AI 出牌加 1 秒等待含测试环境 / 真人出的牌牌面上看不见且清理时机反了）→ 按用户要求「暂停修改，先写交接文档」，**只定位根因**，代码未动（记录在 `OPENCLAW_HANDOFF.md` §6.1）。
+- **11-02**：三条**逐条修完**，每条走「写复现脚本 → 定点修改 → 相关套件 → 变异测试」：
+  - **(1) 假八枚举**：探针证实**引擎侧一直是对的**（`identifyHand(JJJJ+QQQQ)` → `FAKE_EIGHT`，`canBeat(FAKE_EIGHT, DOUBLE_JOKER)` → true），漏在**候选枚举层** —— `combos.js` 连段枚举 k 上界只到 3 → k 改 3→4 + `SEQ_K_MIN_LEN[4]=8`。三条共用 `candidateCombos` 的路径（【提示】/ AI 选牌 / doPlay 回退）一并恢复。
+  - **(2) AI 停顿**：原判定 `_uiTestMode()` 在 `platform==='devtools'` 时为真 → **开发者工具模拟器里恰好 0ms**。改纯函数 `_computeAiDelay(wx)`，靠 mock-wx 的 `__isMock` 标记区分（**`platform` 分不开**，mock 也报 devtools）。用户澄清「测试环境」= 开发者工具模拟器。
+  - **(3) 真人出牌显示 + 清理时机**：`drawSeatPlays` 只按 seatMap 绘制而 seatMap 只有 4 个 AI 座位 → 真人的牌永远不画；`advanceCurrentPlayer` 里 `delete uiPlays[humanPlayer]` 又在轮到真人时过早清掉。改法：给真人加**牌桌中央**显示位（`side:'C'`）+ 删掉那行 → 真人出的牌保留到**自己再出牌/过牌**为止（与 AI 座位一致）。
+- **11-02 验证**：新增 3 套件（`test-combos-fake-eight` / `test-ui-ai-delay` / `test-ui-human-play-display`），全量回归 **68/68 全绿**；**4 项变异测试全部精确失败**（非全挂）。提交 `8e868d1`，版本升 **v0.34.0**（**未推送**，待用户确认）。
+- **11-02 踩坑（已入 MEMORY.md）**：①别用 `git stash push; …; git stash pop` 做前后对比 —— 中间命令挂住会让 pop 不执行，改动**留在 stash 里**，工作树看着像「没改」（本次真踩到，靠 `git stash list` 才发现）；②**变异测试期间不要让回归在后台跑** —— 变异会临时把源码改成旧实现，后台回归读到半成品文件会报出**看似真实**的失败（本次 S1.6 假警报即此）。
+
