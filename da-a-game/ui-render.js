@@ -49,6 +49,7 @@ function layout(W, H) {
       { x: vw - safe - r - 44, y: vh * 0.215, side: 'R' },
       { x: vw - safe - r - 44, y: vh * 0.405, side: 'R' }
     ],
+    // [2026-11-02] 牌桌中央 —— 真人自己出的牌画在这里(真人坐在画面下方, 面前就是这张牌桌)
     center: { x: vw * 0.5, y: vh * 0.315 },
     turn: { x: vw * 0.5, y: vh * 0.468 },      // [2026-10-25] 上移, 不与按钮行重叠
     btn: { y: vh * 0.560, h: vh * 0.100 },
@@ -425,6 +426,14 @@ function drawSeats(ctx, st, m) {
     text(ctx, nm, nameX, cy, fs, isCur ? '#ffd700' : '#ffffff', nameA, true);
     out.push({ x: cx - rr_, y: cy - rr_, w: rr_ * 2, h: rr_ * 2, id: pid });
   });
+  // [2026-11-02 用户] 真人自己出的牌**也要画在牌面上**:
+  //   根因: seatMap 原来只有 4 个 AI 座位(真人在上面的 forEach 里被 `return` 跳过了)
+  //         -> drawSeatPlays 找不到真人的槽位 -> **真人自己出的牌永远不画**
+  //         (用户 2026-11-01 报障:「真人出的牌在牌面上看不见」)
+  //   位置: 牌桌中央(m.center) —— 真人坐在画面下方, 自己出的牌就在面前这张牌桌上。
+  //   注意: 这**不新增命中框**(下面的 out.push 只在 AI 座位的循环里做), 不影响触摸契约。
+  seatMap[st.humanPlayer] = { x: m.center.x, y: m.center.y, side: 'C' };
+
   drawSeatPlays(ctx, st, m, seatMap);
   return { boxes: out, seatMap: seatMap, markHits: markHits };
 }
@@ -457,7 +466,10 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     var step = Math.round(cardW * 0.58);
     var totalW = cardW + step * (n - 1);
     var rr_ = Math.round(m.vh * 0.052);
-    var x0 = slot.side === 'L' ? (slot.x + rr_ + 8) : (slot.x - rr_ - 8 - totalW);
+    // [2026-11-02] side 'C' = 牌桌中央(真人自己的出牌): 整排**居中**画
+    var x0 = slot.side === 'L' ? (slot.x + rr_ + 8)
+          : slot.side === 'C' ? Math.round(slot.x - totalW / 2)
+          : (slot.x - rr_ - 8 - totalW);
     var y = slot.y - cardH / 2;
     for (var j = 0; j < n; j++) {
       // 内容一律按 step 宽居中 -> 和其他手牌位置一致

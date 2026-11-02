@@ -38,10 +38,20 @@ var uiPrevPushWind = null;  // 上一次的「推风触发者」(用来识别推
 // [2026-10-26] 上一帧的桌牌张数(用来识别**轮末**: 引擎轮末会把桌牌清空)
 var uiPrevTableLen = 0;
 // [2026-10-26] AI 动作之间的停顿(毫秒)
-//   **只在真机上生效** —— node 无头测试里 setTimeout 不会执行, runAI 会反复重入
-//   (test-game-headless 出现过 steps=900); 开发者工具里也不延时(方便调试)。
-var AI_STEP_DELAY = (typeof wx !== 'undefined' && !_uiTestMode()) ? 1000 : 0;
+// [2026-11-02 用户] **开发者工具模拟器也要 1 秒停顿**(原来只有真机有):
+//   用户原话「AI 出牌增加 1 秒等待, 包括测试环境」-> 模拟器里也停 1 秒, 便于看清 AI 动作。
+//   只有 node 无头测试(mock-wx 注入的假运行时, 带 __isMock 标记)才为 0 ——
+//   否则 65 个套件会被拖慢, 且 setTimeout 重入会让无头断言时序不稳。
+//   判据放在纯函数 _computeAiDelay 里, 便于无头测试直接验证各种环境。
+var AI_STEP_DELAY = _computeAiDelay(typeof wx !== 'undefined' ? wx : null);
 var _lastAiActionAt = 0;
+
+// 纯函数: 由 wx 运行时决定 AI 停顿(ms)。0 = 不同步等(无头测试), 1000 = 等 1 秒。
+function _computeAiDelay(wxObj) {
+  if (!wxObj) return 0;              // node 无头且没装 mock -> 本来就没有 ctx, AI 也不跑
+  if (wxObj.__isMock) return 0;      // node 无头 + mock-wx -> 不能等(setTimeout 会让无头断言不稳)
+  return 1000;                       // 真机 / 微信开发者工具模拟器
+}
 
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   var 的**声明**会提升, 但 `= {}` 的**赋值不会** —— 之前 uiPlays 的赋值排在
@@ -1596,8 +1606,12 @@ function advanceCurrentPlayer() {
       // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
       uiTurnTick();
       // [2026-10-24] 轮到我出牌 -> 清掉各家最新出牌(新一墩开始)
-      // [2026-10-25 用户修正] 轮到我出牌 -> **只清我自己**上回打出的牌; 一轮结束才清全部
-      if (next === humanPlayer) delete uiPlays[humanPlayer];
+      // [2026-11-02 用户修正] 轮到我出牌 -> **不再清掉我上回打出的牌**:
+      //   用户原话「应等到自己出牌时才清空自己前面的桌面状态」。
+      //   现在我出的牌一直留在牌面上, 直到:
+      //     - 我**再出一次牌**(下一轮 _uiRecordPlay 覆盖成最新一手), 或
+      //     - 我**过牌**(_uiPassCleanup 清掉 -> 位置显示「不出」)
+      //   与 AI 座位一致: 别人的牌也保留到他自己再出牌/过牌为止。
       // 清空选中
       selectedCards = [];
       // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
@@ -1739,6 +1753,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
     __setAiDelay: function (ms) { AI_STEP_DELAY = ms; _lastAiActionAt = 0; },
+    // [2026-11-02] 测试钩子: AI 停顿的判定是纯函数, 暴露出来直接验证各环境取值
+    __computeAiDelay: _computeAiDelay,
+    __aiDelay: function () { return AI_STEP_DELAY; },
     uiPassed: function () { return uiPassed; },
     uiMemoOpen: function () { return uiMemoOpen; },   // [2026-10-27] 记牌器默认展开 -> 给测试读
     uiTrickId: function () { return uiTrickId; },

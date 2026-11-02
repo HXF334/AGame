@@ -4,7 +4,7 @@
 //
 // 枚举两类:
 //   (a) 同点数组: 同一点数 2..8 张 (对子/蛋子/大蛋子/真七/真八)
-//   (b) 连续点数组: 连续点数各取 1 张, 3..12 张 (连张); 每点数多张时按张数展开
+//   (b) 连续点数组: 连续点数各取 k 张 (k=1 连张 / k=2 双龙 / k=3 连珠蛋 / k=4 假八)
 //
 // 排序: 张数多者优先; 同张数按首张点数高者优先 (让引擎更容易接受, 减少无效尝试)
 //
@@ -65,7 +65,13 @@ function candidateCombos(hand) {
   //   -> AI 起手只会出单连张 (test-ai-lead-combo 1.3 期望双龙, 实得 STRAIGHT)
   // 现在: 混合张数天然枚举不出来, 且每种张数都覆盖到。
   var SEQ_COMBO_CAP = 400;   // 每层的组合数上限(防 2^n 爆炸)
-  var SEQ_K_MIN_LEN = { 1: MIN_SEQ, 2: 6, 3: 9 };  // k=2 至少3对, k=3 至少3组
+  // [2026-11-02 修复] **k 上界原来只到 3** -> "每点取 4 张"的牌型(假八 / 三连假八)
+  //   **从来没被枚举过** -> 手里有 JJJJ+QQQQ 时【提示】说「当前没有可用牌」
+  //   (用户 2026-11-01 报障; 引擎侧 identifyHand/canBeat 一直是对的, 只漏在枚举)
+  //   k=4 -> 每点 4 张: 2组连续 = 8张(假八 FAKE_EIGHT) / 3组连续 = 12张(三连假八)
+  //   SEQ_K_MIN_LEN[k] = 该 k 下**允许的最短总张数**(少了就不是合法牌型):
+  //   k=1 连张至少3张 / k=2 双龙至少3对(6张) / k=3 连珠蛋至少3组(9张) / k=4 假八至少2组(8张)
+  var SEQ_K_MIN_LEN = { 1: MIN_SEQ, 2: 6, 3: 9, 4: 8 };  // k=2 至少3对, k=3 至少3组, k=4 至少2组
   function _pickCombos(pool, k) {
     var res = [];
     (function rec(start, cur) {
@@ -74,7 +80,7 @@ function candidateCombos(hand) {
     })(0, []);
     return res;
   }
-  for (var _k = 1; _k <= 3; _k++) {
+  for (var _k = 1; _k <= 4; _k++) {
     for (i = 0; i < present.length; i++) {
       var acc = [[]];
       for (var j = i; j < present.length; j++) {

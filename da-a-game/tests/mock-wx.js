@@ -47,6 +47,10 @@ function install(opts) {
   };
 
   global.wx = {
+    // [2026-11-02] 标记「这是 node 无头测试的假运行时」:
+    //   game.js 用它决定 AI 要不要等 1 秒(真机/开发者工具模拟器要等, 无头测试不能等)。
+    //   靠这个显式标记, 而不是靠 platform === 'devtools'(mock 也报 devtools, 分不开)。
+    __isMock: true,
     createCanvas: function () { return canvas; },
     onTouchStart: function (cb) { touchHandlers.push(cb); },
     onTouchMove: function (cb) { touchHandlers.push(cb); },
