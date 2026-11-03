@@ -400,7 +400,8 @@ function drawSeats(ctx, st, m) {
     if (!playedThisTrick) {
       var s2 = isOut ? '已出完' : (isPassed ? '不出' : '');
       if (s2) {
-        var ix = cx + inw * (rr_ + 10);
+        // [2026-11-04 用户] 「AI玩家打出的手牌或者不出离头像再远一点」
+        var ix = cx + inw * (rr_ + 20);
         var ia = pos.side === 'L' ? 'left' : 'right';
         text(ctx, s2, ix, cy, Math.max(12, Math.round(m.vh * 0.044)), isOut ? '#9a9a9a' : '#ffd700', ia, true);
       }
@@ -474,9 +475,10 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     var totalW = cardW + step * (n - 1);
     var rr_ = Math.round(m.vh * 0.052);
     // [2026-11-02] side 'C' = 牌桌中央(真人自己的出牌): 整排**居中**画
-    var x0 = slot.side === 'L' ? (slot.x + rr_ + 8)
+    // [2026-11-04 用户] 「AI玩家打出的手牌离头像再远一点」(+8 -> +18)
+    var x0 = slot.side === 'L' ? (slot.x + rr_ + 18)
           : slot.side === 'C' ? Math.round(slot.x - totalW / 2)
-          : (slot.x - rr_ - 8 - totalW);
+          : (slot.x - rr_ - 18 - totalW);
     var y = slot.y - cardH / 2;
     for (var j = 0; j < n; j++) {
       // 内容一律按 step 宽居中 -> 和其他手牌位置一致
@@ -735,7 +737,8 @@ function drawTurnInfo(ctx, st, m, seatMap) {
     var _rr = Math.round(m.vh * 0.052);
     var _inw = _slot.side === 'L' ? 1 : -1;
     var _rad = Math.round(m.vh * 0.048);
-    c = { x: _slot.x + _inw * (_rr + _rad + 10), y: _slot.y };
+    // [2026-11-04] 跟出牌/「不出」保持同一档距离(离头像更远)
+    c = { x: _slot.x + _inw * (_rr + _rad + 20), y: _slot.y };
   }
   var total = st.turnTotal || 20000;
   var left = Math.max(0, st.turnDeadline - Date.now());

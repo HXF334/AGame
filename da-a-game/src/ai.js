@@ -123,7 +123,14 @@ function chooseAction(state, playerId) {
       if (cs.indexOf(_anchor) < 0) return;             // 必须含锚点
       var h = identifyHand(cs);
       if (!h || (h.type !== 'STRAIGHT' && h.type !== 'DOUBLE_STRAIGHT')) return;
-      if (cs.some(_isBig)) return;                      // 保护大牌
+      // [2026-11-04 用户] 「丁有 9 10 10 JQKA, 他出牌怎么只出 9 10 JQK? 不应该出 9 10 JQKA 吗?」
+      //   -> 链**允许**带高端的 A(那 6 张一起出更划算); 大牌保护只管「锚点」和「同点组」。
+      //   但链**必须从锚点起**: 锚点是链里最小的那张(否则 3-4-5-6 会把大牌 3 拽进来)。
+      var _startsAt = true;
+      for (var _ci = 0; _ci < cs.length; _ci++) {
+        if (cs[_ci].rank < _anchor.rank) { _startsAt = false; break; }
+      }
+      if (!_startsAt) return;
       var cur = _chainBest[h.type];
       if (!cur || cs.length > cur.cards.length) _chainBest[h.type] = { ids: ids.slice(), cards: cs, type: h.type };
     });

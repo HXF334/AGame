@@ -46,9 +46,12 @@ function mockCtx() {
   };
 }
 function baseState(over) {
+  // [注意] 渲染层判「不出」用的是 **gameState.phase** —— 这里必须给成 PLAY
+  var _gs = g.gameState();
+  _gs.phase = 'PLAY';
   var st = {
     W: 844, H: 390, phase: 'PLAY',
-    gameState: g.gameState(), currentPlayer: 'A', humanPlayer: 'D',
+    gameState: _gs, currentPlayer: 'A', humanPlayer: 'D',
     selectedCards: [], names: ['甲', '乙', '丙', '丁', '戊'],
     rankDesc: function (c) { return String(c.rank); },
     cardDesc: function (c) { return c.id; },
@@ -300,6 +303,64 @@ section('9. 推风后真人回合的按钮');
   check('9.2 推风后真人的「不出」标记被清掉', !g.uiPassed()['A'], JSON.stringify(g.uiPassed()));
   check('9.3 推风后真人回合 -> 按钮出现(不是只剩闹钟)', g.btnStage().length > 0,
     'n=' + g.btnStage().length);
+}
+
+// ============================================================
+// 10. AI 起手: 链要带上高端的 A(用户 2026-11-04)
+// ============================================================
+section('10. 连张带高端 A');
+{
+  var info = lead([C('S',9),C('H',10),C('D',10),C('C',11),C('S',12),C('H',13),C('D',14)]);
+  check('10.1 手牌 9 10 10 J Q K A -> 出 9 10 J Q K A(6 张连张)',
+    info.ranks === '9,10,11,12,13,14', JSON.stringify(info));
+}
+{
+  // 链必须**从锚点起**: 3-4-5-6 里的大牌 3 不能被拽进来
+  var info = lead([C('S',3),C('H',4),C('D',5),C('C',6)]);
+  check('10.2 手牌 3 4 5 6 -> 出 4 5 6(链从锚点 4 起, 不带大牌 3)',
+    info.ranks === '4,5,6', JSON.stringify(info));
+}
+
+// ============================================================
+// 11. AI 的出牌 /「不出」离头像再远一点(用户 2026-11-04)
+// ============================================================
+section('11. AI 出牌显示离头像的距离');
+{
+  var st11 = baseState({ currentPlayer: 'B', uiPassed: { B: true } });
+  st11.gameState.phase = 'PLAY';   // 渲染层判「不出」用 gameState.phase
+  // 第 9 节把 B 的手牌清空了(出完) -> 这里补上, 否则画的是「已出完」而不是「不出」
+  (st11.gameState.players || []).forEach(function (p) {
+    if (p && (!p.hand || !p.hand.length)) p.hand = [C('S', 9, 'zz' + p.id)];
+  });
+  var ctx = mockCtx();
+  var r3 = uiRender.render(ctx, st11);
+  var buChu = ctx.items.filter(function (i) { return i.t === '不出'; })[0];
+  var gap = 1e9;
+  if (buChu) {
+    (r3.seatHitboxes || []).forEach(function (b) {
+      if (Math.abs(b.y + b.h / 2 - buChu.y) > 6) return;
+      var d = Math.abs(buChu.x - (b.x + b.w / 2)) - b.w / 2;
+      if (d < gap) gap = d;
+    });
+  }
+  check('11.1 「不出」离头像边缘 >= 18px', !!buChu && gap >= 18, 'gap=' + gap + ' 有文字=' + !!buChu);
+}
+{
+  var st12 = baseState({ uiPlays: { B: [C('S', 9, 'pp1'), C('H', 10, 'pp2')] }, uiPlaysTrick: { B: 0 } });
+  st12.gameState.phase = 'PLAY';
+  var ctx2 = mockCtx();
+  var r4 = uiRender.render(ctx2, st12);
+  var face = ctx2.items.filter(function (i) { return i.t === '9'; })[0];
+  var gap2 = 1e9;
+  if (face) {
+    var best = null, bestd = 1e9;
+    (r4.seatHitboxes || []).forEach(function (b) {
+      var d = Math.abs(b.x + b.w / 2 - face.x);
+      if (d < bestd) { bestd = d; best = b; }
+    });
+    if (best) gap2 = Math.abs(face.x - (best.x + best.w / 2)) - best.w / 2;
+  }
+  check('11.2 AI 打出的牌离头像边缘 >= 14px', !!face && gap2 >= 14, 'gap=' + gap2 + ' 有牌面=' + !!face);
 }
 
 console.log('\ntest-req-20261103b: ' + passed + ' passed, ' + failed + ' failed');
