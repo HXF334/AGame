@@ -49,8 +49,10 @@ function layout(W, H) {
       { x: vw - safe - r - 44, y: vh * 0.215, side: 'R' },
       { x: vw - safe - r - 44, y: vh * 0.405, side: 'R' }
     ],
-    // [2026-11-02] 牌桌中央 —— 真人自己出的牌画在这里(真人坐在画面下方, 面前就是这张牌桌)
-    center: { x: vw * 0.5, y: vh * 0.315 },
+    // [2026-11-03 用户] 真人出的牌**不再画在牌桌中央**, 改画在**原来按钮的位置**
+    //   (按钮行正中) —— 用户原话「真人手牌不是居中, 而是在原来按钮的位置显示, 按钮隐藏掉」。
+    //   那里显示着牌时**按钮让位隐藏**(见 drawButtons); 轮到自己时牌被清掉 -> 按钮重新出现。
+    humanPlay: { x: vw * 0.5, y: vh * 0.610 },
     turn: { x: vw * 0.5, y: vh * 0.468 },      // [2026-10-25] 上移, 不与按钮行重叠
     btn: { y: vh * 0.560, h: vh * 0.100 },
     // [2026-10-25] 手牌上移, 避开手机底部横条
@@ -426,13 +428,13 @@ function drawSeats(ctx, st, m) {
     text(ctx, nm, nameX, cy, fs, isCur ? '#ffd700' : '#ffffff', nameA, true);
     out.push({ x: cx - rr_, y: cy - rr_, w: rr_ * 2, h: rr_ * 2, id: pid });
   });
-  // [2026-11-02 用户] 真人自己出的牌**也要画在牌面上**:
+  // [2026-11-02 用户] 真人自己出的牌**也要画出来**:
   //   根因: seatMap 原来只有 4 个 AI 座位(真人在上面的 forEach 里被 `return` 跳过了)
   //         -> drawSeatPlays 找不到真人的槽位 -> **真人自己出的牌永远不画**
   //         (用户 2026-11-01 报障:「真人出的牌在牌面上看不见」)
-  //   位置: 牌桌中央(m.center) —— 真人坐在画面下方, 自己出的牌就在面前这张牌桌上。
+  // [2026-11-03 用户] 位置改了: **不在牌桌中央**, 改在**原来按钮的位置**(m.humanPlay)。
   //   注意: 这**不新增命中框**(下面的 out.push 只在 AI 座位的循环里做), 不影响触摸契约。
-  seatMap[st.humanPlayer] = { x: m.center.x, y: m.center.y, side: 'C' };
+  seatMap[st.humanPlayer] = { x: m.humanPlay.x, y: m.humanPlay.y, side: 'C' };
 
   drawSeatPlays(ctx, st, m, seatMap);
   return { boxes: out, seatMap: seatMap, markHits: markHits };
@@ -741,6 +743,13 @@ function drawTurnInfo(ctx, st, m) {
 function drawButtons(ctx, st, m, list) {
   // [2026-10-25] 结算阶段: 「下一局」由 drawSettlement 画在**面板内下方中央** -> 这里跳过, 免得画两个
   if (st.phase === 'GAME_END') return [];
+  // [2026-11-03 用户] 真人出的牌画在**原来按钮的位置**(layout().humanPlay)
+  //   -> 那里显示着牌时**按钮隐藏**(用户原话「按钮隐藏掉」)。
+  //   判据用 st.uiPlays: 真人出牌后有记录(牌画在那儿); 轮到自己时 game.js 的
+  //   advanceCurrentPlayer 会清掉它 -> 按钮重新出现(用户原话「轮到自己出牌时上一手牌
+  //   应该清掉显示按钮」)。
+  var _hp = (st.uiPlays || {})[st.humanPlayer];
+  if (st.phase === 'PLAY' && _hp && _hp.length) return [];
   var boxes = buttonLayout(list, m);
   var fs = Math.max(11, Math.round(m.vh * 0.038));
   for (var i = 0; i < boxes.length; i++) {

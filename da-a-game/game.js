@@ -44,7 +44,6 @@ var uiPrevTableLen = 0;
 //   否则 65 个套件会被拖慢, 且 setTimeout 重入会让无头断言时序不稳。
 //   判据放在纯函数 _computeAiDelay 里, 便于无头测试直接验证各种环境。
 var AI_STEP_DELAY = _computeAiDelay(typeof wx !== 'undefined' ? wx : null);
-var _lastAiActionAt = 0;
 
 // 纯函数: 由 wx 运行时决定 AI 停顿(ms)。0 = 不同步等(无头测试), 1000 = 等 1 秒。
 function _computeAiDelay(wxObj) {
@@ -690,6 +689,11 @@ function uiHint() {
 // **只显示, 不代替玩家操作** —— 到 0 只提示「请尽快出牌」, 不自动过牌(不发明规则)。
 var uiTurnDeadline = 0;
 var uiTurnTotal = 20000;
+// [2026-11-03 用户] 其他玩家行动时 -> **先显示倒计时闹钟**, 等他出牌/过牌后才隐藏
+//   (原来只有真人回合才有闹钟 -> AI 思考期间画面是静的, 不知道在等谁)
+var uiAiWaitDeadline = 0;   // 当前 AI 的等待截止时间(0 = 没有 AI 在等)
+var uiAiWaitTotal = 1000;   // 等待总时长(展示用)
+var uiAiTurnAt = 0;         // 当前 AI 变成当前玩家的时间(算还要等多久)
 var uiTicker = null;
 
 function uiTurnTick() {
@@ -702,7 +706,7 @@ function uiTurnTick() {
 
 function uiStartTicker() {
   if (uiTicker || typeof setInterval === "undefined") return;
-  uiTicker = setInterval(function () { if (ctx && (uiTurnDeadline || uiLiangDeadline)) draw(); }, 250);
+  uiTicker = setInterval(function () { if (ctx && (uiTurnDeadline || uiLiangDeadline || uiAiWaitDeadline)) draw(); }, 250);
 }
 
 // ===== 亮A 决策倒计时 (2026-10-27 用户) =====
@@ -750,6 +754,9 @@ function uiStopTicker() {
   if (uiTicker && typeof clearInterval !== "undefined") clearInterval(uiTicker);
   uiTicker = null;
   uiTurnDeadline = 0;
+  // [2026-11-03] AI 等待闹钟也要清(新局/重开不能留上一局的残留)
+  uiAiWaitDeadline = 0;
+  uiAiTurnAt = 0;
 }
 
 // ===== 统一按钮模型（2026-10-23 新增，需求八）=====
@@ -1164,8 +1171,9 @@ function draw() {
     scores: _uiScores(),
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
     // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
-    turnDeadline: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangDeadline : uiTurnDeadline,
-    turnTotal: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangTotal : uiTurnTotal,
+    // [2026-11-03] 倒计时闹钟: 亮A 用亮A 的, 真人回合用回合的, **AI 回合用 AI 等待的**
+    turnDeadline: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangDeadline : (uiTurnDeadline || uiAiWaitDeadline),
+    turnTotal: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal),
     turnIsLiang: !!(gateChoice && gateChoice.kind === 'LIANG_A'),   // [2026-10-27] 亮A 倒计时画大一点
     phase: gameState.phase
   });
@@ -1479,13 +1487,22 @@ function runAI() {
   var guard = 0;
   while (currentPlayer && currentPlayer !== humanPlayer && gameState.phase === PHASES.PLAY && guard++ < 200) {
     // [2026-10-26] **AI 节奏**: 每个 AI 动作之间停顿 1 秒(用户: AI玩家出牌太快了)
-    //   不重构整个循环 —— 只在进入循环体前检查时间, 不够就 setTimeout 重入。
+    // [2026-11-03] 改成「**每个 AI 从变成当前玩家起等 1 秒**」(原来是「距上一个 AI 动作 1 秒」)
+    //   -> 每个 AI 回合都有可感知的等待, 期间**点着倒计时闹钟**(用户:「其他玩家出牌时
+    //   应该先显示倒计时, 等他们出牌或过牌后才会把闹钟隐藏掉」)。
     var _now = Date.now();
-    if (_now - _lastAiActionAt < AI_STEP_DELAY) {
-      setTimeout(runAI, AI_STEP_DELAY - (_now - _lastAiActionAt));
+    if (!uiAiTurnAt) uiAiTurnAt = _now;   // 刚进 PLAY 就轮到 AI 的情况
+    var _waitLeft = AI_STEP_DELAY - (_now - uiAiTurnAt);
+    if (_waitLeft > 0) {
+      // 还在等这个 AI 行动 -> **闹钟点亮**(显示还剩多久)
+      // [2026-11-03] 闹钟**只在真正等待时**点亮: 上一家出完牌的那一帧是
+      //   「他出的牌 / 不出」(闹钟熄), 下一个 AI 开始等才重新点亮。
+      uiAiWaitDeadline = _now + _waitLeft;
+      uiAiWaitTotal = AI_STEP_DELAY;
+      setTimeout(runAI, _waitLeft);
       return;
     }
-    _lastAiActionAt = _now;
+    uiAiWaitDeadline = 0;   // 他要动了 -> 闹钟收起来(这一刻画面上是「他出的牌 / 不出」)
     try {
       var ai = gameState.players.find(function (p) { return p.id === currentPlayer; });
       if (!ai || ai.hand.length === 0) {
@@ -1608,13 +1625,20 @@ function advanceCurrentPlayer() {
       currentPlayer = next;
       // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
       uiTurnTick();
-      // [2026-10-24] 轮到我出牌 -> 清掉各家最新出牌(新一墩开始)
-      // [2026-11-02 用户修正] 轮到我出牌 -> **不再清掉我上回打出的牌**:
-      //   用户原话「应等到自己出牌时才清空自己前面的桌面状态」。
-      //   现在我出的牌一直留在牌面上, 直到:
-      //     - 我**再出一次牌**(下一轮 _uiRecordPlay 覆盖成最新一手), 或
-      //     - 我**过牌**(_uiPassCleanup 清掉 -> 位置显示「不出」)
-      //   与 AI 座位一致: 别人的牌也保留到他自己再出牌/过牌为止。
+      // [2026-11-03 用户] 轮到真人出牌 -> **清掉自己上一手牌的显示**
+      //   真人出的牌现在画在**原来按钮的位置**(ui-render layout().humanPlay),
+      //   不清掉就会和【出牌/不出/提示】三个按钮叠在一起。
+      //   用户原话「正常轮到自己出牌时上一手牌应该清掉显示按钮」。
+      //   [2026-11-02 旧行为] 当时是「不清掉」(那套方案下牌画在牌桌中央, 不冲突) ——
+      //   2026-11-03 牌位改到按钮行后, 必须清掉。
+      if (next === humanPlayer) {
+        delete uiPlays[humanPlayer];
+        delete uiPlaysTrick[humanPlayer];
+        uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
+        uiAiWaitDeadline = 0;   // 真人回合 -> AI 的等待闹钟必须熄(否则残留的截止时间会继续倒数)
+      } else {
+        uiAiTurnAt = Date.now();   // AI 变成当前玩家 -> 开始算它的等待(闹钟)
+      }
       // 清空选中
       selectedCards = [];
       // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
@@ -1729,6 +1753,8 @@ if (typeof module !== 'undefined' && module.exports) {
     uiHint: uiHint,
     uiHintCandidates: uiHintCandidates,
     uiTurnInfo: function () { return { deadline: uiTurnDeadline, total: uiTurnTotal, now: Date.now() }; },
+  // [2026-11-03] AI 等待闹钟(其他玩家行动时点亮, 他出牌/过牌后熄灭) —— 供回归测试断言
+  uiAiWait: function () { return { deadline: uiAiWaitDeadline, total: uiAiWaitTotal, now: Date.now() }; },
     uiLayout: function () { return uiRender.layout(W || 844, H || 390); },
     uiHandLayout: function (n) { return uiRender.handLayout(n, uiRender.layout(W || 844, H || 390)); },
     uiButtonBoxes: function () { return btnStage || []; },
@@ -1755,7 +1781,7 @@ if (typeof module !== 'undefined' && module.exports) {
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
-    __setAiDelay: function (ms) { AI_STEP_DELAY = ms; _lastAiActionAt = 0; },
+    __setAiDelay: function (ms) { AI_STEP_DELAY = ms; uiAiTurnAt = 0; },
     // [2026-11-02] 测试钩子: AI 停顿的判定是纯函数, 暴露出来直接验证各环境取值
     __computeAiDelay: _computeAiDelay,
     __aiDelay: function () { return AI_STEP_DELAY; },

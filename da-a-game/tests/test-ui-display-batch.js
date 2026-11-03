@@ -71,8 +71,9 @@ function baseState(phase, scores, settlement) {
 //   passedPlayers=['A'] 而 uiPassed=['D','A'] —— D 是上一轮过牌的合法残留)。
 //   修法: **在 newGame() 之前就把 AI 行动全部推迟**(runAI 走 setTimeout),
 //   于是同步流程里 AI 一步没走, uiPassed 里只剩闸门残留 —— 断言才真正对准它。
-//   [注] 只推迟**后续** AI 行动: runAI 首次调用时 _lastAiActionAt=0, 首出那张牌仍会同步打;
+//   [注] 只推迟**后续** AI 行动: runAI 首次调用时 uiAiTurnAt=0, 首出那张牌仍会同步打;
 //   首出是**出牌**不是过牌, 不产生「不出」标记, 所以不影响断言。
+//   [2026-11-03] uiAiTurnAt 取代了旧的 _lastAiActionAt(见 game.js runAI 的等待分支)。
 g.__setAiDelay(600000);
 g.newGame();
 check('记牌器默认展开', g.uiMemoOpen() === true, String(g.uiMemoOpen()));
