@@ -56,13 +56,23 @@ section('1. 起手可打连张 (解除结构性死锁)');
 }
 
 {
-  // 双龙起手
+  // [2026-11-03 用户口径变更] 起手改为**单一候选池 + 池内由小往大**:
+  //   「有什么出什么, 有单出单, 有对子出对子, 有龙出龙, 默认从小往大出」。
+  //   这手牌 5,5/6,6/7,7/9,9 的候选里保留价值最低的是 **对5(50)**,
+  //   所以起手出 5,5 (PAIR) —— 不再是双龙。
+  //   [口径来源] 用户 2026-11-03 明确「不是固定起手出对子, 是什么出什么、由小往大」。
   var hand = [C('S',5),C('H',5),C('D',6),C('C',6),C('S',7),C('H',7),C('D',9),C('C',9)];
   var st = mk(hand);
   var act = chooseAction(st, 'A');
   var t = typeOf(act, hand);
-  check('1.3 空桌 + 手上有5-5-6-6-7-7双龙 -> 起手出双龙',
-    t === HAND_TYPES.DOUBLE_STRAIGHT, 'got=' + t);
+  check('1.3 空桌 + 手上有5-5/6-6/7-7/9-9 -> 起手由小往大, 出对5',
+    t === HAND_TYPES.PAIR, 'got=' + t);
+  check('1.3b 起手出的是最小的对子(保留价值最低)',
+    act.cardIds.length === 2 && act.cardIds.every(function (id) {
+      return hand.filter(function (c) { return c.id === id; })[0].rank === 5;
+    }), 'ranks=' + (act.cardIds || []).map(function (id) {
+      return hand.filter(function (c) { return c.id === id; })[0].rank;
+    }).join(','));
 }
 
 // ================= 2. 起手仍不打大牌组合 =================

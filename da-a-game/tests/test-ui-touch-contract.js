@@ -100,10 +100,11 @@ section('2. 触摸命中映射');
 
 section('3. hitbox 注入时机');
 {
-  // AI 回合 -> 不注入
+  // [2026-11-03 用户] 「别人出牌时真人玩家也可以提前选择手里的牌, 只是不能打出」
+  //   -> AI 回合**也注入手牌 hitbox**(允许提前预选); 能不能打出由 doPlay 守卫管。
   g.__setState(mkState(8), { currentPlayer: 'B', human: 'A', clearLog: true });
   g.draw();
-  check('3.1 AI 回合不注入手牌 hitbox', g.handCardHitboxes().length === 0,
+  check('3.1 AI 回合仍注入手牌 hitbox(允许预选)', g.handCardHitboxes().length === 8,
     'len=' + g.handCardHitboxes().length);
 
   // GAME_END -> 不注入

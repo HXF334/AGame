@@ -73,17 +73,36 @@ function chooseAction(state, playerId) {
     //   若起手永远只出单张, 桌上永远不会出现连张, AI 就永远打不出连张 (结构性死锁)。
     //   故允许用不含大牌的组合起手, 既减少手牌, 也让连张/双龙路径可达。
     var leadCands = candidateCombos(hand).filter(function (c) {
-      if (c.length < 3) return false;
+      if (c.length < 2) return false;   // [2026-11-03] 对子(2 张)也是候选 —— 「有对子出对子」
       var cards = c.map(function (id) { return hand.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
       if (!cards.length || cards.some(isFour)) return false;      // 不用 4 起手 (留给取牌)
       if (identifyHand(cards).type === 'INVALID') return false;
       return cards.every(function (x) { return keepValue(x) < 500; });   // 不含王/大A/2/3/A
     });
+    // [2026-11-03 用户] 「有什么出什么, 有单出单, 有对子出对子, 有龙出龙,
+    //   默认从小往大出, 不要只会出单牌」
+    //   实现: 候选池**合并成一个**(单张 + 对子 + 蛋子 + 连张 + 双龙 + 连珠蛋 + 假八 …),
+    //   池内按**保留价值升序**(越不值钱越先出 = 由小往大);
+    //   同保留价值时**张数多者优先**(同点数的三张比对子大)。
+    //   组合整体优先于单张(有组合就不拆成单张 -> 满足「有对子出对子」)。
+    //   兜底: 池里啥都没有 -> 出安全单张(省大牌: 不出 2/3/A/王/大A)。
+    var _comboKv = function (cards) {
+      return Math.max.apply(null, cards.map(function (c) { return keepValue(c); }));
+    };
+    var _cardsOf = function (ids) {
+      return ids.map(function (id) { return hand.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
+    };
     if (leadCands.length > 0) {
-      var best = leadCands[0];   // candidateCombos 已按张数多者优先排序
+      // 池内由小往大: 保留价值低的先出; 同保留价值 -> 张数多者优先
+      var _sortedLeads = leadCands.slice().sort(function (a, b) {
+        var va = _comboKv(_cardsOf(a)), vb = _comboKv(_cardsOf(b));
+        if (va !== vb) return va - vb;
+        return b.length - a.length;
+      });
+      var best = _sortedLeads[0];
       return { type: 'PLAY', playerId: playerId, cardIds: best.slice() };
     }
-    // 起手出安全牌 (保留 2/3/A/王/大A)
+    // 2) 起手出安全牌 (保留 2/3/A/王/大A)
     var safe = playable.filter(function (c) { return keepValue(c) < 500; });
     var openCard = (safe.length > 0 ? safe : playable)
       .slice()

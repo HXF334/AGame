@@ -67,6 +67,9 @@ function computePack() {
         if (ignored.indexOf(n) >= 0) return;
         walk(p);
       } else {
+        // [2026-11-03] 排除**本地私有配置**(微信开发者工具生成, 已被 .gitignore 忽略,
+        //   本来就不该上传) —— 它不是游戏代码, 但会落在 minigameRoot 里。
+        if (n === 'project.private.config.json') return;
         out.push(path.relative(ROOT, p).replace(/\\/g, '/'));
       }
     });

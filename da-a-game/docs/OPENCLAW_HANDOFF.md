@@ -31,7 +31,7 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / deal.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 73 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 74 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
@@ -64,12 +64,12 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
 
 ```bash
 cd AGame/da-a-game
-node tests/_runall.js          # 全量：73 套件 / 73 次执行 / 失败 0 次（约 70 秒）
+node tests/_runall.js          # 全量：74 套件 / 74 次执行 / 失败 0 次（约 70 秒）
 node tests/test-xxx.js         # 单套件
 node tests/_runall.js 10 20    # 只跑第 10~20 个
 ```
 
-2026-11-03 实测：`套件 73 个, 范围 1-73, 共执行 73 次; 失败 0 次`，退出码 0。
+2026-11-03 实测：`套件 74 个, 范围 1-74, 共执行 74 次; 失败 0 次`，退出码 0。
 
 **测试纪律**：
 - 必须用**确定局面**（指定手牌 + 固定 human）。无头测试里 AI 会同步抢跑（`AI_STEP_DELAY=0`），随机局面必然 flaky。

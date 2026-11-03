@@ -521,7 +521,10 @@ function drawHand(ctx, st, m) {
   if (!n) return [];
   var L2 = handLayout(n, m);
   var boxes = [];
-  var showHit = (st.currentPlayer === st.humanPlayer && g.phase === 'PLAY');
+  // [2026-11-03 用户] 「别人出牌时真人玩家也可以提前选择手里的牌, 只是不能打出」
+  //   -> 命中区在 PLAY 阶段**一直注入**(不再只限真人回合), 让真人能提前预选;
+  //      能不能真的打出去由 game.js doPlay 的「现在不是你的回合」守卫管。
+  var showHit = (g.phase === 'PLAY');
   for (var i = 0; i < n; i++) {
     var card = sorted[i];
     var isSel = st.selectedCards.indexOf(card.id) >= 0;

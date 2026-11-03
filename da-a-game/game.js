@@ -44,6 +44,12 @@ var uiPrevTableLen = 0;
 //   否则 65 个套件会被拖慢, 且 setTimeout 重入会让无头断言时序不稳。
 //   判据放在纯函数 _computeAiDelay 里, 便于无头测试直接验证各种环境。
 var AI_STEP_DELAY = _computeAiDelay(typeof wx !== 'undefined' ? wx : null);
+// [2026-11-03 用户] 「随机一个AI玩家的等待时间变成3秒」
+//   -> 每局随机挑一个 AI 玩家当「慢手」, 他行动前等 3 秒(其余仍 1 秒),
+//      这样真机上的倒计时闹钟能被看见(1 秒太快, 数字来不及看)。
+//   无头测试里 AI_STEP_DELAY=0 -> 慢手延迟也必须是 0, 否则套件会被拖慢。
+var AI_SLOW_DELAY = AI_STEP_DELAY > 0 ? 3000 : 0;
+var uiSlowAiPid = null;      // 本局被选中当「慢手」的 AI 玩家
 
 // 纯函数: 由 wx 运行时决定 AI 停顿(ms)。0 = 不同步等(无头测试), 1000 = 等 1 秒。
 function _computeAiDelay(wxObj) {
@@ -164,6 +170,12 @@ let lastEmptiedPlayer = null;
 //   顶部 5 个按钮仍可随时切换。
 var SEAT_IDS = ['A', 'B', 'C', 'D', 'E'];
 function _randomSeat() { return SEAT_IDS[Math.floor(Math.random() * SEAT_IDS.length)]; }
+// [2026-11-03] 随机挑一个**非真人**的 AI 玩家当「慢手」(等 3 秒)。
+function _pickSlowAiPid() {
+  var cands = SEAT_IDS.filter(function (id) { return id !== humanPlayer; });
+  if (!cands.length) return null;
+  return cands[Math.floor(Math.random() * cands.length)];
+}
 let humanPlayer = _randomSeat();
 let selectedCards = [];
 let handCardHitboxes = [];
@@ -497,6 +509,7 @@ enterPlayIfNeeded();
 function initGame() {
   gateIdx = 0;
   gateChoice = null;
+  uiSlowAiPid = _pickSlowAiPid();   // [2026-11-03] 每局随机一个慢手 AI(等 3 秒)
   log('=== 对局初始化 ===');
 log('真人座位: ' + pn(humanPlayer) + ' (随机, 可用顶部 5 按钮切换)');
   log('阶段流程: 发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌');
@@ -628,6 +641,11 @@ function uiHintCandidates() {
 //   规则: 在**引擎认可**(真能出)的候选里, 取 张数最少 / 同张数牌力最小 且**包含这张牌** 的那个
 //   例: 手上有 8 9 9 10 10 J J Q Q, 桌面是 567 -> 选一张 9 -> 自动选中 8 9 10(3 张连张)
 function _uiExpandSelection(cardId) {
+  // [2026-11-03 用户] 别人出牌时真人可以**提前选牌**:
+  //   预选阶段只该选中点的那张, **不能**按「当前能不能出牌」去自动扩展成牌型
+  //   (那时引擎会拒绝真人的出牌 -> 候选为空 -> 刚选中的牌反而被清掉)。
+  //   自己回合才做自动扩展(「选一张9, 自动补成8 9 10」的老行为)。
+  if (currentPlayer !== humanPlayer) return;
   var cands;
   try { cands = uiHintCandidates(); } catch (e) { return; }
   var best = null, bestLen = 1e9, bestPow = 1e9;
@@ -832,6 +850,10 @@ function uiButtonAt(x, y) {
 
 // 按 id 触发按钮动作。返回 true 表示已处理
 function uiClick(id) {
+  // [2026-11-03 用户] 「中间出提示文字时, 如果我点按钮就立马把提示文字清掉」
+  //   -> 点任何按钮先清掉上一条提示(它会一直杵在屏幕正中挡视线)。
+  //   放在**动作之前**: 按钮自己产生的新提示(如【当前没有可用牌】)仍然要显示。
+  uiToast = null;
   // [2026-10-26] 花色按钮: id = 'liangA:<花色>' -> 亮那个花色的大A
   if (typeof id === 'string' && id.indexOf('liangA:') === 0) {
     return humanLiangA(true, id.slice('liangA:'.length));
@@ -1246,6 +1268,24 @@ function doPlay() {
     if (ctx) draw();
     return;
   }
+  // [2026-11-03 用户] 别人出牌时真人可以**提前选牌**, 但**不能打出**
+  //   -> 这里显式拦住「真人在别人回合把自己的牌打出去」。
+  //   判据是**牌的归属**(选中的牌里有没有真人的牌), 不是「当前玩家是不是真人」:
+  //     - 真人回合 -> 放行(正常出牌)
+  //     - 别人回合 + 选中的是自己的牌 -> 拦住(真人不能替别人出牌/抢先出牌)
+  //     - 别人回合 + 选中的是别人的牌(无头测试用它模拟别人出牌) -> 放行
+  if (currentPlayer && currentPlayer !== humanPlayer) {
+    var _meNow = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    var _mineSel = (_meNow && _meNow.hand ? _meNow.hand : []).filter(function (c) {
+      return selectedCards.indexOf(c.id) >= 0;
+    });
+    if (_mineSel.length > 0) {
+      log('  提示: 现在不是你的回合, 不能出牌');
+      showToast('还没轮到你出牌');
+      if (ctx) draw();
+      return;
+    }
+  }
   var player = gameState.players.find(function (p) { return p.id === currentPlayer; });
   if (!player || player.hand.length === 0) {
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 手牌空, 不能出牌');
@@ -1422,6 +1462,7 @@ function doPass() {
     //   轮末处理**不在这里**: 统一由 draw() 里的 _uiSyncPassState 检测引擎信号后做,
     //   否则只有真人过牌这条路径会推进轮次, AI 过牌结束一轮时就不推进。
     _uiPassCleanup(currentPlayer);
+    selectedCards = [];       // [2026-11-03] 真人过牌 -> 预选作废(下一轮要重选)
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
@@ -1492,13 +1533,15 @@ function runAI() {
     //   应该先显示倒计时, 等他们出牌或过牌后才会把闹钟隐藏掉」)。
     var _now = Date.now();
     if (!uiAiTurnAt) uiAiTurnAt = _now;   // 刚进 PLAY 就轮到 AI 的情况
-    var _waitLeft = AI_STEP_DELAY - (_now - uiAiTurnAt);
+    // [2026-11-03] 慢手 AI 等 3 秒(其余 AI 仍等 AI_STEP_DELAY)
+    var _waitMs = (currentPlayer === uiSlowAiPid) ? AI_SLOW_DELAY : AI_STEP_DELAY;
+    var _waitLeft = _waitMs - (_now - uiAiTurnAt);
     if (_waitLeft > 0) {
       // 还在等这个 AI 行动 -> **闹钟点亮**(显示还剩多久)
       // [2026-11-03] 闹钟**只在真正等待时**点亮: 上一家出完牌的那一帧是
       //   「他出的牌 / 不出」(闹钟熄), 下一个 AI 开始等才重新点亮。
       uiAiWaitDeadline = _now + _waitLeft;
-      uiAiWaitTotal = AI_STEP_DELAY;
+      uiAiWaitTotal = _waitMs;
       setTimeout(runAI, _waitLeft);
       return;
     }
@@ -1622,6 +1665,7 @@ function advanceCurrentPlayer() {
     var next = ids[(idx + step) % 5];
     var nextPlayer = gameState.players.find(function (p) { return p.id === next; });
     if (nextPlayer && nextPlayer.hand && nextPlayer.hand.length > 0) {
+      var _prevCur = currentPlayer;   // [2026-11-03] 记下换手前是谁 -> 决定要不要清真人的预选
       currentPlayer = next;
       // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
       uiTurnTick();
@@ -1634,13 +1678,18 @@ function advanceCurrentPlayer() {
       if (next === humanPlayer) {
         delete uiPlays[humanPlayer];
         delete uiPlaysTrick[humanPlayer];
+        // [2026-11-03 用户] 「清掉打出的手牌**或不出文字**, 显示按钮」
+        //   -> 轮到真人出牌时, 真人之前那一轮的「不出」标记也作废(他这回要出牌了)。
+        delete uiPassed[humanPlayer];
         uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
         uiAiWaitDeadline = 0;   // 真人回合 -> AI 的等待闹钟必须熄(否则残留的截止时间会继续倒数)
       } else {
         uiAiTurnAt = Date.now();   // AI 变成当前玩家 -> 开始算它的等待(闹钟)
       }
-      // 清空选中
-      selectedCards = [];
+      // [2026-11-03 用户] 别人出牌时真人**可以提前选牌**(只是不能打出)
+      //   -> 换手时**不能**无条件清空选中: 只有「刚才是真人在行动」才清
+      //      (真人出牌/过牌时清; AI 行动时保留真人的预选)。
+      if (_prevCur === humanPlayer) selectedCards = [];
       // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
       //   这样「出大A → 次方公开」「反A → mode 变 1V4」这类身份/阵营变化
       //   无需逐个手写日志点, 也不会因未变化而刷屏。
@@ -1781,7 +1830,17 @@ if (typeof module !== 'undefined' && module.exports) {
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
-    __setAiDelay: function (ms) { AI_STEP_DELAY = ms; uiAiTurnAt = 0; },
+    __setAiDelay: function (ms) {
+    AI_STEP_DELAY = ms;
+    // [2026-11-03] 慢手延迟跟着走(测试把 AI 延迟调大 -> 慢手也要等, 否则慢手会立刻行动)
+    AI_SLOW_DELAY = ms > 0 ? Math.max(ms, 3000) : 0;
+    uiAiTurnAt = 0;
+  },
+  // [2026-11-03] 慢手 AI 观测钩子
+  uiSlowAiPid: function () { return uiSlowAiPid; },
+  __setAiSlowPid: function (pid) { uiSlowAiPid = pid; },
+  // [2026-11-03] 提示文字观测钩子(点按钮要立刻清掉它)
+  uiToastNow: function () { return uiToast; },
     // [2026-11-02] 测试钩子: AI 停顿的判定是纯函数, 暴露出来直接验证各环境取值
     __computeAiDelay: _computeAiDelay,
     __aiDelay: function () { return AI_STEP_DELAY; },

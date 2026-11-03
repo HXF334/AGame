@@ -225,19 +225,32 @@ section('4. 完整链路 — 点击选牌后 doPlay 打出对应的牌');
   })());
 }
 
-// ================= 5. 仅人类回合注入 hitbox =================
-section('5. hitbox 仅在人类回合注入 (§14 防误触)');
+// ================= 5. PLAY 阶段一直注入 hitbox(允许真人预选) =================
+// [2026-11-03 用户] 「别人出牌时真人玩家也可以提前选择手里的牌, 只是不能打出」
+//   -> 命中区在 PLAY 阶段一直注入; 「不能打出」由 game.js doPlay 的回合守卫管。
+section('5. PLAY 阶段始终注入 hitbox(允许预选, 打出受守卫)');
 
 {
   var st = SB.build({ handMap: { A: cards5 }, table: [], lastPlayer: 'B' });
   // AI 回合
   g.__setState(st, { currentPlayer: 'B', human: 'A' });
   g.draw();
-  check('5.1 AI 回合不注入 hitbox', hbs().length === 0, 'n=' + hbs().length);
+  check('5.1 AI 回合仍注入手牌 hitbox(可提前预选)', hbs().length > 0, 'n=' + hbs().length);
 
-  // 点击也不应改变选择
-  tap(W / 2, H * 0.42 + 21);
-  check('5.2 AI 回合点击不产生选择', sel().length === 0, JSON.stringify(sel()));
+  // 点击 -> 可以选中(预选), 只是打不出去
+  // [注] 必须按**真实 hitbox** 点(UI 重做后手牌在底部 y=0.805H, 不是旧的 0.42H)
+  var hb0 = hbs()[0];
+  tapBox(hb0);
+  check('5.2 AI 回合点击可选牌(预选生效)', sel().length === 1 && sel()[0] === hb0.cardId,
+    JSON.stringify(sel()));
+  var beforeN = g.gameState().players[0].hand.length;
+  g.doPlay();
+  check('5.3 AI 回合点【出牌】被拒绝(手牌没变)',
+    g.gameState().players[0].hand.length === beforeN &&
+    g.logHistory().join('\n').indexOf('不是你的回合') >= 0,
+    'hand=' + g.gameState().players[0].hand.length + ' before=' + beforeN +
+    ' log=' + g.logHistory().slice(-3).join(' | '));
+  g.selectedCards().length = 0;
 
   // 非 PLAY 阶段
   st.phase = 'GAME_END';
