@@ -430,28 +430,36 @@ test('三王 > 单大A (per §6.4 "可管...单大A")', () => {
   assert.ok(canBeat(a, b));
 });
 
-test('三王 does NOT beat 连珠蛋 (per §6.4 "不能管连珠蛋")', () => {
+// [2026-11-03 修正] 原断言 "三王不能管连珠蛋" **引错了条款**:
+//   §6.4 那句「不能管连珠蛋、假八、真七、真八、三王、四王或双大A」是**双王**的限制,
+//   不是三王的。三王按 SKILL §6 表「遵守全局牌力顺序与特殊规则」+ §6.3 判定:
+//   ... > 三王 > 真八 > 真七 > 假八 > 连珠蛋 > 双王 ...  -> 三王 **能** 管连珠蛋。
+//   旧实现给三王/四王各写了一份手写白名单(抄自双王那条), 锁死了错误行为。
+test('三王 beats 连珠蛋 (per §6.3 三王 > 连珠蛋)', () => {
   const a = identifyHand([makeCard(null, 'BJ'), makeCard(null, 'BJ'), makeCard(null, 'BJ')]);
   const b = identifyHand(makeGroups([2, 3, 4], 3));
-  assert.ok(!canBeat(a, b));
+  assert.ok(canBeat(a, b));
 });
 
-test('三王 does NOT beat 假八', () => {
+// [2026-11-03 修正] 同上: §6.3 里三王 > 假八, 「不能管假八」是双王的限制。
+test('三王 beats 假八 (per §6.3 三王 > 假八)', () => {
   const a = identifyHand([makeCard(null, 'BJ'), makeCard(null, 'BJ'), makeCard(null, 'BJ')]);
   const b = identifyHand(makeGroups([14, 13], 4));
-  assert.ok(!canBeat(a, b));
+  assert.ok(canBeat(a, b));
 });
 
-test('三王 does NOT beat 真七', () => {
+// [2026-11-03 修正] 同上: §6.3 里三王 > 真七。
+test('三王 beats 真七 (per §6.3 三王 > 真七)', () => {
   const a = identifyHand([makeCard(null, 'BJ'), makeCard(null, 'BJ'), makeCard(null, 'BJ')]);
   const b = identifyHand(makeSameRank(3, 7));
-  assert.ok(!canBeat(a, b));
+  assert.ok(canBeat(a, b));
 });
 
-test('三王 does NOT beat 真八', () => {
+// [2026-11-03 修正] 同上: §6.3 里三王 > 真八。
+test('三王 beats 真八 (per §6.3 三王 > 真八)', () => {
   const a = identifyHand([makeCard(null, 'BJ'), makeCard(null, 'BJ'), makeCard(null, 'BJ')]);
   const b = identifyHand(makeSameRank(3, 8));
-  assert.ok(!canBeat(a, b));
+  assert.ok(canBeat(a, b));
 });
 
 test('三王 does NOT beat 四连珠蛋 (per §6.4 "不能管")', () => {
@@ -543,31 +551,35 @@ test('四王 > 大蛋子', () => {
   assert.ok(canBeat(a, b));
 });
 
-test('四王 does NOT beat 真八 (per §6.4 "不能管真八")', () => {
+// [2026-11-03 修正] 同上: §6 表「四王 | 除双大A外为最强牌型」+ §6.3 四王 > 真八。
+//   「不能管真八」是**双王**的限制, 被误套到四王头上。
+test('四王 beats 真八 (per §6.3 四王 > 真八)', () => {
   const a = identifyHand([
     makeCard(null, 'BJ'), makeCard(null, 'BJ'),
     makeCard(null, 'BJ'), makeCard(null, 'BJ')
   ]);
   const b = identifyHand(makeSameRank(3, 8));
-  assert.ok(!canBeat(a, b));
+  assert.ok(canBeat(a, b));
 });
 
-test('四王 does NOT beat 三连假八', () => {
+// [2026-11-03 修正] 同上: §6.3 里四王 > 三连假八。
+test('四王 beats 三连假八 (per §6.3 四王 > 三连假八)', () => {
   const a = identifyHand([
     makeCard(null, 'BJ'), makeCard(null, 'BJ'),
     makeCard(null, 'BJ'), makeCard(null, 'BJ')
   ]);
   const b = identifyHand(makeGroups([14, 13, 12], 4));
-  assert.ok(!canBeat(a, b));
+  assert.ok(canBeat(a, b));
 });
 
-test('四王 does NOT beat 四连珠蛋', () => {
+// [2026-11-03 修正] 同上: §6.3 里四王 > 四连珠蛋。
+test('四王 beats 四连珠蛋 (per §6.3 四王 > 四连珠蛋)', () => {
   const a = identifyHand([
     makeCard(null, 'BJ'), makeCard(null, 'BJ'),
     makeCard(null, 'BJ'), makeCard(null, 'BJ')
   ]);
   const b = identifyHand(makeGroups([2, 3, 4, 5], 3));
-  assert.ok(!canBeat(a, b));
+  assert.ok(canBeat(a, b));
 });
 
 test('四王 < 双大A (per §6.4 "不能管双大A")', () => {

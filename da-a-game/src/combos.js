@@ -13,7 +13,11 @@
 var MIN_SAME_RANK = 2;   // 同点数组最小张数 (2 = 对子)
 var MAX_SAME_RANK = 8;   // 同点数组最大张数 (8 = 真八)
 var MIN_SEQ = 3;         // 连张最小张数 (§6.1: 3 张及以上)
-var MAX_SEQ = 12;        // 连张最大张数 (两副牌最多 4 张/点数, 12 为安全上界)
+// [B3 修正 2026-11-03] 原来写 12, 截断了 **13 张最长龙 (2..A)**。
+//   §6.1 的基础序列是 2-3-...-A 共 **13** 个点数, 识别层也认 13 张 (identifyHand
+//   返回 STRAIGHT len=13), 枚举层却出不来 -> 引擎认得出、玩家打不出。
+//   k=2/3/4 不受影响 (双龙/连珠蛋/假八 的张数上限本来就 < 13)。
+var MAX_SEQ = 13;        // 连张最大张数 (§6.1 基础序列 2..A = 13 个点数)
 
 // 枚举单张以外的候选组合 (cardIds 数组的数组)
 function candidateCombos(hand) {
@@ -97,6 +101,39 @@ function candidateCombos(hand) {
         acc = _next;
         for (var _e = 0; _e < acc.length; _e++) {
           if (acc[_e].length >= SEQ_K_MIN_LEN[_k] && acc[_e].length <= MAX_SEQ) out.push(acc[_e]);
+        }
+      }
+    }
+  }
+
+  // ---- (b2) A 作低端的连段: A,2,3,...,m (§6.1「允许A作为低端的A23」) ----
+  // [B2 修正 2026-11-03] 连续段枚举只按 rank **升序**走 (A=14 排在最后, 只能接 13),
+  //   于是「A,2,3」这种 **A 在低端** 的形态永远拼不出来 -> 识别层认得出
+  //   (identifyHand: rest[0]===2 -> low=1) 但枚举层出不来 -> 【提示】/AI选牌/
+  //   doPlay组合回退 三条路径同时失效, 玩家看到「当前没有可用牌」。
+  //   §6.1 的连续顺序是**环形**的 2-3-...-K-A-2-3-... (A 可作低端也可作高端),
+  //   这里补上以 A 起头的那一段: A -> 2 -> 3 -> ... -> m。
+  //   k=1 连张 / k=2 双龙 / k=3 连珠蛋 / k=4 假八 都要覆盖。
+  //   [注] byRank 存的是 **card id 字符串**(不是 card 对象), 别写 .id。
+  for (var _ak = 1; _ak <= 4; _ak++) {
+    var _aPool = byRank[14];
+    if (!_aPool || _aPool.length < _ak) continue;
+    var _aOpts = _pickCombos(_aPool, _ak);
+    var _accA = _aOpts.slice();          // 先放 A 的 k 张
+    for (var _ar = 2; _ar <= 13; _ar++) {  // 再接 2,3,...,13
+      var _arp = byRank[_ar];
+      if (!_arp || _arp.length < _ak) break;
+      var _aro = _pickCombos(_arp, _ak);
+      var _nextA = [];
+      for (var _ax = 0; _ax < _accA.length && _nextA.length <= SEQ_COMBO_CAP; _ax++) {
+        for (var _ay = 0; _ay < _aro.length && _nextA.length <= SEQ_COMBO_CAP; _ay++) {
+          _nextA.push(_accA[_ax].concat(_aro[_ay]));
+        }
+      }
+      _accA = _nextA;
+      for (var _ae = 0; _ae < _accA.length; _ae++) {
+        if (_accA[_ae].length >= SEQ_K_MIN_LEN[_ak] && _accA[_ae].length <= MAX_SEQ) {
+          out.push(_accA[_ae]);
         }
       }
     }

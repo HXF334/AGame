@@ -443,19 +443,27 @@ function canBeat(play, current) {
   }
 
   // 特殊: current 是单大A (SKILL §6.4 严格)
-  //   2张大A (DOUBLE_BIG_A) 不能管单大A
-  //   只有 4张或6张同点数的大A (BIG_TRIPLE, 全部 is主方大A) 能管
-  //   + 双王/三王/四王 (各牌型显式列表包含单大A)
-  //   其它牌型 (PAIR/TRIPLE/STRAIGHT/BIG_TRIPLE 非全大A/连珠蛋/假八/真七/真八/...) 不能压
+  //   只有 5张或6张同点数的大蛋子能管 (4张不能)
+  //   + 全局牌力 >= 「5张同点数大蛋子」的更高牌型 (双王/连珠蛋/假八/真七/真八/
+  //     三王/四王/四连珠蛋/三连假八/**双大A**) 也能管
+  //   其它牌型 (PAIR/TRIPLE/STRAIGHT/BIG_TRIPLE 非5/6张/...) 不能压
+  //
+  // [B4 修正 2026-11-03] 原来这里有一行 `if (playType === DOUBLE_BIG_A) return false;`,
+  //   注释写着「§6.4 2张大A不能管单大A」—— **SKILL 里没有这句话**, 是实现自己加的
+  //   私设规则。SKILL §6 表明写「双大A | 无敌牌型, 可压制所有牌型」, §6.3 双大A 位居
+  //   全局链最高位, §6.4 单大A 条允许「全局牌力高于或等于5张同点数大蛋子」的更高牌型
+  //   管单大A —— 双大A 属于此类。故删除该行, 交由全局顺序判定。
+  //   注: 一副牌只有 2 张同花色大A, 「手里有双大A 而桌面是单大A」在真实对局中不可达
+  //   (打出 1 张后另一张仍在自己手里, 凑不出双大A); 此处只保证引擎对任意合法
+  //   构造状态的判定与规则一致 (SKILL §14: 所有合法玩家动作由规则引擎产生和校验)。
   if (currentType === HAND_TYPES.SINGLE && current.card && current.card.is主方大A) {
-    if (playType === HAND_TYPES.DOUBLE_BIG_A) return false;
     // [修复 P1] §6.4: 只有 **5张或 6张同点数的大蛋子**能管单大A; 4张不能。
     //   且规则不要求这些蛋子是大A牌 —— 33333 也应该能管单大A。
     if (playType === HAND_TYPES.BIG_TRIPLE && play.cards) {
       return play.cards.length === 5 || play.cards.length === 6;
     }
     // 全局牌力 ≥ 「5张同点数大蛋子」 的更高牌型也能管单大A
-    // (双王 / 连珠蛋 / 假八 / 真七 / 真八 / 三王 / 四王 / 四连珠蛋 / 三连假八)
+    // (双王 / 连珠蛋 / 假八 / 真七 / 真八 / 三王 / 四王 / 四连珠蛋 / 三连假八 / 双大A)
     var pwrSB = POWER[playType];
     if (pwrSB !== undefined && pwrSB >= POWER[HAND_TYPES.BIG_TRIPLE]) return true;
     return false;
@@ -480,21 +488,15 @@ function canBeat(play, current) {
       .indexOf(currentType) !== -1;
   }
 
-  // 特殊：三王（SKILL §6.4 "可管单牌、对子、蛋子、大蛋子、龙、双龙、单大A"）
-  if (playType === HAND_TYPES.TRIPLE_JOKER) {
-    return [HAND_TYPES.SINGLE, HAND_TYPES.PAIR, HAND_TYPES.TRIPLE,
-            HAND_TYPES.BIG_TRIPLE, HAND_TYPES.STRAIGHT, HAND_TYPES.DOUBLE_STRAIGHT]
-      .indexOf(currentType) !== -1;
-  }
-
-  // 特殊：四王（SKILL §6.4 "可管...连珠蛋、假八、真七、三王"；不能管 真八/三连假八/双大A）
-  if (playType === HAND_TYPES.FOUR_JOKER) {
-    return [HAND_TYPES.SINGLE, HAND_TYPES.PAIR, HAND_TYPES.TRIPLE,
-            HAND_TYPES.BIG_TRIPLE, HAND_TYPES.STRAIGHT, HAND_TYPES.DOUBLE_STRAIGHT,
-            HAND_TYPES.STRAIGHT_TRIPLE, HAND_TYPES.FAKE_EIGHT, HAND_TYPES.TRUE_SEVEN,
-            HAND_TYPES.TRIPLE_JOKER]
-      .indexOf(currentType) !== -1;
-  }
+  // [B1 修正 2026-11-03] 三王 / 四王 原来各有一份**手写白名单**, 内容是从双王那条
+  //   抄来的, 于是「三王压不过真八/真七/假八/连珠蛋/双王」「四王压不过真八/四连珠蛋/
+  //   三连假八/双王」。
+  //   SKILL §6 表: 「三王 | 任意3张王 | 按其中大王数量区分；**遵守全局牌力顺序与特殊规则**」、
+  //   「四王 | 4张王 | 两副牌合计的4张王；**除双大A外为最强牌型**」—— 两者都按 §6.3 全局链
+  //   判定, 只有双王有 §6.4 的显式可管列表 (双龙/单大A 等特殊规则仍在上方分支处理)。
+  //   故删除这两段白名单, 交由末尾的通用 POWER 比较判定。
+  //   §6.3 全局链 (高->低): 双大A > 四王 > 三连假八 > 四连珠蛋 > 三王 > 真八 > 真七 >
+  //   假八 > 连珠蛋 > 双王 > 大蛋子 > 蛋子 > 龙 / 对子 / 单张
 
   // 特殊：current 是双龙 (SKILL §6.4 "蛋子不能压双龙；大蛋子及以上可压双龙")
   if (currentType === HAND_TYPES.DOUBLE_STRAIGHT) {

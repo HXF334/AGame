@@ -253,7 +253,10 @@ function runGateStage() {
   var r;
   switch (stage.id) {
     case 'DEAL':
-      r = transition(gameState, { type: ACTIONS.START_GAME, payload: { startPlayerIndex: 0 } });
+      // [B5 修正 2026-11-03] 原来写死 { startPlayerIndex: 0 }, 把引擎的随机发牌覆盖成了固定起点。
+      //   SKILL §2.2: 「每局随机选择发牌起始玩家」。这里**不传** startPlayerIndex,
+      //   交给 transition/dealGame 自己随机。
+      r = transition(gameState, { type: ACTIONS.START_GAME, payload: {} });
       if (r && r.ok) {
         gameState = r.state;
         log('  发牌完成');
