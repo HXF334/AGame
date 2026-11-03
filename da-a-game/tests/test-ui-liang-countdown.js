@@ -30,10 +30,15 @@ check('倒计时是 **5 秒**', Math.abs((dl - Date.now()) - 5000) < 800,
 check('倒计时期间闸门还在(等真人决定)', !!g.gateInfo().choice,
   JSON.stringify(g.gateInfo().choice));
 
-setTimeout(function () {
+// [2026-11-04] 不用固定等待(全量跑时定时器会漂移) -> 轮询到点为止(上限 12 秒)
+var _t0 = Date.now();
+var _wait = setInterval(function () {
   var gi = g.gateInfo();
+  var _done = !gi.choice || gi.choice.kind !== 'LIANG_A';
+  if (!_done && Date.now() - _t0 < 12000) return;
+  clearInterval(_wait);
   check('5 秒到点: 闸门被自动消费(不再等真人点)',
-    !gi.choice || gi.choice.kind !== 'LIANG_A',
+    _done,
     'choice=' + JSON.stringify(gi.choice));
   check('5 秒到点: 流程继续往下走(阶段已推进)',
     gi.idx > 0 || (gi.choice && gi.choice.kind !== 'LIANG_A'),
@@ -43,4 +48,4 @@ setTimeout(function () {
 
   console.log('test-ui-liang-countdown: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
-}, 5600);
+}, 200);

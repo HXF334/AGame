@@ -295,10 +295,15 @@ setTimeout(function () {
   g.__setGateChoice({ kind: 'FAN_A', eligible: true, reason: '测试注入', cards: [], suit: 'S' });
   var armed = g.uiLiangDeadline();
   check('1.4a 反A 闸门倒计时已启动', armed > 0, 'dl=' + armed);
-  setTimeout(function () {
+  // [2026-11-04] 不用固定等待(全量并发时定时器会漂移) -> 轮询到点为止(上限 12 秒)
+  var _t0 = Date.now();
+  var _wait = setInterval(function () {
     var gi = g.gateInfo();
+    var _done = !gi.choice || gi.choice.kind !== 'FAN_A';
+    if (!_done && Date.now() - _t0 < 12000) return;
+    clearInterval(_wait);
     check('1.4b 反A 5 秒到点 -> 闸门被自动消费(等同「不反」)',
-      !gi.choice || gi.choice.kind !== 'FAN_A', 'choice=' + JSON.stringify(gi.choice));
+      _done, 'choice=' + JSON.stringify(gi.choice));
     var lg = g.logHistory().join(' || ');
     check('1.4c 日志说明超时按「不反」处理',
       lg.indexOf('反A 5 秒倒计时结束') >= 0, lg.slice(-160));

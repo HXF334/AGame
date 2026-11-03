@@ -135,9 +135,12 @@ check('3.2 清掉上一手牌后按钮重新出现', stage.length > 0, 'n=' + st
 var _fs = require('fs');
 var _path = require('path');
 var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
-// [2026-11-03 用户] 「轮到AI出牌时也清掉他上一轮的出牌显示」-> 统一清 next
-check('4.1 源码: advanceCurrentPlayer 里轮到谁都会 delete uiPlays[next]',
-  /function advanceCurrentPlayer[\s\S]{0,1400}delete uiPlays\[next\]/.test(_src));
+// [2026-11-03/04 用户] 「轮到谁(真人或AI)都清掉他上一轮的出牌显示 /「不出」」
+//   -> 清理逻辑抽在 _uiClearTurnDisplay(推风路径也共用), 两处都要在。
+check('4.1 源码: _uiClearTurnDisplay 清 uiPlays/uiPassed, 且 advanceCurrentPlayer 调用它',
+  /function _uiClearTurnDisplay[\s\S]{0,400}delete uiPlays\[pid\]/.test(_src)
+  && /function _uiClearTurnDisplay[\s\S]{0,400}delete uiPassed\[pid\]/.test(_src)
+  && /function advanceCurrentPlayer[\s\S]{0,1400}_uiClearTurnDisplay\(next\)/.test(_src));
 var _usrc = _fs.readFileSync(_path.join(__dirname, '..', 'ui-render.js'), 'utf8');
 check('4.2 源码: 渲染层给真人分了出牌显示位',
   _usrc.indexOf('seatMap[st.humanPlayer] =') >= 0);

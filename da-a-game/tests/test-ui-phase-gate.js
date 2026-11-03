@@ -283,11 +283,22 @@ section('11. phase=PLAY 不变量');
       gi.humanLiangA(false);
     }
     var gr = gi.__driveGateToPlay({});
+    // [2026-11-04] 随机发牌下偶尔有闸门停在「等真人决定」-> 再解一轮
+    //   (三种真人闸门都解一遍), 免得整局卡在闸门档 -> 误报「PLAY 档没跑」。
+    for (var _retry = 0; _retry < 3 && gi.gameState().phase !== 'PLAY'; _retry++) {
+      var _g2 = gi.gateInfo();
+      if (!_g2.choice || !_g2.choice.eligible) break;
+      if (_g2.choice.kind === 'LIANG_A') gi.humanLiangA(false);
+      else if (_g2.choice.kind === 'FAN_A') gi.humanFanA(false);
+      else if (_g2.choice.kind === 'IDENTITY') gi.humanChooseIdentity(false);
+      gr = gi.__driveGateToPlay({});
+    }
     if (gi.gameState().phase === 'PLAY' && !gi.currentPlayer()) {
       bad.push('iter' + it + ' phase=PLAY 但 currentPlayer=null');
     }
     if (gi.logHistory().join('').indexOf('首出权') < 0) {
-      bad.push('iter' + it + ' 缺「首出权」日志(PLAY 档没跑)');
+      bad.push('iter' + it + ' 缺「首出权」日志(PLAY 档没跑 phase=' + gi.gameState().phase
+        + ' steps=' + JSON.stringify(gr.steps) + ')');
     }
   }
   check('11.1 多局均满足 phase=PLAY ⟹ currentPlayer 非 null', bad.length === 0,

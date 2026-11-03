@@ -1608,6 +1608,12 @@ function doPushWind() {
     //   拿着**过期**的 currentPlayer 行动, 推风目标被丢弃。
     //   doPlay/doPass 不受影响: 它们走 advanceCurrentPlayer() 自行维护。
     if (r.state.currentPlayer) currentPlayer = r.state.currentPlayer;
+    // [2026-11-04 用户] 推风把回合交给谁 -> 谁就清掉上一轮留下的出牌显示 /「不出」标记
+    //   (推风不走 advanceCurrentPlayer -> 真人自己的「不出」留着 -> 按钮被藏起来, 只剩闹钟)
+    if (currentPlayer) {
+      _uiClearTurnDisplay(currentPlayer);
+      uiTurnTick();
+    }
     // [P1 修复] 推风成功后必须清空 lastEmptiedPlayer。
     //   引擎已把 推风触发者 置为 null, 但本模块的 lastEmptiedPlayer 会一直留着旧值,
     //   导致三处错误:
@@ -1761,6 +1767,22 @@ function runAI() {
   }
 }
 
+// [2026-11-04 用户] 轮到某人时 -> 清掉他上一轮留下的出牌显示 / 「不出」标记。
+//   推风**不走** advanceCurrentPlayer, 所以单独抽出来给两条路径共用:
+//   真人自己的「不出」标记留着的话, 渲染层的「按钮让位」逻辑会把
+//   【出牌/不出/提示】藏起来(画面上只剩闹钟) —— 用户 2026-11-04 实测报障。
+function _uiClearTurnDisplay(pid) {
+  delete uiPlays[pid];
+  delete uiPlaysTrick[pid];
+  delete uiPassed[pid];
+  if (pid === humanPlayer) {
+    uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
+    uiAiWaitDeadline = 0;   // 真人回合 -> AI 的等待闹钟必须熄(否则残留的截止时间会继续倒数)
+  } else {
+    uiAiTurnAt = Date.now();   // AI 变成当前玩家 -> 开始算它的等待(闹钟)
+  }
+}
+
 // === 推进到下一玩家 ===
 function advanceCurrentPlayer() {
   if (!gameState || !gameState.players) return;
@@ -1784,15 +1806,7 @@ function advanceCurrentPlayer() {
       // [2026-11-03 用户] 「轮到AI玩家出牌时, 闹钟显示的时候要把他上一轮出的牌或者不出文字清掉」
       //   -> 轮到谁就清掉他上一轮留下的出牌显示 / 「不出」标记:
       //      真人回合 -> 按钮位让出来(旧行为); AI 回合 -> 座位前方的闹钟不跟旧牌/「不出」打架。
-      delete uiPlays[next];
-      delete uiPlaysTrick[next];
-      delete uiPassed[next];
-      if (next === humanPlayer) {
-        uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
-        uiAiWaitDeadline = 0;   // 真人回合 -> AI 的等待闹钟必须熄(否则残留的截止时间会继续倒数)
-      } else {
-        uiAiTurnAt = Date.now();   // AI 变成当前玩家 -> 开始算它的等待(闹钟)
-      }
+      _uiClearTurnDisplay(next);
       // [2026-11-03 用户] 别人出牌时真人**可以提前选牌**(只是不能打出)
       //   -> 换手时**不能**无条件清空选中: 只有「刚才是真人在行动」才清
       //      (真人出牌/过牌时清; AI 行动时保留真人的预选)。

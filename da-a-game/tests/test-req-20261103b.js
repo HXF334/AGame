@@ -274,6 +274,34 @@ section('8. 选牌不自动落下');
   check('8.2 再点 7 -> 组成 66667777(不把 6666 落下)', ranksOfSel() === '6,6,6,6,7,7,7,7', ranksOfSel());
 }
 
+// ============================================================
+// 9. 推风把回合交回真人 -> 按钮必须出现(不能只剩闹钟)
+// ============================================================
+section('9. 推风后真人回合的按钮');
+{
+  var st = g.gameState();
+  st.phase = 'PLAY';
+  var ids = ['A', 'B', 'C', 'D', 'E'];
+  st.players.forEach(function (p, i) {
+    p.id = ids[i];
+    p.hand = (i === 1) ? [] : [C('S', 9, 'x' + i), C('H', 10, 'y' + i)];   // 乙(B) 已出完
+  });
+  st['主A'] = { suit: 'D', establishedBy: 'A', viaMethod: 'LIANG_A' };
+  st['反A'] = null; st['次方'] = null; st['次方公开'] = true; st['底牌公开'] = true;
+  st['主方'] = ['A', 'B']; st['抓方'] = ['C', 'D', 'E'];   // 甲(A) 与 乙(B) 同阵营
+  st.table = []; st.discarded = []; st.passedPlayers = []; st.lastPlayer = null;
+  st['推风触发者'] = 'B';
+  g.__setState(st, { currentPlayer: 'C', human: 'A', clearLog: true });
+  // 真人上一轮说了「不出」
+  g.uiPassed()['A'] = true;
+  g.doPushWind();
+  g.draw();
+  check('9.1 推风把回合交给真人', g.currentPlayer() === 'A', 'cur=' + g.currentPlayer());
+  check('9.2 推风后真人的「不出」标记被清掉', !g.uiPassed()['A'], JSON.stringify(g.uiPassed()));
+  check('9.3 推风后真人回合 -> 按钮出现(不是只剩闹钟)', g.btnStage().length > 0,
+    'n=' + g.btnStage().length);
+}
+
 console.log('\ntest-req-20261103b: ' + passed + ' passed, ' + failed + ' failed');
 if (failures.length) {
   console.log('Failed tests:');
