@@ -126,7 +126,7 @@ check('project.config.json 可解析', !!cfg, cfgErr);
 if (cfg) {
   var ignored = (cfg.packOptions && cfg.packOptions.ignore || []).map(function (x) { return x.value; });
   // 项目里存在的**不该进包**的目录
-  var SHOULD = ['scripts', 'tests', 'docs', 'skills'];
+  var SHOULD = ['scripts', 'tests', 'docs', 'skills', 'tools'];
   var missing = SHOULD.filter(function (d) {
     return fs.existsSync(path.join(ROOT, d)) && ignored.indexOf(d) < 0;
   });
@@ -134,6 +134,31 @@ if (cfg) {
     missing.length ? '缺: ' + missing.join(', ') : '已排除: ' + ignored.join(', '));
   check('minigameRoot 存在', fs.existsSync(path.join(ROOT, cfg.minigameRoot || './')),
     'minigameRoot=' + cfg.minigameRoot);
+
+  // [2026-11-03 新增] **会不会进包** 实检。
+  //   微信打包器只认 minigameRoot 下的文件 —— 任何**漏网 .js** 都会被塞进小游戏包。
+  //   历史血案: scripts/*.js 头带 `#!/usr/bin/env node` -> `#` 是 JS 语法错误
+  //   -> 同样 WAGame.js:1 SyntaxError。packOptions.ignore 是**黑名单**,
+  //   新增目录忘了加就会漏网, 所以这里做**白名单反查**: 除 src/ 与两个已知游戏文件外,
+  //   任何 .js 都不该出现在包里。
+  var KNOWN_GAME_JS = ['game.js', 'ui-render.js'];
+  var strayJs = [];
+  (function walk(dir, rel) {
+    fs.readdirSync(dir).forEach(function (n) {
+      var full = path.join(dir, n);
+      var st = fs.statSync(full);
+      var r = rel ? rel + '/' + n : n;
+      if (st.isDirectory()) { walk(full, r); return; }
+      if (!/\.js$/.test(n)) return;
+      var top = r.split('/')[0];
+      if (ignored.indexOf(top) >= 0) return;          // 黑名单目录 -> 不进包
+      if (r.indexOf('src/') === 0) return;              // 规则引擎 -> 要进包
+      if (KNOWN_GAME_JS.indexOf(r) >= 0) return;         // game.js / ui-render.js
+      strayJs.push(r);
+    });
+  })(ROOT, '');
+  check('没有陌生 .js 会被打进小游戏包', strayJs.length === 0,
+    strayJs.length ? '会进包: ' + strayJs.join(', ') : '仅 game.js / ui-render.js / src/*');
 }
 
 // ---------------------------------------------------------------- 7. 配置 JSON
@@ -146,13 +171,32 @@ section('7. 其它配置文件');
   check(f + ' 可解析', ok, msg);
 });
 
-// ---------------------------------------------------------------- 8. Skill 镜像
-section('8. Skill 镜像一致（仓库=唯一来源, Workshop=生成镜像）');
+// ---------------------------------------------------------------- 8. Skill 白名单覆盖
+// [2026-11-03 改] 原来是「sync-skills --check」——比对仓库 skills 与 **work agent 的
+//   Workshop 镜像**。work agent 已被本项目取代, 镜像不再保留 -> 这项检查恒红,
+//   是在检查一个**对当前 agent 毫无影响**的目录, 属噪音。
+//   换成真正会咬人的那条: 仓库里放了 skill, 但**没加进 agent 白名单** ->
+//   agent 看不见它(显式白名单会**替换**默认并过滤掉其余 skill)。
+//   这才是「加了 skill 却用不上」的根因, 也是本项目实际踩过的坑。
+section('8. Skill 白名单覆盖（仓库 skills 必须都在 agent 白名单里）');
 try {
-  var r = cp.execSync('node "' + path.join(ROOT, 'scripts/sync-skills.js') + '" --check', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  check('sync-skills --check', true, String(r).trim().split('\n').pop());
+  var cfgPath = path.join(require('os').homedir(), '.openclaw', 'openclaw.json');
+  var ocCfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  var agentEntry = (ocCfg.agents && ocCfg.agents.entries && ocCfg.agents.entries['dada-dev']) || {};
+  var allow = agentEntry.skills || [];
+  var skillsDir = path.join(ROOT, 'skills');
+  var repoSkills = fs.existsSync(skillsDir)
+    ? fs.readdirSync(skillsDir).filter(function (d) {
+        return fs.existsSync(path.join(skillsDir, d, 'SKILL.md'));
+      })
+    : [];
+  var missing = repoSkills.filter(function (s) { return allow.indexOf(s) < 0; });
+  check('仓库 skills 都在 dada-dev 白名单里', missing.length === 0,
+    missing.length
+      ? '未加白名单(agent 看不见): ' + missing.join(', ')
+      : repoSkills.length + ' 份全部已加白名单');
 } catch (e) {
-  check('sync-skills --check', false, '镜像与仓库不一致, 跑 node scripts/sync-skills.js');
+  check('仓库 skills 都在 dada-dev 白名单里', false, '读 openclaw.json 失败: ' + e.message);
 }
 
 // ---------------------------------------------------------------- 9. 全量测试

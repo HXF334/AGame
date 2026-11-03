@@ -50,6 +50,10 @@
       {
         "type": "folder",
         "value": "skills"
+      },
+      {
+        "type": "folder",
+        "value": "tools"
       }
     ],
     "include": []

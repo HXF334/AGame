@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-03 12:20 (Asia/Shanghai) · Git HEAD `5cf91fd`（工作区 `main`，领先 `origin/main` 2 个提交，**未 push**）
+> 最后更新：2026-11-03 13:50 (Asia/Shanghai) · Git HEAD 见 `git log -1`
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
 ---
@@ -31,10 +31,10 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / deal.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 69 个 test-*.js 套件 + mock-wx.js + lib/state-builder.js
+│  ├─ tests/                   ← 70 个 test-*.js 套件 + mock-wx.js + lib/state-builder.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js / sync-skills.js / import-skills.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
-│  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js
+│  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
 │  ├─ docs/                    ← 交接文档（不进包）
 │  ├─ game.json  project.config.json
 ├─ tools/                      ← wechat-cli.ps1（微信开发者工具 CLI 的 PowerShell 包装）
@@ -64,18 +64,19 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
 
 ```bash
 cd AGame/da-a-game
-node tests/_runall.js          # 全量：69 套件 / 69 次执行 / 失败 0 次（约 90 秒）
+node tests/_runall.js          # 全量：70 套件 / 70 次执行 / 失败 0 次（约 90 秒）
 node tests/test-xxx.js         # 单套件
 node tests/_runall.js 10 20    # 只跑第 10~20 个
 ```
 
-2026-11-03 实测：`套件 69 个, 范围 1-69, 共执行 69 次; 失败 0 次`，退出码 0。
+2026-11-03 实测：`套件 70 个, 范围 1-70, 共执行 70 次; 失败 0 次`，退出码 0。
 
 **测试纪律**：
 - 必须用**确定局面**（指定手牌 + 固定 human）。无头测试里 AI 会同步抢跑（`AI_STEP_DELAY=0`），随机局面必然 flaky。
 - 无头测试用 `tests/mock-wx.js`（AI 延迟 0ms）；真机 / 开发者工具模拟器是 1000ms。
 - 每个修复配**变异测试**：退回旧实现 → 断言必须**精确失败**（不是全挂）→ 再恢复。
 - 变异测试期间**不要并行跑回归**——临时回退的源码会被并行进程读到，报出看似真实的失败。
+- **临时探针脚本**：子进程必须显式 `process.exit(0)`（被测模块留有定时器，不退出会让同步等待无限挂起）；同步 spawn 必须带 `timeout`；第一条断言要是"已知为真的基线"；跑完立刻删。
 
 ### 闸门
 
@@ -85,11 +86,13 @@ node scripts/preflight.js --fast   # 跳过全量测试
 node scripts/commit-gate.js MSG.txt  # 体检通过才放行 git add + commit
 ```
 
-preflight 检查项：shebang（打进包的 .js 不能有）、UTF-8 BOM、行尾（必须 LF）、非标准字符（U+2028/9、孤立代理对）、`node --check` 全量语法、打包配置 `packOptions.ignore`、`game.json` 可解析、skill 镜像一致、全量测试。
+preflight 检查项：shebang（打进包的 .js 不能有）、UTF-8 BOM、行尾（必须 LF）、非标准字符（U+2028/9、孤立代理对）、`node --check` 全量语法、打包配置 `packOptions.ignore`、**陌生 .js 会不会进包**、`game.json` 可解析、**仓库 skills 是否都在 agent 白名单里**、全量测试。
 
-**当前状态：11/12 通过。** 唯一失败项是第 8 项 `sync-skills --check`（镜像与仓库不一致）——这是**既有偏差，非本次改动引入**：`scripts/sync-skills.js` 的镜像目标写死在 `~/.openclaw/agents/work/agent/workshop-skills`（旧 work agent 的目录），而仓库在 `7f58612` 重写过 skill 却没重跑同步。两份的 frontmatter description 就不一样（镜像多一句"以及1真人对4个AI的第一版开发"）。
+**当前状态：12/12 通过。**
 
-对当前 agent **无影响**：dada-dev 的 skill 走 `skills.load.extraDirs`（直接读仓库目录），根本不用那个镜像。跑 `node scripts/sync-skills.js` 会写进旧 agent 的目录，未经用户同意不要跑。
+两个关键检查项说明：
+- **陌生 .js 会不会进包**（第 6 项内）：`packOptions.ignore` 是**黑名单**，新增目录忘了加就会漏网进包。改成**白名单反查**：除 `src/` 与 `game.js`/`ui-render.js` 外，任何 `.js` 都不该在包里。
+- **skills 白名单覆盖**（第 8 项）：仓库放了 skill 但**没加进 `agents.entries.dada-dev.skills`** → agent 看不见（显式白名单会**替换**默认并过滤其余）。这才是"加了 skill 却用不上"的根因。原先这项检查的是 `sync-skills --check`（比对 work agent 的 Workshop 镜像）——那个镜像已删除，检查项已换掉。
 
 ---
 
@@ -123,7 +126,7 @@ preflight 检查项：shebang（打进包的 .js 不能有）、UTF-8 BOM、行�
 1. `skills.load.extraDirs` 指向 `AGame\da-a-game\skills` —— 仓库文件被**发现**。
 2. `agents.entries.dada-dev.skills` —— 显式白名单（当前 5 份），**替换**默认并过滤掉其余 skill。仓库里加了文件但没加白名单 = agent 看不见。
 
-改 `agents.*` 属 `agents` 前缀 → **Gateway 重启才生效**。本项目**不走 Workshop 镜像**（那是旧 work agent 的机制）。
+改 `agents.*` 属 `agents` 前缀 → **Gateway 重启才生效**。本项目**不走 Workshop 镜像**（work agent 的镜像已于 2026-11-03 删除，仓库是唯一来源）。
 
 改配置用文件传参，别把 JSON 塞进命令行：
 
@@ -137,8 +140,6 @@ openclaw config set --batch-file .tmp-config-batch.json
 ## 6. Git 状态与工作流
 
 - 仓库根是 `AGame/`（`AGame\.git`）。**Git 只向父目录找 `.git`**，所以在 `AGame` 或 `AGame\da-a-game` 里执行 `git status` 都能找到；**在工作区根 `workspace-dada-dev` 执行会报 `not a git repository`** —— 那不是坏了，是那里确实不是仓库。
-- 当前 HEAD `5cf91fd`（修 B1-B5 引擎偏差 + 新增对账回归），`origin/main` = `7f58612`，**本地领先 2 个提交，未 push**。tag：v0.9.0 / v0.10.0 / v0.11.0。
-- 最近功能提交：`8e868d1` 修 3 条用户反馈（假八提示 / AI 出牌停顿 / 真人出牌显示），对应版本 v0.34.0。
 - 提交信息**走文件**（`git commit -F`），提交后核对 `git log --oneline -1`——`git commit -m` 会自掩失败（提交失败后紧跟 `git push` 仍输出 `Everything up-to-date`，读起来像成功）。
 - git 进度写 stderr，PowerShell 会包成 `NativeCommandError` → **判成败看退出码，不看错误文本**。
 
@@ -160,7 +161,9 @@ openclaw config set --batch-file .tmp-config-batch.json
 它们把 **§6.4 给「双王」的限制**（不能管连珠蛋/假八/真七/真八/三王/四王/双大A）**误套到三王/四王头上**，还断言「双大A 不能管单大A」（SKILL 里没这句）。
 按 `dada-a-game-impl` §1 决策表第三行「**测试锁的是 bug → 改测试**，并注释写明原值错在哪」处理，每条都补了修正理由。
 
-**新增 `tests/test-rules-alignment.js`**（28 条断言）把这 5 处锁死。变异验证：退回 HEAD 旧实现 → **14 条精确失败**（不该红的 B1.6 / B1.11-B1.15 / B2.1 / B3.1 / B3.3 / B4.2-B4.5 / B5.1 仍绿）→ 恢复后全绿。
+**新增两个回归文件**：
+- `tests/test-rules-alignment.js`（28 条断言）锁死 B1-B5。变异验证：退回 HEAD 旧实现 → **14 条精确失败**（不该红的 B1.6 / B1.11-B1.15 / B2.1 / B3.1 / B3.3 / B4.2-B4.5 / B5.1 仍绿）→ 恢复后全绿。
+- `tests/test-handtype-enum-reach.js`（20 条断言）逐个牌型断言**枚举层可达性**——防止再出现"识别层认得出、枚举层枚举不出"（历史上出过 4 次：10-27 / 11-02 / 11-03 两次）。
 
 > B4 的现实可达性：一副牌只有 2 张同花色大A，「手里有双大A 而桌面是单大A」在真实对局中不可达（打出 1 张后另一张仍在自己手里）。修正只保证引擎对任意合法构造状态的判定与规则一致（SKILL §14）。
 
@@ -171,7 +174,7 @@ openclaw config set --batch-file .tmp-config-batch.json
 ### 7.3 其它
 
 1. **第 3 条用户反馈（真人出牌居中显示 / 轮到自己时上一手牌是否还在）** —— 无头测试只能证明、不能目视，需在**微信开发者工具模拟器**人工确认。
-2. **preflight 第 8 项长期红**（见 §3），成因已定位，等用户决定是否处理旧 agent 镜像。
+2. **识别层比 SKILL 宽**（待用户裁定）：§6.1 只点名「A 作低端的 A23」，但 `isValidStraight` 也接受 A,2,3,4 这类更长形式。枚举层已按 §6.1 环形顺序覆盖；识别层的这个宽松口径要不要收窄，属规则层改动。
 3. **基础库 2.19.4**，文档里早期版本曾写 3.17.5——以 `project.config.json` 为准。
 4. `skills/windows-cn-batch-encoding/SKILL.md` 末尾原引用 `git-safe-workflow §4`（该 skill 已删），**2026-11-03 已改指 `AGENTS.md` 开发纪律第 4 条**，悬空引用消除。
 
@@ -184,3 +187,4 @@ openclaw config set --batch-file .tmp-config-batch.json
 - 它自己的 `AGame/` 克隆停在 `8268ce6`，比本仓库旧。
 - 它的 `MEMORY.md` / `memory/*.md` / `docs/` 里有大量踩坑结论（枚举、渲染、测试纪律等）。
 - **不迁移、不删除、不擅自取用**。命中同类问题可以去那里查答案；要把内容带回本项目，**必须先向用户确认**，只取精华。
+- 上一代 agent 的 Workshop 镜像副本（8 份 GENERATED-BY 生成的同步镜像）已于 2026-11-03 删除——仓库是唯一来源，镜像只会造成漂移。
