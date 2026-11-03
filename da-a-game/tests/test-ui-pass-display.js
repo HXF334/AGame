@@ -66,6 +66,7 @@ var playsAfterA = g.uiPlays() || {};
 check('A 出牌后 uiPlays 里有 A 的记录', !!(playsAfterA.A && playsAfterA.A.length),
   JSON.stringify(Object.keys(g.uiPlays() || {})));
 var trick0 = g.uiTrickId();
+var tkAfterA = JSON.parse(JSON.stringify(g.uiPlaysTrick() || {}));   // A 出牌当下的轮次标记(要拷贝: 返回的是活对象, 轮到他时会被清掉)
 
 // ===== B/C/D/E 连续过牌(期间没人出牌) =====
 // [2026-11-03] 轮回到真人时 game.js 会**清掉真人的「不出」**(轮到自己 = 重新出牌),
@@ -99,7 +100,7 @@ check('渲染里出现 4 个「不出」(4 个玩家)', n >= 4, 'count=' + n);
 
 // 本轮出过牌(A) -> 他不该显示「不出」; 过牌的 B/C/D/E -> 该显示
 var tk = g.uiPlaysTrick() || {};
-check('轮次跟踪可用', tk.A !== undefined, JSON.stringify(tk));
+check('轮次跟踪可用', tkAfterA.A !== undefined, JSON.stringify(tkAfterA));
 
 // ===== 过牌后: **过牌的人**上一轮留下的出牌显示要清掉(不然会挡住他的「不出」文字) =====
 // 注意: **没过牌的人**(比如出了牌但这轮没轮到的)他的牌**应该留在桌面上** ——
@@ -113,8 +114,10 @@ var _bad = _passedIds.filter(function (pid) {
 check('过牌的人: 上一轮留下的出牌显示已清掉',
   _bad.length === 0, 'bad=' + JSON.stringify(_bad) + ' passed=' + JSON.stringify(_passedIds) +
   ' uiPlays=' + JSON.stringify(Object.keys(psA)));
-check('没过牌的人: 打出的牌仍然留在桌面上',
-  !!(psA.A && psA.A.length), 'uiPlays=' + JSON.stringify(Object.keys(psA)));
+// [2026-11-03 用户] 「轮到AI玩家出牌时, 闹钟显示的时候要把他上一轮出的牌或者不出文字清掉」
+//   -> 轮到谁就清掉他上一轮留下的出牌显示(轮末回到 A 时清)。
+check('轮到谁 -> 上一手牌的显示被清掉(闹钟不跟旧牌打架)',
+  !(psA.A && psA.A.length), 'uiPlays=' + JSON.stringify(Object.keys(psA)));
 
 // ===== 源码级守卫: **AI 过牌路径**(applyAction)必须置位 uiPassed =====
 // 背景: v0.27.0 只改了 doPlay(真人出牌), 漏了 applyAction(AI 出牌)那条路径 ->

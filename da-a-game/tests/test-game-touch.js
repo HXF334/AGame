@@ -180,8 +180,11 @@ section('3. 选择、取消与多选');
   scenario(cards5);
   boxes = hbs();
   for (var k = 0; k < 3; k++) tapBox(boxes[k]);
-  check('3.4 可多选 3 张', sel().length === 3, JSON.stringify(sel()));
-  check('3.5 选中项互不重复', new Set(sel()).size === 3, JSON.stringify(sel()));
+  // [2026-11-03 用户] 「能组成有效牌型就不自动落下牌」-> 点过的牌**都会留在**选中里,
+  //   还可能自动补成更大的牌型(所以是 >= 3, 不是 === 3)。
+  check('3.4 可多选 3 张(点过的都在选中里)', sel().length >= 3 &&
+    [0, 1, 2].every(function (k) { return sel().indexOf(boxes[k].cardId) >= 0; }), JSON.stringify(sel()));
+  check('3.5 选中项互不重复', new Set(sel()).size === sel().length, JSON.stringify(sel()));
 }
 
 // ================= 4. 完整链路: 点击 -> doPlay 打出正确的牌 =================

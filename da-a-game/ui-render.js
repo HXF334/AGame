@@ -460,6 +460,11 @@ function drawSeatPlays(ctx, st, m, seatMap) {
   Object.keys(plays).forEach(function (pid) {
     var cards = plays[pid];
     if (!cards || !cards.length) return;
+    // [2026-11-03 用户] 「打出去的手牌要从左往右按由小到大排序」
+    var _isAce2 = st.isMainAce || function () { return false; };
+    cards = cards.slice().sort(function (a, b) {
+      return cardPower(a, _isAce2(a)) - cardPower(b, _isAce2(b));
+    });
     var slot = seatMap[pid];
     if (!slot) return;
     var cardH = Math.round(m.vh * 0.115);
@@ -530,7 +535,12 @@ function drawHand(ctx, st, m) {
     var isSel = st.selectedCards.indexOf(card.id) >= 0;
     var x = L2.x0 + i * L2.step;
     drawCard(ctx, card, x, L2.y - (isSel ? L2.lift : 0), L2.cardW, L2.cardH, isSel, st, L2.step);
-    if (showHit) boxes.push({ x: x, y: L2.y, w: L2.step, h: L2.cardH, cardId: card.id });
+    // [2026-11-03 用户] 「手牌区最右侧的手牌右侧点击无法选中这张牌」
+    //   -> 右边那张**整张露出**(后面没有底牌牌背压着)时, 命中区要盖住整张牌,
+    //      否则牌面右边一条点不到。有底牌时它被牌背压住, 仍用 step 宽(= 露出来的那一条)。
+    //   注: 命中区的 w 保持 step(契约: 等宽/居中/首尾相接), 额外用 fullW 记整张宽度。
+    var _full = (i === n - 1 && !bottom) ? L2.cardW : 0;
+    if (showHit) boxes.push({ x: x, y: L2.y, w: L2.step, h: L2.cardH, cardId: card.id, fullW: _full });
   }
   if (bottom) {
     drawCardBack(ctx, L2.x0 + n * L2.step, L2.y, L2.cardW, L2.cardH);
@@ -749,11 +759,8 @@ function drawTurnInfo(ctx, st, m, seatMap) {
   text(ctx, String(sec), c.x, c.y,
        isLiang ? Math.max(22, Math.round(m.vh * 0.076)) : Math.max(12, Math.round(m.vh * 0.046)),
        sec <= 5 ? '#c8102e' : '#5e2417', 'center', true);
-  if (isLiang) {
-    var _gl = st.turnGateLabel || '秒后自动跳过亮A';
-    text(ctx, _gl, c.x, c.y + r * 1.55,
-      Math.max(11, Math.round(m.vh * 0.036)), '#ffd98a', 'center', true);
-  }
+  // [2026-11-03 用户] 「出牌前亮A等倒计时的提示文字不要」
+  //   -> 闸门倒计时**只画表盘和秒数**, 下面那行说明文字去掉。
 }
 
 // ===== 按钮 =====
@@ -805,8 +812,12 @@ function drawToast(ctx, st, m) {
   var fs = Math.max(11, Math.round(m.vh * 0.036));
   var tw = (typeof ctx.measureText === 'function') ? ctx.measureText(t.text).width + fs * 2 : 180;
   // [2026-10-27 用户] 提示条原来贴在**顶栏下面**, 太靠上 -> 改成**屏幕正中**
+  // [2026-11-03 用户] 「提示文字移到手牌上方一点, 不要压住其他东西」
+  //   -> 改贴**手牌区上沿的正上方**(按钮行下方 / 手牌上方):
+  //      不再压屏幕正中那一块(那里有轮次提示/阶段提示), 也不压按钮行。
   var th = Math.round(m.vh * 0.072);
-  var tx = m.vw / 2 - tw / 2, ty = Math.round((m.vh - th) / 2);
+  var tgap = Math.round(m.vh * 0.015);
+  var tx = m.vw / 2 - tw / 2, ty = Math.round(m.hand.y - th - tgap);
   ctx.fillStyle = 'rgba(0,0,0,0.82)';
   rr(ctx, tx, ty, tw, th, 6); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 1.5;

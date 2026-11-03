@@ -135,8 +135,9 @@ check('3.2 清掉上一手牌后按钮重新出现', stage.length > 0, 'n=' + st
 var _fs = require('fs');
 var _path = require('path');
 var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
-check('4.1 源码: advanceCurrentPlayer 里轮到真人会 delete uiPlays[humanPlayer]',
-  /function advanceCurrentPlayer[\s\S]{0,900}delete uiPlays\[humanPlayer\]/.test(_src));
+// [2026-11-03 用户] 「轮到AI出牌时也清掉他上一轮的出牌显示」-> 统一清 next
+check('4.1 源码: advanceCurrentPlayer 里轮到谁都会 delete uiPlays[next]',
+  /function advanceCurrentPlayer[\s\S]{0,1400}delete uiPlays\[next\]/.test(_src));
 var _usrc = _fs.readFileSync(_path.join(__dirname, '..', 'ui-render.js'), 'utf8');
 check('4.2 源码: 渲染层给真人分了出牌显示位',
   _usrc.indexOf('seatMap[st.humanPlayer] =') >= 0);

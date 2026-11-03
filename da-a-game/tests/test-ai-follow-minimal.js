@@ -166,8 +166,21 @@ section('3. 首出 — 保持张数多者优先 (不可退化)');
       return handOf(st, 'D').filter(function (c) { return c.id === id; })[0];
     }).filter(Boolean);
     console.log('   [\u4fe1\u606f] \u9996\u51fa\u5b9e\u9645\u51fa\u724c ' + played.length + ' \u5f20');
-    check('3.2 首出不只出 1 张 (覆盖度不退化)', played.length >= 3, 'n=' + played.length);
+    // [2026-11-03 用户新规] 起手按「最小牌能组成什么就出什么」:
+    //   最小牌 7 单独成牌 -> 首出可以只有 1 张(蛋子留着整组出)
+    check('3.2 首出是合法牌型(可以只有 1 张)', played.length >= 1, 'n=' + played.length);
   }
+}
+
+{
+  // 最小牌能组连张 -> 首出就是连张(不是永远单张)
+  var handE = [C('S', 5), C('H', 6), C('D', 7)];
+  var st2 = mkState({ D: handE }, []);
+  var act2 = chooseAction(st2, 'D');
+  var played2 = (act2.cardIds || []).map(function (id) {
+    return handOf(st2, 'D').filter(function (c) { return c.id === id; })[0];
+  }).filter(Boolean);
+  check('3.3 最小牌能组连张 -> 首出连张(>=3 张)', played2.length >= 3, 'n=' + played2.length);
 }
 
 // ================= 4. 无可压制时必须过牌 =================

@@ -49,8 +49,10 @@ section('1. 起手可打连张 (解除结构性死锁)');
   var st = mk(hand);
   var act = chooseAction(st, 'A');
   var t = typeOf(act, hand);
-  check('1.1 空桌 + 手上有7-8-9连张 -> 起手出连张',
-    t === HAND_TYPES.STRAIGHT, 'got=' + t + ' [' + (act.cardIds || []).length + '张]');
+  // [2026-11-03 用户新规] 起手看**最小的那张(锚点)**能组成什么:
+  //   5 旁边没有 6 -> 组不成任何牌型 -> 起手出单张 5, 7-8-9 连张留着。
+  check('1.1 空桌 + 最小牌 5 组不成牌型 -> 起手出单张 5(连张留着)',
+    t === HAND_TYPES.SINGLE, 'got=' + t + ' [' + (act.cardIds || []).length + '张]');
   var r = transition(st, { type: ACTIONS.PLAY, payload: { playerId: 'A', cardIds: act.cardIds } });
   check('1.2 该起手连张经引擎确认合法', r.ok === true, r.ok ? '' : r.error.message);
 }
@@ -84,7 +86,14 @@ section('2. 起手保护大牌');
   var st = mk(hand);
   var act = chooseAction(st, 'A');
   var t = typeOf(act, hand);
-  check('2.1 含 3 的连张不起手 (保护大牌)', t === HAND_TYPES.SINGLE, 'got=' + t);
+  // [2026-11-03 用户新规] 保护大牌: 起手出的牌**不含** 2/3/A/王/大A
+  //   (这手会出 4-5-6 连张, 但 3 不在里面)
+  var _c21 = (act.cardIds || []).map(function (id) {
+    return hand.filter(function (c) { return c.id === id; })[0];
+  }).filter(Boolean);
+  check('2.1 起手不含 3(保护大牌)',
+    _c21.length > 0 && _c21.every(function (c) { return c.rank !== 3; }),
+    'ranks=' + _c21.map(function (c) { return c.rank; }).join(','));
 }
 
 {
@@ -102,7 +111,9 @@ section('2. 起手保护大牌');
   var st = mk(hand);
   var act = chooseAction(st, 'A');
   var t = typeOf(act, hand);
-  check('2.3 廉价三张6 得起手', t === HAND_TYPES.TRIPLE, 'got=' + t);
+  // [2026-11-03 用户新规] 蛋子及以上在阶梯里**最后**:
+  //   最小牌 8 组不成牌型 -> 起手出单张 8, 三张6 留着整组出。
+  check('2.3 最小牌组不成牌型 -> 起手出单张(蛋子留着整组)', t === HAND_TYPES.SINGLE, 'got=' + t);
 }
 
 // ================= 3. 不用 4 起手 (留给取牌 §7) =================

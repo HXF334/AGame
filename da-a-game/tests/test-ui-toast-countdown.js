@@ -80,12 +80,14 @@ check('2.2 日志有「请先选牌」', lg.indexOf('请先选牌') >= 0, lg.sli
 check('2.3 提示条真的画在画面上', g.__renderTexts().indexOf('请先选牌') >= 0);
 
 // ===== 1) 提示条在**屏幕中间**(原来贴在顶栏下面) =====
+// [2026-11-03 用户] 「提示文字移到手牌上方一点, 不要压住其他东西」
+var _lay = uiRender.layout(844, 390);
 var toastPos = renderItems(baseState({
   toast: { text: '请先选牌', until: Date.now() + 5000 }
 })).filter(function (i) { return i.t === '请先选牌'; })[0];
-check('1.1 提示条在**屏幕中间**(不再贴顶栏)',
-  !!toastPos && Math.abs(toastPos.y - 195) < 40,
-  'y=' + (toastPos ? toastPos.y.toFixed(1) : '(没画)') + ' 屏幕中=195');
+check('1.1 提示条在手牌区**上方**(不压按钮行/屏幕正中)',
+  !!toastPos && toastPos.y > _lay.btn.y + _lay.btn.h && toastPos.y < _lay.hand.y,
+  'y=' + (toastPos ? toastPos.y.toFixed(1) : '(没画)') + ' 按钮底=' + (_lay.btn.y + _lay.btn.h).toFixed(1) + ' 手牌顶=' + _lay.hand.y.toFixed(1));
 
 // ===== 3) 亮A 的 5 秒倒计时要**看得见** =====
 var aS = C('S', 14, 's1');
@@ -94,8 +96,9 @@ g.__setGateChoice({ kind: 'LIANG_A', eligible: true, reason: '测试注入', car
 var items2 = renderItems(baseState({
   turnDeadline: g.uiLiangDeadline(), turnTotal: 5000, turnIsLiang: true
 }));
-var label = items2.filter(function (i) { return i.t.indexOf('自动跳过亮A') >= 0; })[0];
-check('3.1 亮A 倒计时有**说明文字**(秒后自动跳过亮A)', !!label,
+// [2026-11-03 用户] 「出牌前亮A等倒计时的提示文字不要」-> 只画表盘和秒数
+check('3.1 亮A 倒计时**没有**说明文字',
+  !items2.some(function (i) { return i.t.indexOf('自动跳过亮A') >= 0; }),
   JSON.stringify(items2.map(function (i) { return i.t; })).slice(0, 200));
 var secItem = items2.filter(function (i) { return /^[0-9]$/.test(i.t); })[0];
 check('3.2 亮A 倒计时的**秒数画出来了**', !!secItem,

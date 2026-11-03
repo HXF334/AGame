@@ -82,8 +82,9 @@ var dlFan = g.uiLiangDeadline();
 check('1.1 反A 闸门起 5 秒倒计时',
   dlFan > 0 && Math.abs((dlFan - Date.now()) - 5000) < 800, 'dl=' + dlFan);
 var fanTexts = g.__renderTexts();
-check('1.2 反A 倒计时写明后果(秒后自动不反A)',
-  fanTexts.indexOf('秒后自动不反A') >= 0, JSON.stringify(fanTexts.slice(0, 14)));
+// [2026-11-03 用户] 「出牌前亮A等倒计时的提示文字不要」-> 倒计时只画表盘
+check('1.2 反A 倒计时**没有**提示文字',
+  fanTexts.indexOf('秒后自动不反A') < 0, JSON.stringify(fanTexts.slice(0, 14)));
 
 g.__setGateChoice(null);
 g.__setGateChoice({ kind: 'IDENTITY', eligible: true, reason: '测试注入' });
@@ -91,8 +92,8 @@ var dlId = g.uiLiangDeadline();
 check('1.3 次方身份闸门起 5 秒倒计时',
   dlId > 0 && Math.abs((dlId - Date.now()) - 5000) < 800, 'dl=' + dlId);
 var idTexts = g.__renderTexts();
-check('1.4 次方身份倒计时写明后果(秒后自动隐藏身份)',
-  idTexts.indexOf('秒后自动隐藏身份') >= 0, JSON.stringify(idTexts.slice(0, 14)));
+check('1.4 次方身份倒计时**没有**提示文字',
+  idTexts.indexOf('秒后自动隐藏身份') < 0, JSON.stringify(idTexts.slice(0, 14)));
 g.__setGateChoice(null);   // 清掉注入的闸门, 别干扰后面的用例
 
 // ============================================================
@@ -242,8 +243,8 @@ function leadInfo(hand) {
               C('S', 6), C('H', 6), C('D', 6),
               C('S', 7), C('H', 7)];
   var info = leadInfo(hand);
-  check('6.1 5555/666/77 -> 起手出双龙(阶梯: 双龙 > 对子)',
-    info.type === HAND_TYPES.DOUBLE_STRAIGHT, JSON.stringify(info));
+  check('6.1 5555/666/77 -> 起手出对7(双龙/连张都拆两组 -> 淘汰)',
+    info.type === HAND_TYPES.PAIR && info.ranks === '7,7', JSON.stringify(info));
 }
 {
   // 没有双龙/连张时 -> 有对子出对子(阶梯: 对子 > 蛋子及以上)

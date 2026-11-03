@@ -93,25 +93,26 @@ section('2. 池内由小往大');
 {
   var hand = [C('S', 5), C('H', 5), C('D', 9), C('C', 9), C('S', 10), C('H', 11), C('D', 12)];
   var act = chooseAction(mkState([], hand), 'A');
-  // [2026-11-03 用户口径] 牌型阶梯「双龙>单龙>对子>单张>蛋子及以上」-> 有连张先出连张
-  check('2.1 对5/对9/10-11-12 -> 出连张(阶梯: 单龙 > 对子)',
-    typeOf(act, hand) === HAND_TYPES.STRAIGHT,
+  // [2026-11-03 用户新规] 起手看**最小的那张**能组成什么:
+  //   5 旁边没有 6 -> 组不成连张 -> 起手出对5(9/10-11-12 留着)。
+  check('2.1 对5/对9/10-11-12 -> 最小牌 5 组不成连张 -> 出对5',
+    typeOf(act, hand) === HAND_TYPES.PAIR && ranksOf(act, hand) === '5,5',
     'got=' + typeOf(act, hand) + ' ranks=' + ranksOf(act, hand));
 }
 
 {
   var hand = [C('S', 9), C('H', 9), C('S', 10), C('H', 11), C('D', 12)];
   var act = chooseAction(mkState([], hand), 'A');
-  check('2.2 对9 vs 9-10-11/10-11-12 -> 出连张(阶梯: 单龙 > 对子)',
-    typeOf(act, hand) === HAND_TYPES.STRAIGHT && ranksOf(act, hand) === '9,10,11',
+  check('2.2 对9 vs 9-10-11-12 -> 最小牌 9 能组连张 -> 出连张',
+    typeOf(act, hand) === HAND_TYPES.STRAIGHT && ranksOf(act, hand) === '9,10,11,12',
     'got=' + typeOf(act, hand) + ' ranks=' + ranksOf(act, hand));
 }
 
 {
   var hand = [C('S', 6), C('H', 6), C('D', 6), C('C', 9)];
   var act = chooseAction(mkState([], hand), 'A');
-  check('2.3 三张6 vs 对9 同为 kv60 -> 张数多的三张6 先出',
-    typeOf(act, hand) === HAND_TYPES.TRIPLE && ranksOf(act, hand) === '6,6,6',
+  check('2.3 三张6 vs 单张9 -> 最小牌 9 组不成牌型 -> 出单张9(蛋子留着整组)',
+    typeOf(act, hand) === HAND_TYPES.SINGLE && ranksOf(act, hand) === '9',
     'got=' + typeOf(act, hand) + ' ranks=' + ranksOf(act, hand));
 }
 

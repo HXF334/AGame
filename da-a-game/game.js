@@ -695,14 +695,38 @@ function _uiExpandSelection(cardId) {
   var cands;
   try { cands = uiHintCandidates(); } catch (e) { return; }
   var best = null, bestLen = 1e9, bestPow = 1e9;
+  // [2026-11-03 用户] 「先判断手里的牌能不能组成有效牌型, 能的话不自动落下牌」
+  //   -> 先找**同时含「点之前已选中的牌」和「刚点的这张」**的候选:
+  //      能整组出就整组选上(例: 已选 6666, 再点 7 -> 66667777 假八, 不把 6666 落下);
+  //      找不到就退回老行为(按点中的那张补最小牌型)。
+  var keep = null, keepLen = 1e9, keepPow = 1e9;
+  var before = selectedCards.filter(function (id) { return id !== cardId; });
   for (var i = 0; i < cands.length; i++) {
     var c = cands[i];
     if (!c.ids || c.ids.indexOf(cardId) < 0) continue;
     var len = c.ids.length;
     var pw = _uiComboPower(c.cards);
     if (len < bestLen || (len === bestLen && pw < bestPow)) { best = c; bestLen = len; bestPow = pw; }
+    var all = before.length > 0;
+    for (var k = 0; k < before.length; k++) { if (c.ids.indexOf(before[k]) < 0) { all = false; break; } }
+    if (all && (len < keepLen || (len === keepLen && pw < keepPow))) { keep = c; keepLen = len; keepPow = pw; }
   }
-  if (best && bestLen > 1) selectedCards = best.ids.slice();
+  // (1) 能跟已选的牌整组出 -> 整组选上(不落下)
+  if (keep && keep.ids.length > 1) { selectedCards = keep.ids.slice(); return; }
+  // (2) 点中的这张自己就能出 -> 不动(老行为: 继续累加选中)
+  if (_uiSinglePlayable(cardId)) return;
+  // (3) 退回老行为: 按点中的那张补最小牌型
+  if (best && best.ids.length > 1) selectedCards = best.ids.slice();
+}
+
+// [2026-11-03] 这张牌**单出**是否合法(引擎说了算)。
+//   用途: 自动补牌时, 如果这张牌自己就能出, 就不要动玩家的选择(老行为)。
+function _uiSinglePlayable(cardId) {
+  try {
+    var r = transition(gameState, { type: ACTIONS.PLAY,
+      payload: { playerId: humanPlayer, cardIds: [cardId] } });
+    return !!(r && r.ok);
+  } catch (e) { return false; }
 }
 
 // 组合的牌力取其中最大的一张
@@ -837,13 +861,7 @@ function _uiLiangTimeout() {
   if (ctx) draw();
 }
 
-// [2026-11-03] 闸门倒计时下方的说明文字(三种闸门各不相同)
-function _uiGateCountdownLabel() {
-  if (!uiGateKind) return '';
-  if (uiGateKind === 'FAN_A') return '秒后自动不反A';
-  if (uiGateKind === 'IDENTITY') return '秒后自动隐藏身份';
-  return '秒后自动跳过亮A';
-}
+// [2026-11-03 用户] 「出牌前亮A等倒计时的提示文字不要」-> 闸门倒计时**只画表盘**, 不再写说明文字
 
 function uiStopTicker() {
   if (uiTicker && typeof clearInterval !== "undefined") clearInterval(uiTicker);
@@ -1239,6 +1257,14 @@ function _uiRoundEnded() {
 function draw() {
   // [2026-10-25] 同步「不出」显示状态(谁出牌了/桌牌被收走了)
   _uiSyncPassState();
+  // [2026-11-03 用户] 「牌局结束的时候后面的闹钟要清掉」
+  //   -> 结束后不再有任何倒计时(回合 20 秒 / AI 等待 / 闸门 5 秒), 也不该继续倒数。
+  if (gameState.phase === PHASES.GAME_END) {
+    uiTurnDeadline = 0;
+    uiAiWaitDeadline = 0;
+    uiAiTurnAt = 0;
+    _uiLiangCountdownStop();
+  }
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
     gameState: gameState,
@@ -1272,11 +1298,11 @@ function draw() {
     // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
     // [2026-11-03] 倒计时闹钟: 亮A 用亮A 的, 真人回合用回合的, **AI 回合用 AI 等待的**
     // [2026-11-03] 闸门倒计时(亮A/反A/身份, 5 秒)优先; 其次出牌回合倒计时(20 秒, 任何玩家轮到都计时)
-    turnDeadline: uiLiangDeadline ? uiLiangDeadline : (uiTurnDeadline || uiAiWaitDeadline),
-    turnTotal: uiLiangDeadline ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal),
+    // [2026-11-03 用户] 「牌局结束的时候后面的闹钟要清掉」-> 结束后一律不画闹钟
+    turnDeadline: (gameState.phase === PHASES.GAME_END) ? 0 : (uiLiangDeadline ? uiLiangDeadline : (uiTurnDeadline || uiAiWaitDeadline)),
+    turnTotal: (gameState.phase === PHASES.GAME_END) ? 0 : (uiLiangDeadline ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal)),
     turnIsLiang: !!(gateChoice && gateChoice.kind === 'LIANG_A'),   // [2026-10-27] 亮A 倒计时画大一点
     turnIsGate: !!uiGateKind,             // [2026-11-03] 三种闸门倒计时都用大表盘
-    turnGateLabel: _uiGateCountdownLabel(),
     phase: gameState.phase
   });
   btnLog = out.btnLog;
@@ -1755,12 +1781,13 @@ function advanceCurrentPlayer() {
       //   用户原话「正常轮到自己出牌时上一手牌应该清掉显示按钮」。
       //   [2026-11-02 旧行为] 当时是「不清掉」(那套方案下牌画在牌桌中央, 不冲突) ——
       //   2026-11-03 牌位改到按钮行后, 必须清掉。
+      // [2026-11-03 用户] 「轮到AI玩家出牌时, 闹钟显示的时候要把他上一轮出的牌或者不出文字清掉」
+      //   -> 轮到谁就清掉他上一轮留下的出牌显示 / 「不出」标记:
+      //      真人回合 -> 按钮位让出来(旧行为); AI 回合 -> 座位前方的闹钟不跟旧牌/「不出」打架。
+      delete uiPlays[next];
+      delete uiPlaysTrick[next];
+      delete uiPassed[next];
       if (next === humanPlayer) {
-        delete uiPlays[humanPlayer];
-        delete uiPlaysTrick[humanPlayer];
-        // [2026-11-03 用户] 「清掉打出的手牌**或不出文字**, 显示按钮」
-        //   -> 轮到真人出牌时, 真人之前那一轮的「不出」标记也作废(他这回要出牌了)。
-        delete uiPassed[humanPlayer];
         uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
         uiAiWaitDeadline = 0;   // 真人回合 -> AI 的等待闹钟必须熄(否则残留的截止时间会继续倒数)
       } else {
@@ -1845,7 +1872,10 @@ if (typeof wx !== 'undefined') {
     // 检查 手牌 hitbox (tap-to-select)
     for (var k = 0; k < handCardHitboxes.length; k++) {
       var hb = handCardHitboxes[k];
-      if (x >= hb.x && x <= hb.x + hb.w && y >= hb.y && y <= hb.y + hb.h) {
+      // [2026-11-03 用户] 「手牌区最右侧的手牌右侧点击无法选中这张牌」
+      //   -> 最后一张整张露出时命中区要盖住整张牌(fullW); 其余仍是 step 宽。
+      var _hw = hb.fullW || hb.w;
+      if (x >= hb.x && x <= hb.x + _hw && y >= hb.y && y <= hb.y + hb.h) {
         if (!hb.cardId) continue;          // 底牌占位但不可点
         var idx2 = selectedCards.indexOf(hb.cardId);
         if (idx2 >= 0) selectedCards.splice(idx2, 1);
