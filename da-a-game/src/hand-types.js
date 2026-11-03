@@ -110,7 +110,7 @@ function isValidStraight(cards) {
 
   if (aceCount === 1) {
     if (rest[0] === 2) {
-      return { length: cards.length, low: 1 };    // A 作低端: A-2-3(-4-5-...) (§6.1)
+      return { length: cards.length, low: 1 };    // A 作低端的连续段: A-2-3(-4-5-...) (§6.1, 2026-11-03 放宽)
     }
     if (rest[rest.length - 1] !== 13) return null; // A 作高端必以 K 结尾: m..13-A (§6.1 QKA)
     return { length: cards.length, low: rest[0] };

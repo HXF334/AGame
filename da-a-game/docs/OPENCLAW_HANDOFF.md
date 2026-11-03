@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-03 13:50 (Asia/Shanghai) · Git HEAD 见 `git log -1`
+> 最后更新：2026-11-03 15:30 (Asia/Shanghai) · Git HEAD 见 `git log -1`
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
 ---
@@ -31,8 +31,8 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / deal.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 70 个 test-*.js 套件 + mock-wx.js + lib/state-builder.js
-│  ├─ scripts/                 ← commit-gate.js / preflight.js / sync-skills.js / import-skills.js
+│  ├─ tests/                   ← 72 个 test-*.js 套件 + mock-wx.js
+│  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
 │  ├─ docs/                    ← 交接文档（不进包）
@@ -88,11 +88,12 @@ node scripts/commit-gate.js MSG.txt  # 体检通过才放行 git add + commit
 
 preflight 检查项：shebang（打进包的 .js 不能有）、UTF-8 BOM、行尾（必须 LF）、非标准字符（U+2028/9、孤立代理对）、`node --check` 全量语法、打包配置 `packOptions.ignore`、**陌生 .js 会不会进包**、`game.json` 可解析、**仓库 skills 是否都在 agent 白名单里**、全量测试。
 
-**当前状态：12/12 通过。**
+**当前状态：13/13 通过**（`--fast` 12/12 —— 跳过全量测试那一项）。
 
 两个关键检查项说明：
 - **陌生 .js 会不会进包**（第 6 项内）：`packOptions.ignore` 是**黑名单**，新增目录忘了加就会漏网进包。改成**白名单反查**：除 `src/` 与 `game.js`/`ui-render.js` 外，任何 `.js` 都不该在包里。
-- **skills 白名单覆盖**（第 8 项）：仓库放了 skill 但**没加进 `agents.entries.dada-dev.skills`** → agent 看不见（显式白名单会**替换**默认并过滤其余）。这才是"加了 skill 却用不上"的根因。原先这项检查的是 `sync-skills --check`（比对 work agent 的 Workshop 镜像）——那个镜像已删除，检查项已换掉。
+- **skills 白名单覆盖**（第 8 项）：仓库放了 skill 但**没加进 `agents.entries.dada-dev.skills`** → agent 看不见（显式白名单会**替换**默认并过滤其余）。这才是"加了 skill 却用不上"的根因。原先这项检查的是 `sync-skills --check`（比对 work agent 的 Workshop 镜像）——镜像与该脚本均已于 2026-11-03 删除，检查项已换掉。
+- **打包文件集合断言**：`tests/test-pack-manifest.js` 把**整个小游戏包的文件集合**钉死成一张清单（当前 18 个文件）。`packOptions.ignore` 是黑名单，新增目录忘了加就会静默进包；preflight 的白名单反查只看 `.js`，漏掉 json/图片/目录。这条断言管住全部类型。
 
 ---
 
@@ -165,6 +166,10 @@ openclaw config set --batch-file .tmp-config-batch.json
 - `tests/test-rules-alignment.js`（28 条断言）锁死 B1-B5。变异验证：退回 HEAD 旧实现 → **14 条精确失败**（不该红的 B1.6 / B1.11-B1.15 / B2.1 / B3.1 / B3.3 / B4.2-B4.5 / B5.1 仍绿）→ 恢复后全绿。
 - `tests/test-handtype-enum-reach.js`（20 条断言）逐个牌型断言**枚举层可达性**——防止再出现"识别层认得出、枚举层枚举不出"（历史上出过 4 次：10-27 / 11-02 / 11-03 两次）。
 
+**另新增两个回归文件**（2026-11-03 §6.1 放宽 + 打包清单固化）：
+- `tests/test-straight-low-ace.js`（42 条断言）锁「A 作低端的连续段」：识别层 A23/A234/A2345/13 张最长龙 → STRAIGHT 且 low=1；K-A-2 / 跳号 / 2 张 / 双 A 仍 INVALID；枚举层 6 项可达；大小关系（A23 < 234 < QKA、A234 < 2345、异长不可比）。
+- `tests/test-pack-manifest.js`（14 条断言）把小游戏包文件集合钉成固定清单（18 个文件）+ 5 个开发目录必须仍被排除 + 顶层结构固定。
+
 > B4 的现实可达性：一副牌只有 2 张同花色大A，「手里有双大A 而桌面是单大A」在真实对局中不可达（打出 1 张后另一张仍在自己手里）。修正只保证引擎对任意合法构造状态的判定与规则一致（SKILL §14）。
 
 ### 7.2 审查中**验证通过**的规则点（别再怀疑）
@@ -174,7 +179,9 @@ openclaw config set --batch-file .tmp-config-batch.json
 ### 7.3 其它
 
 1. **第 3 条用户反馈（真人出牌居中显示 / 轮到自己时上一手牌是否还在）** —— 无头测试只能证明、不能目视，需在**微信开发者工具模拟器**人工确认。
-2. **识别层比 SKILL 宽**（待用户裁定）：§6.1 只点名「A 作低端的 A23」，但 `isValidStraight` 也接受 A,2,3,4 这类更长形式。枚举层已按 §6.1 环形顺序覆盖；识别层的这个宽松口径要不要收窄，属规则层改动。
+2. **§6.1 已按用户裁定放宽**（2026-11-03）：原文只点名「A 作低端的 A23」，现改为「A 作**低端的连续段**」（A 后面紧接 2：A23 / A234 / A2345… / 最长 A-2-3-…-K 共 13 张）。
+   关键事实：**实现层本来就完整支持这个宽口径**——`isValidStraight` 早已接受 A,2,3,4 这类更长形式，`combos.js` 的 (b2) 分支也早已枚举得出来。这次是**把规则文本对齐到既有正确实现**，引擎逻辑零改动。
+   已用 `tests/test-straight-low-ace.js`（42 条断言）锁住放宽后的口径，防止将来有人把识别层收窄回去（那会让玩家打不出 A234）。
 3. **基础库 2.19.4**，文档里早期版本曾写 3.17.5——以 `project.config.json` 为准。
 4. `skills/windows-cn-batch-encoding/SKILL.md` 末尾原引用 `git-safe-workflow §4`（该 skill 已删），**2026-11-03 已改指 `AGENTS.md` 开发纪律第 4 条**，悬空引用消除。
 

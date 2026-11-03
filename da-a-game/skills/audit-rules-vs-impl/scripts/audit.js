@@ -56,6 +56,8 @@ var ENUM_CASES = [
   { name: '真七(TRUE_SEVEN)',  hand: sameRank(7, 7),  len: 7 },
   { name: '真八(TRUE_EIGHT)',  hand: sameRank(8, 8),  len: 8 },
   { name: '连张 A23(低端A)',   hand: [card('H', 14), card('D', 2), card('S', 3)], len: 3 },
+  { name: '连张 A234(低端A连续段)', hand: [card('H', 14), card('D', 2), card('S', 3), card('C', 4)], len: 4 },
+  { name: '连张 A2345(低端A连续段)', hand: [card('H', 14), card('D', 2), card('S', 3), card('C', 4), card('H', 5)], len: 5 },
   { name: '连张 QKA(高端A)',   hand: [card('H', 11), card('D', 12), card('S', 13), card('C', 14)], len: 4 },
   { name: '连张 2..A(最长龙)', hand: [2,3,4,5,6,7,8,9,10,11,12,13,14].map(function (r) { return card('H', r); }), len: 13 },
   { name: '双龙(DOUBLE_STRAIGHT)', hand: sameRank(5,2).concat(sameRank(6,2), sameRank(7,2)), len: 6 },
