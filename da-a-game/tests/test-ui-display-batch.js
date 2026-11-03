@@ -63,6 +63,17 @@ function baseState(phase, scores, settlement) {
 }
 
 // ===== 4) 记牌器默认展开 =====
+// [2026-11-03 修正 flaky] 下面第 5 节的断言要测的是**闸门阶段**的自动过牌残留
+//   (用户 2026-10-27 报的「我亮了大A且有首出权, 甲前面却挂着不出」)。
+//   但 AI 在 PLAY 里**正常过牌**同样会写 uiPassed 标记 —— 引擎轮末会清 passedPlayers,
+//   UI 按用户要求「轮末不清不出文字」保留标记。于是「uiPassed 必须为空」这个断言
+//   把两件事混在一起 -> **随机失败**(实测 40 次挂 3~6 次; 失败瞬间引擎
+//   passedPlayers=['A'] 而 uiPassed=['D','A'] —— D 是上一轮过牌的合法残留)。
+//   修法: **在 newGame() 之前就把 AI 行动全部推迟**(runAI 走 setTimeout),
+//   于是同步流程里 AI 一步没走, uiPassed 里只剩闸门残留 —— 断言才真正对准它。
+//   [注] 只推迟**后续** AI 行动: runAI 首次调用时 _lastAiActionAt=0, 首出那张牌仍会同步打;
+//   首出是**出牌**不是过牌, 不产生「不出」标记, 所以不影响断言。
+g.__setAiDelay(600000);
 g.newGame();
 check('记牌器默认展开', g.uiMemoOpen() === true, String(g.uiMemoOpen()));
 
@@ -71,8 +82,10 @@ check('记牌器默认展开', g.uiMemoOpen() === true, String(g.uiMemoOpen()));
 //   会**自动过牌**(亮A/反A/身份阶段), 标记是那会儿留下的, 要等进 PLAY 才清。
 //   (这正是用户报的: 我亮了大A而且有首出权, 但甲头上还挂着「不出」)
 g.__driveGateToPlay({ liangA: false });   // 把闸门确定性地走到 PLAY
-check('进 PLAY 阶段后没有残留的「不出」标记', Object.keys(g.uiPassed()).length === 0,
+var _gateResidue = Object.keys(g.uiPassed());   // 此时 AI 一步没走 -> 只可能是闸门残留
+check('进 PLAY 阶段后没有残留的「不出」标记', _gateResidue.length === 0,
   'phase=' + g.gameState().phase + ' uiPassed=' + JSON.stringify(g.uiPassed()));
+g.__setAiDelay(0);   // 恢复, 后续断言按正常节奏
 var _fs = require('fs'), _path = require('path');
 var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
 check('源码: newGame 清「不出」标记',
