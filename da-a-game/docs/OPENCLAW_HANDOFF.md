@@ -31,7 +31,7 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / deal.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 72 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 73 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
@@ -81,7 +81,7 @@ node tests/_runall.js 10 20    # 只跑第 10~20 个
 ### 闸门
 
 ```bash
-node scripts/preflight.js          # 12 项体检（含全量测试）
+node scripts/preflight.js          # 13 项体检（含全量测试）
 node scripts/preflight.js --fast   # 跳过全量测试
 node scripts/commit-gate.js MSG.txt  # 体检通过才放行 git add + commit
 ```
