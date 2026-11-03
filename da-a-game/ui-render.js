@@ -702,7 +702,9 @@ function drawMeSeat(ctx, st, m) {
   if (!_playedThisTrick) {
     var _s2 = _isOut ? '已出完' : (_isPassed ? '不出' : '');
     if (_s2) {
-      text(ctx, _s2, cx, cy - rr_ - Math.round(m.vh * 0.030),
+      // [2026-11-03 用户] 「真人玩家的不出文字和打出的手牌在同一个位置, 而不是玩家头像上方」
+      //   -> 画在 layout().humanPlay(原来按钮的位置), 和打出的手牌**完全同一个点**。
+      text(ctx, _s2, m.humanPlay.x, m.humanPlay.y,
         Math.max(12, Math.round(m.vh * 0.044)), _isOut ? '#9a9a9a' : '#ffd700', 'center', true);
     }
   }
@@ -712,14 +714,25 @@ function drawMeSeat(ctx, st, m) {
 }
 
 // ===== 倒计时(按钮行中央正上方, 样式参照图3 闹钟) =====
-function drawTurnInfo(ctx, st, m) {
+function drawTurnInfo(ctx, st, m, seatMap) {
   if (!st.turnDeadline) return;
   var c = m.turn;
+  // [2026-11-03 用户] 「其他玩家出牌时的倒计时在他们自己前方, 不能都放在真人玩家这块」
+  //   -> 当前玩家是 AI 时, 闹钟画在**他自己头像内侧**(和他出牌 / 「不出」同一个方向)。
+  var _pid = st.currentPlayer;
+  var _slot = (_pid && seatMap) ? seatMap[_pid] : null;
+  if (_pid && _pid !== st.humanPlayer && _slot && _slot.side !== 'C') {
+    var _rr = Math.round(m.vh * 0.052);
+    var _inw = _slot.side === 'L' ? 1 : -1;
+    var _rad = Math.round(m.vh * 0.048);
+    c = { x: _slot.x + _inw * (_rr + _rad + 10), y: _slot.y };
+  }
   var total = st.turnTotal || 20000;
   var left = Math.max(0, st.turnDeadline - Date.now());
   var sec = Math.ceil(left / 1000);
   // [2026-10-27 用户] 亮A 的 5 秒倒计时**要看得见**: 表盘更大 + 数字更大 + 下面写明后果
-  var isLiang = !!st.turnIsLiang;
+  // [2026-11-03] 反A / 次方身份的 5 秒倒计时同样用大表盘
+  var isLiang = !!st.turnIsLiang || !!st.turnIsGate;
   var r = Math.round(m.vh * (isLiang ? 0.062 : 0.048));
   // 铃铛耳朵
   ctx.strokeStyle = '#d9a05b'; ctx.lineWidth = Math.max(2, m.vh * 0.007);
@@ -737,12 +750,24 @@ function drawTurnInfo(ctx, st, m) {
        isLiang ? Math.max(22, Math.round(m.vh * 0.076)) : Math.max(12, Math.round(m.vh * 0.046)),
        sec <= 5 ? '#c8102e' : '#5e2417', 'center', true);
   if (isLiang) {
-    text(ctx, '秒后自动跳过亮A', c.x, c.y + r * 1.55,
+    var _gl = st.turnGateLabel || '秒后自动跳过亮A';
+    text(ctx, _gl, c.x, c.y + r * 1.55,
       Math.max(11, Math.round(m.vh * 0.036)), '#ffd98a', 'center', true);
   }
 }
 
 // ===== 按钮 =====
+// [2026-11-03 用户] 按钮行的位置被「打出的手牌」**或**「不出」文字占着
+//   (两者都在 layout().humanPlay) -> 这时候按钮让位隐藏, 轮到自己时恢复。
+function _uiHumanRowTaken(st) {
+  var hp = (st.uiPlays || {})[st.humanPlayer];
+  if (hp && hp.length) return true;
+  if ((st.uiPassed || {})[st.humanPlayer]) return true;
+  var me = (st.gameState.players || []).filter(function (p) { return p.id === st.humanPlayer; })[0];
+  if (me && me.hand && me.hand.length === 0) return true;
+  return false;
+}
+
 function drawButtons(ctx, st, m, list) {
   // [2026-10-25] 结算阶段: 「下一局」由 drawSettlement 画在**面板内下方中央** -> 这里跳过, 免得画两个
   if (st.phase === 'GAME_END') return [];
@@ -752,7 +777,9 @@ function drawButtons(ctx, st, m, list) {
   //   advanceCurrentPlayer 会清掉它 -> 按钮重新出现(用户原话「轮到自己出牌时上一手牌
   //   应该清掉显示按钮」)。
   var _hp = (st.uiPlays || {})[st.humanPlayer];
-  if (st.phase === 'PLAY' && _hp && _hp.length) return [];
+  if (st.phase === 'PLAY' && (_hp && _hp.length)) return [];
+  // [2026-11-03] 「不出」文字也画在按钮位 -> 同样让位
+  if (st.phase === 'PLAY' && _uiHumanRowTaken(st)) return [];
   var boxes = buttonLayout(list, m);
   var fs = Math.max(11, Math.round(m.vh * 0.038));
   for (var i = 0; i < boxes.length; i++) {
@@ -897,7 +924,7 @@ function render(ctx, st) {
   drawTopBar(ctx, st, m, memoIcon);
   drawMemo(ctx, st, m);
   var seatInfo = drawSeats(ctx, st, m);
-  drawTurnInfo(ctx, st, m);
+  drawTurnInfo(ctx, st, m, seatInfo.seatMap);
   var btnBoxes = drawButtons(ctx, st, m, st.buttons || []);
   var switchHit = drawMeSeat(ctx, st, m);
   var handBoxes = drawHand(ctx, st, m);

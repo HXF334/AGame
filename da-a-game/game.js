@@ -310,7 +310,7 @@ if (e1.ok) {
         gameState = r.state;
         log('  进入反A阶段');
         var e2 = canFanA(gameState, humanPlayer);
-        gateChoice = { kind: 'FAN_A', eligible: !!e2.ok, reason: e2.reason, cards: e2.cards, suit: e2.suit };
+        _uiSetGateChoice({ kind: 'FAN_A', eligible: !!e2.ok, reason: e2.reason, cards: e2.cards, suit: e2.suit });
         log('  真人反A资格: ' + (e2.ok ? '有' : '无') + ' — ' + e2.reason);
       } else log('  ADVANCE 失败: ' + _errOf(r));
       break;
@@ -328,7 +328,7 @@ if (e1.ok) {
       if (gameState.phase === PHASES.IDENTITY_CHOICE) {
         var e3 = canChooseIdentity(gameState, humanPlayer);
         if (e3.ok) {
-          gateChoice = { kind: 'IDENTITY', eligible: true, reason: e3.reason };
+          _uiSetGateChoice({ kind: 'IDENTITY', eligible: true, reason: e3.reason });
           log('  真人次方身份资格: 有 — ' + e3.reason);
         } else {
           log('  真人无次方身份资格(' + e3.reason + ') → 由授权者自动 HIDDEN');
@@ -455,6 +455,7 @@ function humanFanA(doIt) {
   if (!gateChoice || gateChoice.kind !== 'FAN_A' || !gateChoice.eligible) return false;
   var cards = gateChoice.cards, suit = gateChoice.suit;
   gateChoice = null;
+  _uiLiangCountdownStop();   // [2026-11-03] 反A 决策完 -> 取消 5 秒倒计时
 if (!doIt) {
   log('  真人选择: 不反A');
   gateAutoAdvance();     // 自动进入下一阶段
@@ -482,6 +483,7 @@ enterPlayIfNeeded();
 function humanChooseIdentity(publicly) {
   if (!gateChoice || gateChoice.kind !== 'IDENTITY' || !gateChoice.eligible) return false;
   gateChoice = null;
+  _uiLiangCountdownStop();   // [2026-11-03] 身份决策完 -> 取消 5 秒倒计时
   var choice = publicly ? 'PUBLIC' : 'HIDDEN';
   var r = transition(gameState, { type: ACTIONS.CHOOSE_IDENTITY,
     payload: { playerId: humanPlayer, choice: choice } });
@@ -592,18 +594,39 @@ function uiHintCandidates() {
   var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
   if (!me || !me.hand || !me.hand.length) return [];
   var out = [], seen = {};
-  function add(ids) {
-    if (!ids || !ids.length) return;
-    var key = ids.slice().sort().join(',');
-    if (seen[key]) return;
-    seen[key] = 1;
+  // [2026-11-03 用户] 「提示的时候相同的牌不要一直提示, 循环回来的话可以再次提示」
+  //   例: 上家出 44, 我有 5555/666/77 -> 应该 77 -> 666 -> 5555,
+  //       而不是一堆 55 / 55 / 55 / 555 / 555 / 5555。
+  //   做法:
+  //     1) 候选按**牌型形状**去重(不是按牌的 id): 同点数的 4 张 5 只算一个候选;
+  //     2) 同点数的组合只保留**最大**的一组(4 张 5 -> 只提示 5555, 不提示 55/555);
+  //     3) 排序: **张数少的先**(2 张 -> 3 张 -> 4 张), 同张数再比牌力(小的先)。
+  function add(ids, key) {
+    if (!ids || !ids.length) return false;
+    if (seen[key]) return false;
     var r = transition(gameState, { type: ACTIONS.PLAY,
       payload: { playerId: humanPlayer, cardIds: ids.slice() } });
-    if (!r || !r.ok) return;
+    // 引擎不认 -> 不进候选; **seen 也不置位**(同形状的别的变体还有机会)
+    if (!r || !r.ok) return false;
+    seen[key] = 1;
     var cards = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
     out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards) });
+    return true;
   }
-  me.hand.forEach(function (c) { add([c.id]); });
+  // 单张的「点数标识」: 同点数的 4 张 5 只提示一次; 大A/王 与普通 A 区分开
+  function pointKey(c) {
+    if (_uiIsMainAce(c)) return 'BIGA';
+    if (c.isBigJoker) return 'BJ';
+    if (c.isSmallJoker) return 'SJ';
+    return 'R' + c.rank;
+  }
+  var singleSeen = {};
+  me.hand.forEach(function (c) {
+    var k = '1|' + pointKey(c);
+    if (singleSeen[k]) return;
+    singleSeen[k] = 1;
+    add([c.id], k);
+  });
   // [2026-10-25 用户] 「双大A」候选: 上家出了 3333 时, 双大A 能压住
   //   (引擎的 candidateCombos 不含这种**主A花色的两张A**组合)
   try {
@@ -624,15 +647,38 @@ function uiHintCandidates() {
       }
     }
   } catch (e) { }
+  // 组合: 同点数分组(只留最大的一组) + 其他形状(同形状只留一个)
+  var sameRank = {}, others = [];
   try {
-    var combos = candidateCombos(me.hand) || [];
-    combos.forEach(function (ids) { if (ids && ids.length >= 2) add(ids); });
+    (candidateCombos(me.hand) || []).forEach(function (ids) {
+      if (!ids || ids.length < 2) return;
+      var cs = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
+      if (cs.length !== ids.length) return;
+      var same = cs.every(function (c) { return c.rank === cs[0].rank; });
+      if (same) {
+        var k = 'S|' + cs[0].rank;
+        (sameRank[k] = sameRank[k] || []).push(ids);
+      } else {
+        others.push({ ids: ids, cards: cs });
+      }
+    });
   } catch (e) { }
-  // 按牌力升序(小 -> 大)
+  Object.keys(sameRank).forEach(function (k) {
+    var list = sameRank[k].slice().sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < list.length; i++) {
+      if (add(list[i], k)) break;      // 取引擎认可的最大那组
+    }
+  });
+  others.forEach(function (o) {
+    var ranks = o.cards.map(function (c) { return c.rank; }).slice().sort(function (a, b) { return a - b; });
+    add(o.ids, 'C|' + o.cards.length + '|' + ranks.join('-'));
+  });
+  // 排序: 张数少的先(2 张 -> 3 张 -> 4 张) -> 同张数比牌力(小的先)
   out.sort(function (a, b) {
+    if (a.cards.length !== b.cards.length) return a.cards.length - b.cards.length;
     var pa = _uiComboPower(a.cards), pb = _uiComboPower(b.cards);
     if (pa !== pb) return pa - pb;
-    return a.cards.length - b.cards.length;
+    return a.label < b.label ? -1 : (a.label > b.label ? 1 : 0);
   });
   return out;
 }
@@ -715,10 +761,13 @@ var uiAiTurnAt = 0;         // 当前 AI 变成当前玩家的时间(算还要�
 var uiTicker = null;
 
 function uiTurnTick() {
-  if (currentPlayer === humanPlayer && gameState.phase === PHASES.PLAY) {
-    if (!uiTurnDeadline) uiTurnDeadline = Date.now() + uiTurnTotal;
-  } else {
-    uiTurnDeadline = 0;
+  // [2026-11-03 用户] 「出牌倒计时时间和真人玩家一样, 暂时先定 20 秒, 后面改成创建房间时设置的时间」
+  //   -> 倒计时**跟着当前玩家走**(AI 回合同样计时), 总长统一 uiTurnTotal(20 秒)。
+  //   AI 自己**等几秒再出牌**是另一件事(节奏, 见 AI_STEP_DELAY / AI_SLOW_DELAY)。
+  //   每次换手都会重新计时 -> 这里**无条件清零再起表**。
+  uiTurnDeadline = 0;
+  if (currentPlayer && gameState.phase === PHASES.PLAY) {
+    uiTurnDeadline = Date.now() + uiTurnTotal;
   }
 }
 
@@ -732,8 +781,12 @@ function uiStartTicker() {
 var uiLiangDeadline = 0;
 var uiLiangTotal = 5000;
 var uiLiangTimer = null;
+// [2026-11-03 用户] 「亮A 有 5 秒倒计时, 给反A、次方亮明身份也加 5 秒倒计时」
+//   -> 三种**闸门**统一 5 秒; 超时按「等价于按了默认按钮」处理(亮A=不亮 / 反A=不反 / 身份=隐藏)。
+var uiGateKind = null;   // 当前在倒计时的闸门类型('LIANG_A' | 'FAN_A' | 'IDENTITY')
 
 function _uiLiangCountdownStart() {
+  uiGateKind = (gateChoice && gateChoice.kind) ? gateChoice.kind : null;
   if (uiLiangTimer) return;
   uiLiangDeadline = Date.now() + uiLiangTotal;
   if (typeof setTimeout === 'undefined') return;
@@ -747,25 +800,49 @@ function _uiLiangCountdownStop() {
   if (uiLiangTimer && typeof clearTimeout !== 'undefined') clearTimeout(uiLiangTimer);
   uiLiangTimer = null;
   uiLiangDeadline = 0;
+  uiGateKind = null;
 }
 
 // 设置闸门决策的**单一入口**(生产流程和测试注入都走它)
 //   亮A 的闸门 -> 同时启动 5 秒倒计时(到点没人亮 -> 自动进强制排查)
 function _uiSetGateChoice(choice) {
   gateChoice = choice || null;
-  if (gateChoice && gateChoice.kind === 'LIANG_A' && gateChoice.eligible) _uiLiangCountdownStart();
+  // [2026-11-03 用户] 亮A / 反A / 次方亮明身份 —— **三种闸门都倒计时 5 秒**
+  if (gateChoice && gateChoice.eligible) _uiLiangCountdownStart();
   else _uiLiangCountdownStop();
 }
 
 // 超时: 没人亮A -> 和原来的【不亮】一样: AI 依次尝试亮A, 然后自动进入强制排查
 function _uiLiangTimeout() {
   uiLiangDeadline = 0;
-  if (!gateChoice || gateChoice.kind !== 'LIANG_A' || !gateChoice.eligible) return;
+  var _kind = uiGateKind;
+  uiGateKind = null;
+  if (!gateChoice || !gateChoice.eligible) return;
+  // [2026-11-03 用户] 反A 超时 = 等同「不反」; 次方身份超时 = 等同「隐藏身份」
+  if (_kind === 'FAN_A') {
+    log('  反A 5 秒倒计时结束(没人反) -> 等同「不反」');
+    humanFanA(false);
+    return;
+  }
+  if (_kind === 'IDENTITY') {
+    log('  次方身份 5 秒倒计时结束(没人选) -> 等同「隐藏身份」');
+    humanChooseIdentity(false);
+    return;
+  }
+  if (gateChoice.kind !== 'LIANG_A') return;
   log('  亮A 5 秒倒计时结束(没人亮) -> 由 AI 依次尝试亮A(没人能亮就进强制排查)');
   gateChoice = null;
   _aiLiangARound();
   gateAutoAdvance();
   if (ctx) draw();
+}
+
+// [2026-11-03] 闸门倒计时下方的说明文字(三种闸门各不相同)
+function _uiGateCountdownLabel() {
+  if (!uiGateKind) return '';
+  if (uiGateKind === 'FAN_A') return '秒后自动不反A';
+  if (uiGateKind === 'IDENTITY') return '秒后自动隐藏身份';
+  return '秒后自动跳过亮A';
 }
 
 function uiStopTicker() {
@@ -906,7 +983,7 @@ function _uiCardsByIds(ids, st) {
   (st.discarded || []).forEach(function (c) { pool.push(c); });
   (st.players || []).forEach(function (p) {
     (p.hand || []).forEach(function (c) { pool.push(c); });
-    (p['底牌'] || []).forEach(function (c) { pool.push(c); });
+    if (p['底牌']) pool.push(p['底牌']);   // 底牌是**一张牌**(deal.js: player.底牌 = 单张), 不是数组
   });
   var out = [];
   ids.forEach(function (id) {
@@ -1194,9 +1271,12 @@ function draw() {
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
     // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
     // [2026-11-03] 倒计时闹钟: 亮A 用亮A 的, 真人回合用回合的, **AI 回合用 AI 等待的**
-    turnDeadline: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangDeadline : (uiTurnDeadline || uiAiWaitDeadline),
-    turnTotal: (gateChoice && gateChoice.kind === 'LIANG_A') ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal),
+    // [2026-11-03] 闸门倒计时(亮A/反A/身份, 5 秒)优先; 其次出牌回合倒计时(20 秒, 任何玩家轮到都计时)
+    turnDeadline: uiLiangDeadline ? uiLiangDeadline : (uiTurnDeadline || uiAiWaitDeadline),
+    turnTotal: uiLiangDeadline ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal),
     turnIsLiang: !!(gateChoice && gateChoice.kind === 'LIANG_A'),   // [2026-10-27] 亮A 倒计时画大一点
+    turnIsGate: !!uiGateKind,             // [2026-11-03] 三种闸门倒计时都用大表盘
+    turnGateLabel: _uiGateCountdownLabel(),
     phase: gameState.phase
   });
   btnLog = out.btnLog;

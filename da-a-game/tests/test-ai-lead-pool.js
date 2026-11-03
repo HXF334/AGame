@@ -93,16 +93,17 @@ section('2. 池内由小往大');
 {
   var hand = [C('S', 5), C('H', 5), C('D', 9), C('C', 9), C('S', 10), C('H', 11), C('D', 12)];
   var act = chooseAction(mkState([], hand), 'A');
-  check('2.1 对5/对9/10-11-12 -> 出保留价值最低的(对5)',
-    typeOf(act, hand) === HAND_TYPES.PAIR && ranksOf(act, hand) === '5,5',
+  // [2026-11-03 用户口径] 牌型阶梯「双龙>单龙>对子>单张>蛋子及以上」-> 有连张先出连张
+  check('2.1 对5/对9/10-11-12 -> 出连张(阶梯: 单龙 > 对子)',
+    typeOf(act, hand) === HAND_TYPES.STRAIGHT,
     'got=' + typeOf(act, hand) + ' ranks=' + ranksOf(act, hand));
 }
 
 {
   var hand = [C('S', 9), C('H', 9), C('S', 10), C('H', 11), C('D', 12)];
   var act = chooseAction(mkState([], hand), 'A');
-  check('2.2 对9(kv90) vs 10-11-12(kv120) -> 出对9',
-    typeOf(act, hand) === HAND_TYPES.PAIR && ranksOf(act, hand) === '9,9',
+  check('2.2 对9 vs 9-10-11/10-11-12 -> 出连张(阶梯: 单龙 > 对子)',
+    typeOf(act, hand) === HAND_TYPES.STRAIGHT && ranksOf(act, hand) === '9,10,11',
     'got=' + typeOf(act, hand) + ' ranks=' + ranksOf(act, hand));
 }
 

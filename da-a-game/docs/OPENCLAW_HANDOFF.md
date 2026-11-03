@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-03 15:30 (Asia/Shanghai) · Git HEAD 见 `git log -1`
+> 最后更新：2026-11-03 20:24 (Asia/Shanghai) · Git HEAD 见 `git log -1`
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
 ---
@@ -31,7 +31,7 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / deal.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 74 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 75 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
@@ -64,12 +64,14 @@ AGame/da-a-game/skills/da-a-game-rules/SKILL.md
 
 ```bash
 cd AGame/da-a-game
-node tests/_runall.js          # 全量：74 套件 / 74 次执行 / 失败 0 次（约 70 秒）
+node tests/_runall.js          # 全量：75 套件（上次实测 74 套件 / 失败 0 次，约 70 秒）
 node tests/test-xxx.js         # 单套件
 node tests/_runall.js 10 20    # 只跑第 10~20 个
 ```
 
 2026-11-03 实测：`套件 74 个, 范围 1-74, 共执行 74 次; 失败 0 次`，退出码 0。
+
+> 2026-11-03 晚新增 `tests/test-req-20261103.js`（现共 **75** 个套件）。**该次全量未重跑**（用户明确「先不要全量测试」）：只跑了 17 个**受本次改动直接影响**的定向套件 + `preflight --fast`，全绿。
 
 **测试纪律**：
 - 必须用**确定局面**（指定手牌 + 固定 human）。无头测试里 AI 会同步抢跑（`AI_STEP_DELAY=0`），随机局面必然 flaky。
@@ -190,6 +192,14 @@ openclaw config set --batch-file .tmp-config-batch.json
    已用 `tests/test-straight-low-ace.js`（42 条断言）锁住放宽后的口径，防止将来有人把识别层收窄回去（那会让玩家打不出 A234）。
 3. **基础库 2.19.4**，文档里早期版本曾写 3.17.5——以 `project.config.json` 为准。
 4. `skills/windows-cn-batch-encoding/SKILL.md` 末尾原引用 `git-safe-workflow §4`（该 skill 已删），**2026-11-03 已改指 `AGENTS.md` 开发纪律第 4 条**，悬空引用消除。
+5. **2026-11-03 晚 6 条 UI/AI 需求已实现**（定向回归 `tests/test-req-20261103.js` 29 条断言；受影响的 17 个旧套件定向全绿；preflight `--fast` 12/12；**全量未重跑**，见 §3 注）：
+   - **三种闸门都 5 秒倒计时**：亮A / 反A / 次方亮明身份统一 5 秒（`_uiSetGateChoice` 是唯一入口）。超时分别按「不亮 / 不反 / 隐藏身份」自动处理（`_uiLiangTimeout` 按 `uiGateKind` 派发）。倒计时下方说明文字随闸门类型变（渲染态 `turnGateLabel`）。
+   - **真人「不出」文字和打出的手牌同位置**：都画在 `layout().humanPlay`（按钮行正中）；那行被占住时**按钮让位隐藏**（`_uiHumanRowTaken`）。
+   - **其他玩家的倒计时画在各自座位前方**：`drawTurnInfo` 收 `seatMap`，当前玩家是 AI 时闹钟画在他头像内侧（与他出牌 / 「不出」同侧）；真人回合仍在 `turn` 位。
+   - **出牌倒计时统一 20 秒**：`uiTurnTick` 对**任何**玩家轮到都计时（`uiTurnTotal = 20000`），换手重新起表。AI「等几秒再出牌」是另一件事（`AI_STEP_DELAY` / `AI_SLOW_DELAY`）；房间设置值待接入。
+   - **提示候选去重**：按**牌型形状**去重（不是按牌的 id），同点数只留**最大**的一组；排序改成**张数少的先**（例：上家出 44、我有 5555/666/77 → `77 → 666 → 5555`），同张数再比牌力；循环回来可再次提示。
+   - **AI 起手「最小的牌能组成什么就出什么」**（`src/ai.js`）：牌型阶梯 **双龙 > 单龙 > 对子 > 单张 > 蛋子及以上**；同点数只取最大一组；含 2/3/A/王/大A 的组合不起手（保护大牌）；4 留给取牌（§7）；一个组合都组不成才出单张。
+   - 顺带修了一个**真 bug**：`game.js` 把 `player.底牌`（**单张**）当数组 `.forEach` → AI 路径抛 `is not a function`。改成 `if (p['底牌']) pool.push(p['底牌'])`。该 bug 曾让 `tests/test-ui-pass-display.js` 在全量里直接崩掉（无汇总输出），单跑却是绿的。
 
 ---
 

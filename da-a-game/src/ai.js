@@ -61,52 +61,76 @@ function chooseAction(state, playerId) {
   var currentHand = table.length > 0 ? identifyHand(table) : null;
 
   // ================= 新一轮起手 (§5) =================
+  // [2026-11-03 用户] 「池空才兜底出安全单张, 这个理解也不对。
+  //   最小的牌能组成什么就出什么, 组成龙就出龙, 组成对子就出对子, 什么也组不成出单张。
+  //   双龙 > 单龙 > 对子 > 单张 > 蛋子及以上牌型。
+  //   如果最小的 4 组成两个及以上的 4, 就不优先出 4。」
+  // 实现:
+  //   1) 起手池 = 手牌去掉 4(4 是取牌专用 §7; 有 2 张以上 4 更是绝对不碰);
+  //   2) 组合候选 = 引擎枚举出的组合; 同点数**只留最大的一组**(4 张 5 不拆成 55/555);
+  //      含 2/3/A/王/大A 的组合不起手(保护大牌, 沿用旧行为);
+  //   3) 按牌型阶梯挑: 双龙 > 单龙 > 对子 > 蛋子及以上; 同级比牌力(小的先);
+  //   4) 一个组合都组不成时 -> 才出单张(同点数只留一张, 且优先省大牌)。
   if (table.length === 0) {
-    var playable = hand.filter(function (c) { return !isFour(c) || hand.every(isFour); });
-    if (playable.length === 0) {
-      var onlyFours = hand.filter(isFour);
-      if (onlyFours.length > 0) return { type: 'PLAY', playerId: playerId, cardIds: [onlyFours[0].id] };
-      return { type: 'PASS', playerId: playerId };
-    }
-    // [新增] 起手可打"廉价组合"(>=3 张且不含大牌)。
-    // 原因: §6.3 龙/对子/单张同层级互不压, 连张只能压等长连张。
-    //   若起手永远只出单张, 桌上永远不会出现连张, AI 就永远打不出连张 (结构性死锁)。
-    //   故允许用不含大牌的组合起手, 既减少手牌, 也让连张/双龙路径可达。
-    var leadCands = candidateCombos(hand).filter(function (c) {
-      if (c.length < 2) return false;   // [2026-11-03] 对子(2 张)也是候选 —— 「有对子出对子」
-      var cards = c.map(function (id) { return hand.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
-      if (!cards.length || cards.some(isFour)) return false;      // 不用 4 起手 (留给取牌)
-      if (identifyHand(cards).type === 'INVALID') return false;
-      return cards.every(function (x) { return keepValue(x) < 500; });   // 不含王/大A/2/3/A
-    });
-    // [2026-11-03 用户] 「有什么出什么, 有单出单, 有对子出对子, 有龙出龙,
-    //   默认从小往大出, 不要只会出单牌」
-    //   实现: 候选池**合并成一个**(单张 + 对子 + 蛋子 + 连张 + 双龙 + 连珠蛋 + 假八 …),
-    //   池内按**保留价值升序**(越不值钱越先出 = 由小往大);
-    //   同保留价值时**张数多者优先**(同点数的三张比对子大)。
-    //   组合整体优先于单张(有组合就不拆成单张 -> 满足「有对子出对子」)。
-    //   兜底: 池里啥都没有 -> 出安全单张(省大牌: 不出 2/3/A/王/大A)。
-    var _comboKv = function (cards) {
-      return Math.max.apply(null, cards.map(function (c) { return keepValue(c); }));
-    };
+    var _fours = hand.filter(isFour);
+    var _pool = _fours.length === hand.length
+      ? hand.slice()                                   // 全是 4 -> 只能出 4
+      : hand.filter(function (c) { return !isFour(c); });
     var _cardsOf = function (ids) {
       return ids.map(function (id) { return hand.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
     };
-    if (leadCands.length > 0) {
-      // 池内由小往大: 保留价值低的先出; 同保留价值 -> 张数多者优先
-      var _sortedLeads = leadCands.slice().sort(function (a, b) {
-        var va = _comboKv(_cardsOf(a)), vb = _comboKv(_cardsOf(b));
-        if (va !== vb) return va - vb;
-        return b.length - a.length;
+    var _leadPrio = function (t) {
+      if (t === 'DOUBLE_STRAIGHT') return 1;   // 双龙
+      if (t === 'STRAIGHT') return 2;          // 单龙
+      if (t === 'PAIR') return 3;              // 对子
+      if (t === 'SINGLE') return 4;            // 单张
+      return 5;                                // 蛋子及以上(蛋子/大蛋子/真七/真八/连珠蛋/假八/双大A…)
+    };
+    var _leadCands = [], _rankBest = {};
+    try {
+      (candidateCombos(_pool) || []).forEach(function (ids) {
+        if (!ids || ids.length < 2) return;
+        var cs = _cardsOf(ids);
+        if (cs.length !== ids.length) return;
+        var h = identifyHand(cs);
+        if (!h || h.type === 'INVALID') return;
+        if (cs.some(function (c) { return keepValue(c) >= 500; })) return;   // 保护大牌
+        var cand = { ids: ids.slice(), cards: cs, type: h.type };
+        var same = cs.every(function (c) { return c.rank === cs[0].rank; });
+        if (same) {
+          var rk = cs[0].rank;
+          if (!_rankBest[rk] || ids.length > _rankBest[rk].ids.length) _rankBest[rk] = cand;
+        } else {
+          _leadCands.push(cand);
+        }
+      });
+    } catch (e) { }
+    Object.keys(_rankBest).forEach(function (rk) { _leadCands.push(_rankBest[rk]); });
+    if (_leadCands.length > 0) {
+      var _sortedLeads = _leadCands.slice().sort(function (a, b) {
+        var pa = _leadPrio(a.type), pb = _leadPrio(b.type);
+        if (pa !== pb) return pa - pb;
+        var wa = Math.min.apply(null, a.cards.map(cardPowerAsc));
+        var wb = Math.min.apply(null, b.cards.map(cardPowerAsc));
+        if (wa !== wb) return wa - wb;
+        return a.cards.length - b.cards.length;
       });
       var best = _sortedLeads[0];
-      return { type: 'PLAY', playerId: playerId, cardIds: best.slice() };
+      return { type: 'PLAY', playerId: playerId, cardIds: best.ids.slice() };
     }
-    // 2) 起手出安全牌 (保留 2/3/A/王/大A)
-    var safe = playable.filter(function (c) { return keepValue(c) < 500; });
-    var openCard = (safe.length > 0 ? safe : playable)
+    // 什么也组不成 -> 出单张(同点数只留一张; 省大牌: 优先不出 2/3/A/王/大A)
+    var _singleSeen = {};
+    var _singles = _pool.filter(function (c) {
+      var k = (c.isBigJoker ? 'BJ' : c.isSmallJoker ? 'SJ' : 'R' + c.rank);
+      if (_singleSeen[k]) return false;
+      _singleSeen[k] = 1;
+      return true;
+    });
+    var _safe = _singles.filter(function (c) { return keepValue(c) < 500; });
+    var openCard = (_safe.length > 0 ? _safe : _singles)
       .slice()
       .sort(function (a, b) { return cardPowerAsc(a) - cardPowerAsc(b); })[0];
+    if (!openCard) return { type: 'PASS', playerId: playerId };
     return { type: 'PLAY', playerId: playerId, cardIds: [openCard.id] };
   }
 

@@ -68,14 +68,22 @@ check('A 出牌后 uiPlays 里有 A 的记录', !!(playsAfterA.A && playsAfterA.
 var trick0 = g.uiTrickId();
 
 // ===== B/C/D/E 连续过牌(期间没人出牌) =====
+// [2026-11-03] 轮回到真人时 game.js 会**清掉真人的「不出」**(轮到自己 = 重新出牌),
+//   所以只能在**过牌当下**逐个断言, 不能等整圈跑完再看全表。
+//   AI 延迟调大 -> AI 链异步跑, 断言时链条还没转回真人。
+g.__setAiDelay(5000);
+var pdSnap = {};
 ['B', 'C', 'D', 'E'].forEach(function (pid) {
   g.__setState(g.gameState(), { currentPlayer: pid, clearLog: false });
   g.doPass();
+  pdSnap[pid] = !!(g.uiPassed() || {})[pid];
 });
+g.__setAiDelay(0);
 
 var pd = g.uiPassed() || {};
 check('4 个过牌的人都记上了「不出」',
-  !!(pd.B && pd.C && pd.D && pd.E), JSON.stringify(pd));
+  !!(pdSnap.B && pdSnap.C && pdSnap.D && pdSnap.E),
+  JSON.stringify(pdSnap) + ' now=' + JSON.stringify(pd));
 
 var ts = texts();
 var n = countBuChu(ts);

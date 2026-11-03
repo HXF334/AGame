@@ -177,8 +177,10 @@ var aiWait = g.uiAiWait();
 check('5.1 轮到 AI(正在等) -> 闹钟点亮(有等待截止时间)',
   aiWait.deadline > Date.now(),
   'deadline=' + aiWait.deadline + ' now=' + Date.now());
-check('5.2 AI 回合不占用真人那 20 秒回合倒计时',
-  g.uiTurnInfo().deadline === 0, 'turnDeadline=' + g.uiTurnInfo().deadline);
+// [2026-11-03 用户] 「出牌倒计时时间和真人玩家一样, 暂时先定 20 秒」-> AI 回合**也**计时, 总长一样
+check('5.2 AI 回合的倒计时同样是 20 秒(和真人一致)',
+  g.uiTurnInfo().deadline > Date.now() && g.uiTurnInfo().total === 20000,
+  'turnDeadline=' + g.uiTurnInfo().deadline + ' total=' + g.uiTurnInfo().total);
 check('5.3 闹钟总时长 = AI 思考间隔', aiWait.total === g.__aiDelay(),
   'total=' + aiWait.total + ' delay=' + g.__aiDelay());
 
@@ -196,12 +198,26 @@ check('5.7 清掉上一手牌后按钮重新出现', g.btnStage().length > 0, 'n
 
 // 渲染层: 有 turnDeadline 时闹钟画在 turn 位(按钮行上方)
 // [窗口要窄] 牌桌标题「内蒙古打大 A」在 y=0.425H, 闹钟在 y=0.468H -> 别把标题算进来
+// [2026-11-03 用户] 「其他玩家出牌时的倒计时在他们自己前方, 不能都放在真人玩家这块」
+//   -> AI 回合的闹钟画在**他自己座位那一行**; 真人回合才画在 turn 位。
 var ctxAlarm = mockCtx();
 uiRender.render(ctxAlarm, baseState({ turnDeadline: Date.now() + 30000, turnTotal: 20000 }));
 var alarmHit = ctxAlarm.items.filter(function (i) {
   return Math.abs(i.x - lay.turn.x) < lay.vw * 0.05 && Math.abs(i.y - lay.turn.y) < lay.vh * 0.02;
 });
-check('5.8 有倒计时 -> 闹钟画在 turn 位', alarmHit.length >= 1, 'hits=' + alarmHit.length);
+check('5.8 AI 回合 -> 闹钟**不**画在真人那块(turn 位)', alarmHit.length === 0, 'hits=' + alarmHit.length);
+var seatRows = [lay.vh * 0.215, lay.vh * 0.405];
+var aiSeatAlarm = ctxAlarm.items.filter(function (i) {
+  return /^[0-9]+$/.test(i.t) && seatRows.some(function (y) { return Math.abs(i.y - y) < 3; });
+});
+check('5.8b AI 回合 -> 闹钟画在 AI 自己座位那一行(自己前方)', aiSeatAlarm.length >= 1,
+  'hits=' + aiSeatAlarm.length + ' ' + JSON.stringify(ctxAlarm.items.filter(function (i) { return /^[0-9]+$/.test(i.t); })));
+var ctxAlarmHuman = mockCtx();
+uiRender.render(ctxAlarmHuman, baseState({ currentPlayer: 'D', turnDeadline: Date.now() + 30000, turnTotal: 20000 }));
+var alarmHuman = ctxAlarmHuman.items.filter(function (i) {
+  return Math.abs(i.x - lay.turn.x) < lay.vw * 0.05 && Math.abs(i.y - lay.turn.y) < lay.vh * 0.02;
+});
+check('5.8c 真人回合 -> 闹钟画在 turn 位', alarmHuman.length >= 1, 'hits=' + alarmHuman.length);
 var ctxNoAlarm = mockCtx();
 uiRender.render(ctxNoAlarm, baseState({ turnDeadline: 0 }));
 var alarmNone = ctxNoAlarm.items.filter(function (i) {
