@@ -108,12 +108,15 @@ preflight 检查项：shebang（打进包的 .js 不能有）、UTF-8 BOM、行�
 
 ## 5. Skill 与 OpenClaw 侧
 
-仓库里两份 skill：
+仓库里五份 skill（2026-11-03）：
 
 | skill | 用途 |
 |---|---|
 | `da-a-game-rules` | **规则唯一来源**，改任何规则前必读 |
-| `windows-cn-batch-encoding` | 中文 Windows 编码 / PowerShell 内联脚本坑（本项目天天踩） |
+| `senior-dev-standard` | 代码改动纪律：最小改动、写完必测、改前先读。**只管「怎么改」，不管「规则是什么」**——规则冲突时以 `da-a-game-rules` 为准 |
+| `git-safe-workflow` | Git 操作纪律：改前看状态、diff 逐行审查、一个提交一个主题、消息 `-F` 传文件、推送只推一次、reset --hard 前先看工作区 |
+| `windows-cn-batch-encoding` | 中文 Windows 编码 / PowerShell 内联脚本坑（**机制**；Git 纪律已拆到 `git-safe-workflow`） |
+| `audit-rules-vs-impl` | 规则 ↔ 识别层 ↔ 枚举层 三向对账。`node skills/audit-rules-vs-impl/scripts/audit.js`（只读） |
 
 加载链路（两条路都要满足，缺一个就加载不到）：
 

@@ -82,32 +82,14 @@ Write-Host "CRLF=$crlf  裸 LF=$lf"
 | `node -e "... \` ... "` | 反引号是 PowerShell 转义符，内容被改写 |
 | `git commit -m "... \"引号\" ..."` | 内层 `"` 被当成 PowerShell 字符串终止符，提交信息后半段被**当成命令执行**；commit 失败 |
 
-**`git commit -m` 会自掩失败，必须单独查**：commit 失败后紧跟的 `git push` 会输出 `Everything up-to-date`（因为确实没有新 commit），**读起来像推送成功**。看到这条输出不能当作 commit 成功——它同时是"无新提交"和"提交失败"两种情况的输出。
+### git 相关：机制在本 Skill，纪律在 `git-safe-workflow`
 
-**修法**：提交信息写入文件再提交，避免任何引号进入命令行：
+上面说的"`git commit -m` 被 PowerShell 切碎"是**机制**（PowerShell 先解析命令行）；
+**怎么办**（消息用文件传、提交后核对 `git log -1`、推送只推一次、回滚、推后回读远端）属于 **Git 操作纪律**，在 `git-safe-workflow` 里。
 
-```powershell
-git add -A; git commit -q -F .git/COMMIT_MSG_TMP.txt; Remove-Item .git\COMMIT_MSG_TMP.txt
-git log --oneline -1        # 确认 commit 真的产生了
-```
+只留一条最容易被忽略的：**`git commit -m` 提交失败后，紧跟的 `git push` 会输出 `Everything up-to-date`**（因为确实没有新 commit），**读起来像推送成功**。看到这条输出不能当作 commit 成功——它同时是"无新提交"和"提交失败"两种情况的输出。**提交后一律核对 `git log --oneline -1`。**
 
-**git 的 stderr 不是失败信号**：`git push` / `git commit` 把进度（`To https://...`、`* [new branch] main -> main`）写到 **stderr**。PowerShell 经管道读 stderr 时会把这些行包成错误记录，报 `NativeCommandError` 或 `Exit code 1`，**即使操作成功**。
-
-判定顺序：
-
-1. 先看有没有成功标志文本（`-> main`、`[new branch]`、`[main ...]`）
-2. 再看退出码：`$LASTEXITCODE`
-3. **两者不一致时以退出码为准**——不要把 `NativeCommandError` 当失败
-
-```powershell
-git push origin main *> $null
-if ($LASTEXITCODE -eq 0) { "PUSH OK" } else { "PUSH FAILED" }
-```
-
-网络间歇性不可达时**按退出码**判断成败，不要按「出现了错误文本」判断（判定顺序见上面「判定顺序」）。
-
-**推多少次由工作区 `AGENTS.md` 开发纪律第 4 条决定**（**未授权不 push；获授权后也只推一次**，失败就停，提交留本地等下次一起推）。
-不要在这里自己加重试循环。
+另一条：**git 的进度写 stderr**，PowerShell 会把它包成 `NativeCommandError`，**即使操作成功**。判成败看退出码（`$LASTEXITCODE`），不看错误文本。
 
 **修法（一般形式）**：内联只保留"无嵌套引号、无括号、无 `$`、无中文"的调度命令（如 `cd x; node fix.js`）。任何超过一行的逻辑一律写成 `.js` / `.ps1` 文件再跑，**跑完立刻删掉**——遗留的临时脚本会被打包器或 IDE 扫到。
 
