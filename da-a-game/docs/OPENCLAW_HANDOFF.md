@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-04 21:10 (Asia/Shanghai) · Git HEAD 见 `git log -1`
+> 最后更新：2026-11-04 22:05 (Asia/Shanghai) · Git HEAD 见 `git log -1`
 > 相关文档：**画面验收清单** UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** DECISIONS.md
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
@@ -33,7 +33,7 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 82 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 83 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
@@ -235,6 +235,13 @@ openclaw config set --batch-file .tmp-config-batch.json
    - **#5 机器人图标左移**：`vw - safe - 0.085H` -> `vw - 0.38H`（离右边缘 >= 100px，避开小程序胶囊按钮）。
    - **#6 AI 头像下移**：第一排 `0.215H -> 0.235H`、第二排 `0.405H -> 0.450H`（第二排多下移）。**连带**：两处闹钟位置断言原本写死座位行 Y -> 改为**从 `layout().seats` 取**（座位一动就失效）。
    - **#7 发牌阶段记牌器收起**：新增 `_uiMemoOpenNow()` 为单一来源，`DEALING` 强制收起，进出牌阶段恢复用户设置。
+
+11. **2026-11-04 21:51 用户 4 项调整已做**（新增 `tests/test-req-20261104c.js`，21 条断言；全量 83/83 全绿；preflight 13/13）：
+   - **#1 发牌速度改为 0.3 秒**：`DEAL_STEP_MS` 500 -> 300（22 轮总时长 11s -> 6.6s）。新增 `__dealStepMs()` 钩子锁死该常量。
+   - **#2 顶栏图标**：机器人图标**半径与记牌器一致**（都 `0.042H` = 16px，原 12/13px，两个都更大）；机器人**图形**放大到 `0.78R/0.58R`（头部占满按钮大部分区域，比例提到 `layout().bot` 便于断言）；按钮 `vw-0.38H` -> `vw-0.33H`（**往右移一点**，仍离右边缘 >= 100px）。
+   - **#3 座位位置**：真人头像 `me.y` `0.805H` -> `0.780H`（上移约 10px）；左右**第二排** AI 座位 `0.450H` -> `0.470H`（再下移约 8px），**第一排不动**。
+   - **#4 亮A 四个花色按钮再分开**：`buttonLayout` 里相邻**花色**按钮之间由「不留空」改为 `suitGap = 0.020vw`（约 17px）；普通按钮之间的 `gap` 不变。**顺带修隐患**：总宽原先按「所有相邻都算 gap」算，与实际摆放（花色之间 0 空）不一致 -> 现按**实际间距**统一计算，整排真正居中。
+   - 工具坑：`edit` 工具在**多编辑**时任一条 oldText 不匹配会**整体原子回滚**（本轮踩过：缩进差 2 空格 -> 7 处全未生效）。改用「JSON 载荷 + node runner（每条唯一性断言）」更稳，且脚本要放**仓库外** `.scratch/`，否则 preflight 会报「陌生 .js 会被打进小游戏包」。
 
 ---
 

@@ -185,9 +185,10 @@ let selectedCards = [];
 let handCardHitboxes = [];
 
 // ===== 逐轮发牌驱动 (2026-11-04 用户: 发牌过程中可亮A) =====
-// 每轮 0.5 秒发 5 张(每家1张); 真人手里一有 A 就能点花色按钮亮A。
+// 每轮 0.3 秒发 5 张(每家1张); 真人手里一有 A 就能点花色按钮亮A。
+// [2026-11-04 用户] 「发牌速度改为0.3秒」-> 500ms 改 300ms(22 轮总时长 11s -> 6.6s)
 // 发牌期间**不设 5 秒闸门倒计时**(发牌本身就有时间窗); 发完后的亮A阶段仍保留 5 秒。
-var DEAL_STEP_MS = 500;            // 每轮间隔(真机/模拟器)
+var DEAL_STEP_MS = 300;            // 每轮间隔(真机/模拟器)
 var uiDealTimer = null;           // 发牌定时器
 var uiDealAces = [];              // 发牌期间真人手里**已发的** A(可亮的候选)
 
@@ -238,7 +239,7 @@ function _afterDeal() {
   }
 }
 
-// 定时器驱动的一轮(真机/模拟器: 每 0.5 秒)
+// 定时器驱动的一轮(真机/模拟器: 每 0.3 秒)
 function _dealStepTick() {
   uiDealTimer = null;
   if (!gameState || gameState.phase !== PHASES.DEALING) return;
@@ -439,11 +440,11 @@ function runGateStage() {
       r = transition(gameState, { type: ACTIONS.START_GAME, payload: { progressive: true } });
       if (r && r.ok) {
         gameState = r.state;
-        log('  开始逐轮发牌(' + (gameState.dealRoundsTotal || 0) + ' 轮, 每轮 0.5 秒)');
-        // 启动发牌定时器(第一轮立刻发, 之后每轮 0.5 秒)
+        log('  开始逐轮发牌(' + (gameState.dealRoundsTotal || 0) + ' 轮, 每轮 ' + (DEAL_STEP_MS / 1000) + ' 秒)');
+        // 启动发牌定时器(第一轮立刻发, 之后每轮 0.3 秒)
         //   [2026-11-04] **无头测试里 DEAL_STEP=0 -> 同步把 22 轮跑完**:
         //     否则发牌是异步的, 断言会在发牌完成前就执行 -> 79 套件大面积失配。
-        //     真机/模拟器 DEAL_STEP=500 -> 保留 0.5 秒逐轮节奏(用户要的观感)。
+        //     真机/模拟器 DEAL_STEP=300 -> 保留 0.3 秒逐轮节奏(用户要的观感)。
         uiDealAces = [];
         if (DEAL_STEP <= 0) {
           // 无头: **同步**把 22 轮发完(只发牌, 收尾在循环后做一次)
@@ -584,7 +585,7 @@ function gateAutoAdvance() {
   while (guard++ < GATE_PLAN.length + 4) {
     if (gateIdx >= GATE_PLAN.length) break;
     // [2026-11-04 用户报障] 「亮牌后不能选牌不能出牌, 没有出牌按钮了」
-    //   逐轮发牌是**异步**的(每 0.5 秒一轮): 发牌档跑完时牌**还没发完**。
+    //   逐轮发牌是**异步**的(每 0.3 秒一轮): 发牌档跑完时牌**还没发完**。
     //   原来这里接着往下跑闸门(强制排查/反A/翻底牌/身份/出牌) ->
     //   引擎在 DEALING 阶段把这些动作**全部拒绝**, 但 gateIdx 一路 ++ ->
     //   **闸门计划被空转跑光**; 等牌发完再调 gateAutoAdvance 时已无档可跑
@@ -2203,6 +2204,8 @@ if (typeof module !== 'undefined' && module.exports) {
     //   背景: 无头默认 DEAL_STEP=0 -> 22 轮**同步**跑完, 异步发牌路径平时测不到;
     //         而用户报障的 #3/#4 只在**异步**路径上出现。
     __setDealStep: function (ms) { DEAL_STEP = ms; },
+    // [2026-11-04] 发牌节奏常量 -> 给回归测试锁定(用户裁定: 每轮 0.3 秒)
+    __dealStepMs: function () { return DEAL_STEP_MS; },
     // [2026-11-04] 渲染层实际用的记牌器展开状态(发牌阶段强制收起) -> 给测试读
     uiMemoOpenNow: _uiMemoOpenNow,
   // [2026-11-04] AI 本回合的随机等待时长观测钩子

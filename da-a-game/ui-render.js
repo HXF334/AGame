@@ -47,9 +47,9 @@ function layout(W, H) {
     //   -> 第一排 +0.020H, 第二排 +0.045H(第二排多下移一点)
     seats: [
       { x: safe + r + 44, y: vh * 0.235, side: 'L' },
-      { x: safe + r + 44, y: vh * 0.450, side: 'L' },
+      { x: safe + r + 44, y: vh * 0.470, side: 'L' },
       { x: vw - safe - r - 44, y: vh * 0.235, side: 'R' },
-      { x: vw - safe - r - 44, y: vh * 0.450, side: 'R' }
+      { x: vw - safe - r - 44, y: vh * 0.470, side: 'R' }
     ],
     // [2026-11-03 用户] 真人出的牌**不再画在牌桌中央**, 改画在**原来按钮的位置**
     //   (按钮行正中) —— 用户原话「真人手牌不是居中, 而是在原来按钮的位置显示, 按钮隐藏掉」。
@@ -60,13 +60,21 @@ function layout(W, H) {
     // [2026-10-25] 手牌上移, 避开手机底部横条
     // [2026-10-26] 底部暗区变矮 -> 手牌整体下移(牌的上沿 0.72H 正好贴暗区顶边)
     hand: { y: vh * 0.805, maxW: vw * 0.70, cardH: vh * 0.170, ratio: 0.70 },
-    me: { x: safe + r + 30, r: r, y: vh * 0.805 + vh * 0.200 * 0.42 },
+    // [2026-11-04 用户] 「真人玩家头像那一片整体往上一点」-> 第一项 0.805H -> 0.780H
+    me: { x: safe + r + 30, r: r, y: vh * 0.780 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
-    memo: { iconX: vw * 0.235, iconY: vh * 0.062, iconR: Math.round(vh * 0.034) },
+    // [2026-11-04 用户] 「大小和记牌器按钮一样, 两个都再大一点」-> 半径 0.034H -> 0.042H
+    memo: { iconX: vw * 0.235, iconY: vh * 0.062, iconR: Math.round(vh * 0.042) },
     // [2026-11-04 用户] 顶栏**右上角**小机器人(托管开关): 靠右但不贴边(留出安全边距)
+    // [2026-11-04 用户] 「机器人头像太小了, 占大部分按钮区域」
+    //   -> 头部尺寸比例提到 bot.headW/headH(占圆半径的比例), 眼睛/天线同步放大
     // [2026-11-04 用户] 「机器人图标再往左移, 被小游戏的圆圈和三个点(胶囊按钮)挡住了」
     //   -> 往左让出约 148px(约 0.38H), 整块避开胶囊按钮区域(胶囊约 90px 宽)。
-    autoPlay: { iconX: vw - Math.round(vh * 0.38), iconY: vh * 0.062, iconR: Math.round(vh * 0.032) }
+    // [2026-11-04 用户] 「按钮再往右移一点」(上一轮让开胶囊按钮让过头了)
+    //   0.38H -> 0.33H(往右回一点但仍避开胶囊按钮); 大小与记牌器一致(0.042H)
+    autoPlay: { iconX: vw - Math.round(vh * 0.33), iconY: vh * 0.062, iconR: Math.round(vh * 0.042) },
+    // 机器人图形比例(相对圆半径) -> 「占大部分按钮区域」
+    bot: { headW: 0.78, headH: 0.58, eye: 0.13, eyeDx: 0.25, antenna: 0.26, antennaDot: 0.36 }
   };
 }
 
@@ -100,6 +108,9 @@ function handLayout(n, m) {
 
 function buttonLayout(list, m) {
   var gap = Math.round(m.vw * 0.012);
+  // [2026-11-04 用户] 「亮A那四个花色按钮还是再分开一些」
+  //   -> 相邻**花色**按钮之间用 suitGap(比普通 gap 宽)
+  var suitGap = Math.round(m.vw * 0.020);
   var h = Math.round(m.btn.h);
   // [2026-10-26] **花色按钮窄一些**(一个花色符号不需要整行那么宽)
   var nSuit = 0, nOther = 0;
@@ -107,23 +118,28 @@ function buttonLayout(list, m) {
     if (list[si].kind === 'suit') nSuit++; else nOther++;
   }
   var wSuit = Math.max(38, Math.round(h * 0.74));
+  // [2026-11-04] 先按**实际间距**算总宽(花色之间是 suitGap), 再定普通按钮宽
+  var gapTotal = 0;
+  for (var tg = 0; tg < list.length - 1; tg++) {
+    gapTotal += (list[tg].kind === 'suit' && list[tg + 1].kind === 'suit') ? suitGap : gap;
+  }
   var wOther = Math.max(58, Math.min(112,
-    (m.vw - m.vw * 0.06 - gap * Math.max(0, list.length - 1) - nSuit * wSuit) / Math.max(1, nOther)));
+    (m.vw - m.vw * 0.06 - gapTotal - nSuit * wSuit) / Math.max(1, nOther)));
   var totalW = 0;
   for (var ti = 0; ti < list.length; ti++) totalW += (list[ti].kind === 'suit' ? wSuit : wOther);
-  totalW += gap * Math.max(0, list.length - 1);
+  totalW += gapTotal;
   var x = (m.vw - totalW) / 2;
   var out = [];
   for (var i = 0; i < list.length; i++) {
     var b = list[i];
     var bw = (b.kind === 'suit' ? wSuit : wOther);
     b.x = x; b.y = m.btn.y; b.w = bw; b.h = h;
-    // [2026-11-04 用户] 「把四个按钮挨在一起」-> **相邻花色按钮之间不留空**,
-    //   四个花色按钮连成一排(与其他按钮之间仍留 gap)。
+    // [2026-11-04 用户] 「亮A那四个花色按钮还是再分开一些」
+    //   -> 相邻花色按钮之间留 suitGap(与普通按钮之间仍留 gap)
     x += bw;
     if (i < list.length - 1) {
       var nxt = list[i + 1];
-      x += (b.kind === 'suit' && nxt.kind === 'suit') ? 0 : gap;
+      x += (b.kind === 'suit' && nxt.kind === 'suit') ? suitGap : gap;
     }
     out.push(b);
   }
@@ -229,19 +245,20 @@ function drawTopBar(ctx, st, m, memoIcon, autoIcon) {
     ctx.strokeStyle = st.autoPlay ? '#ffffff' : '#8a8a8a'; ctx.lineWidth = st.autoPlay ? 2 : 1;
     circle(ctx, autoIcon.x, autoIcon.y, _ar); ctx.stroke();
     var _hy = autoIcon.y - _ar * 0.18;
-    var _hw = _ar * 0.62, _hh = _ar * 0.5;
+    var _bt = m.bot || { headW: 0.78, headH: 0.58, eye: 0.13, eyeDx: 0.25, antenna: 0.26, antennaDot: 0.36 };
+    var _hw = _ar * _bt.headW, _hh = _ar * _bt.headH;
     ctx.fillStyle = st.autoPlay ? '#2b2b2b' : '#e8e8e8';
     rr(ctx, autoIcon.x - _hw / 2, _hy - _hh / 2, _hw, _hh, Math.max(2, _ar * 0.16)); ctx.fill();
-    var _er = Math.max(1.4, _ar * 0.11);
+    var _er = Math.max(1.8, _ar * _bt.eye);
     ctx.fillStyle = st.autoPlay ? '#ffd98a' : '#5a5a5a';
-    circle(ctx, autoIcon.x - _hw * 0.22, _hy, _er); ctx.fill();
-    circle(ctx, autoIcon.x + _hw * 0.22, _hy, _er); ctx.fill();
+    circle(ctx, autoIcon.x - _hw * _bt.eyeDx, _hy, _er); ctx.fill();
+    circle(ctx, autoIcon.x + _hw * _bt.eyeDx, _hy, _er); ctx.fill();
     ctx.strokeStyle = st.autoPlay ? '#2b2b2b' : '#e8e8e8'; ctx.lineWidth = Math.max(1, _ar * 0.09);
     ctx.beginPath();
     ctx.moveTo(autoIcon.x, _hy - _hh / 2);
-    ctx.lineTo(autoIcon.x, _hy - _hh / 2 - _ar * 0.28);
+    ctx.lineTo(autoIcon.x, _hy - _hh / 2 - _ar * _bt.antenna);
     ctx.stroke();
-    circle(ctx, autoIcon.x, _hy - _hh / 2 - _ar * 0.34, Math.max(1.4, _ar * 0.11)); ctx.fill();
+    circle(ctx, autoIcon.x, _hy - _hh / 2 - _ar * _bt.antennaDot, Math.max(1.8, _ar * _bt.eye)); ctx.fill();
   }
 }
 
