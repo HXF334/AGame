@@ -59,6 +59,60 @@ function buildDealOrder(startPlayerIndex) {
   return order;
 }
 
+// [2026-11-04] **逐轮发牌原语**（发牌过程中可亮A，用户裁定）
+//   dealGame 与 DEAL_ROUND handler **共用同一套洗牌/发牌顺序/底牌归属规则** ——
+//   不写两份规则（AGENTS.md §15：规则只有一处实现）。
+//   一轮 = 沿 dealOrder 顺序发 5 张（每家1张），最后 1 轮只发 3 张。
+//   dealOrder 布局：21 轮 × 5 张 = 105（每人21张）+ 1 轮 × 3 张 = 108。
+//   底牌 = 该玩家在 dealOrder 里**最后一次出现**的那张（§2.2）。
+function dealRoundsCount() {
+  return FULL_ROUNDS + 1;   // 21 轮满 + 最后 1 轮(3 张) = 22 轮
+}
+
+// 第 roundIdx 轮：谁拿 deck 的第几张
+function roundAssignments(dealOrder, roundIdx) {
+  var out = [];
+  var base = roundIdx * NUM_PLAYERS;
+  for (var i = 0; i < NUM_PLAYERS; i++) {
+    var idx = base + i;
+    if (idx >= dealOrder.length) break;
+    out.push({ playerIndex: dealOrder[idx], deckIndex: idx });
+  }
+  return out;
+}
+
+// 该玩家在 dealOrder 里最后一次出现的下标 -> 他的底牌在 deck 里的位置
+function bottomDeckIndex(dealOrder, playerIndex) {
+  var last = -1;
+  for (var i = 0; i < dealOrder.length; i++) {
+    if (dealOrder[i] === playerIndex) last = i;
+  }
+  return last;
+}
+
+// 发一轮：这一轮的牌进对应玩家的 hand（或底牌槽），返回新的 players 数组
+//   底牌**直接进底牌槽，永不在 hand 里** -> §4.2「底牌不可用于亮A/反A」天然成立
+function dealRound(players, deck, dealOrder, roundIdx) {
+  var assigns = roundAssignments(dealOrder, roundIdx);
+  if (!assigns.length) return players;
+  var newPlayers = players.map(function (p) {
+    return { id: p.id, hand: p.hand.slice(), 底牌: p.底牌 };
+  });
+  assigns.forEach(function (a) {
+    var pl = newPlayers[a.playerIndex];
+    if (!pl) return;
+    var card = deck[a.deckIndex];
+    if (bottomDeckIndex(dealOrder, a.playerIndex) === a.deckIndex) {
+      card.location = { type: '底牌', playerId: pl.id };
+      pl.底牌 = card;
+    } else {
+      card.location = { type: 'hand', playerId: pl.id };
+      pl.hand.push(card);
+    }
+  });
+  return newPlayers;
+}
+
 // dealGame 一次完成：建牌 → 洗牌 → 选起始 → 发牌 → 提底牌
 // 入参可指定 startPlayerIndex（测试用），不指定则随机
 function dealGame(opts) {
@@ -117,5 +171,9 @@ module.exports = {
   shuffle: shuffle,
   createPlayer: createPlayer,
   buildDealOrder: buildDealOrder,
+  dealRoundsCount: dealRoundsCount,
+  roundAssignments: roundAssignments,
+  bottomDeckIndex: bottomDeckIndex,
+  dealRound: dealRound,
   dealGame: dealGame
 };

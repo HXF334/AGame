@@ -18,6 +18,11 @@ var MIN_SEQ = 3;         // 连张最小张数 (§6.1: 3 张及以上)
 //   返回 STRAIGHT len=13), 枚举层却出不来 -> 引擎认得出、玩家打不出。
 //   k=2/3/4 不受影响 (双龙/连珠蛋/假八 的张数上限本来就 < 13)。
 var MAX_SEQ = 13;        // 连张最大张数 (§6.1 基础序列 2..A = 13 个点数)
+// [2026-11-04] enumeration limit semantics change: was **total card count** (<=13), now **number of consecutive points**.
+//   Reason: new types (Dalian Zhudan 15/18/21 cards, Dajia Ba 10..21 cards) could not be enumerated at all,
+//   and 7+ pair Shuanglong (14+ cards) was recognized by engine but NOT enumerable -> hint/AI/doPlay-fallback all broke.
+//   Hand size (<=22 cards) now bounds total card count naturally.
+var MAX_K = 8;           // max cards taken per point (two decks = 8 cards per point)
 
 // 枚举单张以外的候选组合 (cardIds 数组的数组)
 function candidateCombos(hand) {
@@ -73,9 +78,12 @@ function candidateCombos(hand) {
   //   **从来没被枚举过** -> 手里有 JJJJ+QQQQ 时【提示】说「当前没有可用牌」
   //   (用户 2026-11-01 报障; 引擎侧 identifyHand/canBeat 一直是对的, 只漏在枚举)
   //   k=4 -> 每点 4 张: 2组连续 = 8张(假八 FAKE_EIGHT) / 3组连续 = 12张(三连假八)
-  //   SEQ_K_MIN_LEN[k] = 该 k 下**允许的最短总张数**(少了就不是合法牌型):
+  //   SEQ_K_MIN_GROUPS[k] = 该 k 下**允许的最少组数**(少了就不是合法牌型):
   //   k=1 连张至少3张 / k=2 双龙至少3对(6张) / k=3 连珠蛋至少3组(9张) / k=4 假八至少2组(8张)
-  var SEQ_K_MIN_LEN = { 1: MIN_SEQ, 2: 6, 3: 9, 4: 8 };  // k=2 至少3对, k=3 至少3组, k=4 至少2组
+  // [2026-11-04] min-length table now expressed in **group count** (number of consecutive points), aligned with recognition layer:
+  //   k=1 straight >=3 groups | k=2 double straight >=3 groups | k=3 egg family >=3 groups (9=Lianzhu Dan, 4+=Dalian Zhudan)
+  //   k=4 fake eight family >=2 groups (8=Fake Ba, 3+=Da Jia Ba) | k=5..8 Da Jia Ba special >=2 groups (5+ each, 10+ cards)
+  var SEQ_K_MIN_GROUPS = { 1: MIN_SEQ, 2: 3, 3: 3, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2 };
   function _pickCombos(pool, k) {
     var res = [];
     (function rec(start, cur) {
@@ -84,7 +92,7 @@ function candidateCombos(hand) {
     })(0, []);
     return res;
   }
-  for (var _k = 1; _k <= 4; _k++) {
+  for (var _k = 1; _k <= MAX_K; _k++) {
     for (i = 0; i < present.length; i++) {
       var acc = [[]];
       for (var j = i; j < present.length; j++) {
@@ -100,7 +108,8 @@ function candidateCombos(hand) {
         }
         acc = _next;
         for (var _e = 0; _e < acc.length; _e++) {
-          if (acc[_e].length >= SEQ_K_MIN_LEN[_k] && acc[_e].length <= MAX_SEQ) out.push(acc[_e]);
+          var _groups = j - i + 1;   // number of consecutive points in this segment
+          if (_groups >= SEQ_K_MIN_GROUPS[_k] && _groups <= MAX_SEQ) out.push(acc[_e]);
         }
       }
     }
@@ -117,7 +126,7 @@ function candidateCombos(hand) {
   //   本分支早已按此实现 —— 这次是把规则文本对齐到实现, 不是新增行为。
   //   k=1 连张 / k=2 双龙 / k=3 连珠蛋 / k=4 假八 都要覆盖。
   //   [注] byRank 存的是 **card id 字符串**(不是 card 对象), 别写 .id。
-  for (var _ak = 1; _ak <= 4; _ak++) {
+  for (var _ak = 1; _ak <= MAX_K; _ak++) {
     var _aPool = byRank[14];
     if (!_aPool || _aPool.length < _ak) continue;
     var _aOpts = _pickCombos(_aPool, _ak);
@@ -133,8 +142,10 @@ function candidateCombos(hand) {
         }
       }
       _accA = _nextA;
+      var _groupsA = _ar;      // A + 2.._ar -> _ar groups total
+      var _groupsA = _ar;      // A + 2.._ar -> _ar groups total
       for (var _ae = 0; _ae < _accA.length; _ae++) {
-        if (_accA[_ae].length >= SEQ_K_MIN_LEN[_ak] && _accA[_ae].length <= MAX_SEQ) {
+        if (_groupsA >= SEQ_K_MIN_GROUPS[_ak] && _groupsA <= MAX_SEQ) {
           out.push(_accA[_ae]);
         }
       }
@@ -188,5 +199,6 @@ module.exports = {
   MIN_SAME_RANK: MIN_SAME_RANK,
   MAX_SAME_RANK: MAX_SAME_RANK,
   MIN_SEQ: MIN_SEQ,
-  MAX_SEQ: MAX_SEQ
+  MAX_SEQ: MAX_SEQ,
+  MAX_K: MAX_K
 };

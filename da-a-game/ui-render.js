@@ -60,7 +60,9 @@ function layout(W, H) {
     hand: { y: vh * 0.805, maxW: vw * 0.70, cardH: vh * 0.170, ratio: 0.70 },
     me: { x: safe + r + 30, r: r, y: vh * 0.805 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
-    memo: { iconX: vw * 0.235, iconY: vh * 0.062, iconR: Math.round(vh * 0.034) }
+    memo: { iconX: vw * 0.235, iconY: vh * 0.062, iconR: Math.round(vh * 0.034) },
+    // [2026-11-04 用户] 顶栏**右上角**小机器人(托管开关): 靠右但不贴边(留出安全边距)
+    autoPlay: { iconX: vw - safe - Math.round(vh * 0.085), iconY: vh * 0.062, iconR: Math.round(vh * 0.032) }
   };
 }
 
@@ -112,7 +114,13 @@ function buttonLayout(list, m) {
     var b = list[i];
     var bw = (b.kind === 'suit' ? wSuit : wOther);
     b.x = x; b.y = m.btn.y; b.w = bw; b.h = h;
-    x += bw + gap;
+    // [2026-11-04 用户] 「把四个按钮挨在一起」-> **相邻花色按钮之间不留空**,
+    //   四个花色按钮连成一排(与其他按钮之间仍留 gap)。
+    x += bw;
+    if (i < list.length - 1) {
+      var nxt = list[i + 1];
+      x += (b.kind === 'suit' && nxt.kind === 'suit') ? 0 : gap;
+    }
     out.push(b);
   }
   return out;
@@ -171,7 +179,7 @@ function drawTable(ctx, m) {
 //   第一行: 模式(测试=全名 / 正式=明暗)
 //   第二行: 「大A 花色」 + 阵营明细(只留 主X / 次X, 隔两个空格)
 //     次方**身份亮明** -> 和主方同色(黄); 未亮明 -> 浅灰
-function drawTopBar(ctx, st, m, memoIcon) {
+function drawTopBar(ctx, st, m, memoIcon, autoIcon) {
   var g = st.gameState;
   var h = m.top.h;
   ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(0, 0, m.vw, h);
@@ -208,6 +216,28 @@ function drawTopBar(ctx, st, m, memoIcon) {
     ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 1.5;
     circle(ctx, memoIcon.x, memoIcon.y, memoIcon.r); ctx.stroke();
     text(ctx, '记', memoIcon.x, memoIcon.y, Math.max(9, Math.round(m.vh * 0.030)), '#ffffff', 'center', true);
+  }
+  // [2026-11-04 用户] 顶栏右上角小机器人: 托管开关(开=亮色高亮, 关=暗色)
+  if (autoIcon) {
+    var _ar = autoIcon.r;
+    ctx.fillStyle = st.autoPlay ? '#ffd98a' : 'rgba(120,120,120,0.55)';
+    circle(ctx, autoIcon.x, autoIcon.y, _ar); ctx.fill();
+    ctx.strokeStyle = st.autoPlay ? '#ffffff' : '#8a8a8a'; ctx.lineWidth = st.autoPlay ? 2 : 1;
+    circle(ctx, autoIcon.x, autoIcon.y, _ar); ctx.stroke();
+    var _hy = autoIcon.y - _ar * 0.18;
+    var _hw = _ar * 0.62, _hh = _ar * 0.5;
+    ctx.fillStyle = st.autoPlay ? '#2b2b2b' : '#e8e8e8';
+    rr(ctx, autoIcon.x - _hw / 2, _hy - _hh / 2, _hw, _hh, Math.max(2, _ar * 0.16)); ctx.fill();
+    var _er = Math.max(1.4, _ar * 0.11);
+    ctx.fillStyle = st.autoPlay ? '#ffd98a' : '#5a5a5a';
+    circle(ctx, autoIcon.x - _hw * 0.22, _hy, _er); ctx.fill();
+    circle(ctx, autoIcon.x + _hw * 0.22, _hy, _er); ctx.fill();
+    ctx.strokeStyle = st.autoPlay ? '#2b2b2b' : '#e8e8e8'; ctx.lineWidth = Math.max(1, _ar * 0.09);
+    ctx.beginPath();
+    ctx.moveTo(autoIcon.x, _hy - _hh / 2);
+    ctx.lineTo(autoIcon.x, _hy - _hh / 2 - _ar * 0.28);
+    ctx.stroke();
+    circle(ctx, autoIcon.x, _hy - _hh / 2 - _ar * 0.34, Math.max(1.4, _ar * 0.11)); ctx.fill();
   }
 }
 
@@ -470,22 +500,43 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     if (!slot) return;
     var cardH = Math.round(m.vh * 0.115);
     var cardW = Math.round(cardH * m.hand.ratio);
-    var n = Math.min(cards.length, 10);   // [2026-10-26] 不能只画 4 张(用户: 打出的手牌不能完全显示)
-    var step = Math.round(cardW * 0.58);
-    var totalW = cardW + step * (n - 1);
     var rr_ = Math.round(m.vh * 0.052);
+    // [2026-11-04 用户] 「我出55667788991010JJQQ，桌面上显示不全」
+    //   -> 原来这里 `Math.min(cards.length, 10)` **硬截断到 10 张**(后面画 "+N"),
+    //      16 张的双龙只画出 10 张 -> 看着"没出全"。
+    //   -> 改成: **尽量全部画出**, 按该槽位**可用宽度压缩步长**;
+    //      只有连「最小步长」都塞不下时才截断并标 "+N"。
+    //      (可用宽度: C=按钮行几乎整屏; L/R=头像内侧到牌桌中线, 左右两边不撞车)
+    var avail = slot.side === 'C' ? (m.vw - m.safeL - m.safeR)
+             : slot.side === 'L' ? (m.table.cx - (slot.x + rr_ + 18))
+             : ((slot.x - rr_ - 18) - m.table.cx);
+    var MIN_STEP = 12;                       // 再窄就认不出点数了
+    var MAX_STEP = Math.round(cardW * 0.58);
+    var n = cards.length;                    // 不再截断
+    var step = MAX_STEP;
+    if (n > 1 && avail > cardW) {
+      var fit = Math.floor((avail - cardW) / (n - 1));
+      if (fit < step) step = Math.max(MIN_STEP, fit);
+    }
+    var totalW = cardW + step * (n - 1);
+    // 实在放不下(步长已到下限)才截断, 并标 "+N"
+    var shown = n;
+    if (totalW > avail && n > 1 && step > 0) {
+      shown = Math.max(1, Math.floor((avail - cardW) / step) + 1);
+      totalW = cardW + step * (shown - 1);
+    }
     // [2026-11-02] side 'C' = 牌桌中央(真人自己的出牌): 整排**居中**画
     // [2026-11-04 用户] 「AI玩家打出的手牌离头像再远一点」(+8 -> +18)
     var x0 = slot.side === 'L' ? (slot.x + rr_ + 18)
           : slot.side === 'C' ? Math.round(slot.x - totalW / 2)
           : (slot.x - rr_ - 18 - totalW);
     var y = slot.y - cardH / 2;
-    for (var j = 0; j < n; j++) {
+    for (var j = 0; j < shown; j++) {
       // 内容一律按 step 宽居中 -> 和其他手牌位置一致
       drawMiniCard(ctx, cards[j], x0 + j * step, y, cardW, cardH, st, step);
     }
-    if (cards.length > n) {
-      text(ctx, '+' + (cards.length - n), x0 + totalW + 4, y + cardH / 2,
+    if (cards.length > shown) {
+      text(ctx, '+' + (cards.length - shown), x0 + totalW + 4, y + cardH / 2,
         Math.max(8, Math.round(m.vh * 0.026)), '#ffffff', 'left', false);
     }
   });
@@ -546,6 +597,20 @@ function drawHand(ctx, st, m) {
   }
   if (bottom) {
     drawCardBack(ctx, L2.x0 + n * L2.step, L2.y, L2.cardW, L2.cardH);
+  }
+  // [2026-11-04 用户] 托管时真人手牌处显示**半透明「取消托管」**标识
+  //   -> 点这块区域也能取消托管(命中框由 game.js 记录)。
+  if (st.autoPlay) {
+    var _cw = Math.max(96, Math.round(m.vw * 0.16));
+    var _ch = Math.round(m.vh * 0.075);
+    var _cx = m.vw / 2 - _cw / 2;
+    var _cy = L2.y - _ch / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    rr(ctx, _cx, _cy, _cw, _ch, Math.round(_ch * 0.35)); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,217,138,0.85)'; ctx.lineWidth = 1.5;
+    rr(ctx, _cx, _cy, _cw, _ch, Math.round(_ch * 0.35)); ctx.stroke();
+    text(ctx, '取消托管', _cx + _cw / 2, _cy + _ch / 2, Math.max(11, Math.round(m.vh * 0.036)), '#ffd98a', 'center', true);
+    boxes.push({ x: _cx, y: _cy, w: _cw, h: _ch, cancelAutoPlay: true });
   }
   return boxes;
 }
@@ -797,12 +862,30 @@ function drawButtons(ctx, st, m, list) {
     var on = b.enabled;
     // [2026-10-26] 花色按钮: 浅色底 + 花色本身的颜色(像一张牌), 符号画大一点
     var isSuit = (b.kind === 'suit');
-    ctx.fillStyle = on ? (isSuit ? '#f4f0e6' : (b.id === 'hint' ? '#2f8f4f' : (b.id === 'play' ? '#1e6091' : '#8a5a2b'))) : '#4a4a4a';
-    rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.fill();
-    ctx.strokeStyle = on ? '#ffd98a' : '#6a6a6a'; ctx.lineWidth = on ? 2 : 1;
-    rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.stroke();
+    // [2026-11-04 用户] 「4个大A按钮可用不可用时区分不明显，调整一下背景」
+    //   -> 可用 = **亮牌面**(近白底 + 花色本色字 + 金色粗边)
+    //   -> 不可用 = **深暗底**(近黑底 + 极暗字 + 细灰边)
+    //      两者底色明度差拉大, 一眼能分辨。
+    if (isSuit) {
+      if (on) {
+        ctx.fillStyle = '#fffdf6';
+        rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.fill();
+        ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 2;
+        rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(10,10,10,0.78)';
+        rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.fill();
+        ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1;
+        rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = on ? (b.id === 'hint' ? '#2f8f4f' : (b.id === 'play' ? '#1e6091' : '#8a5a2b')) : '#4a4a4a';
+      rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.fill();
+      ctx.strokeStyle = on ? '#ffd98a' : '#6a6a6a'; ctx.lineWidth = on ? 2 : 1;
+      rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.stroke();
+    }
     var fs2 = isSuit ? Math.max(16, Math.round(m.vh * 0.058)) : fs;
-    var col2 = on ? (isSuit ? suitColor(b.suit) : '#ffffff') : '#9a9a9a';
+    var col2 = on ? (isSuit ? suitColor(b.suit) : '#ffffff') : (isSuit ? 'rgba(255,255,255,0.22)' : '#9a9a9a');
     text(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, fs2, col2, 'center', true);
   }
   return boxes;
@@ -935,7 +1018,8 @@ function render(ctx, st) {
   var m = layout(st.W, st.H);
   drawTable(ctx, m);
   var memoIcon = { x: m.memo.iconX, y: m.memo.iconY, r: m.memo.iconR };
-  drawTopBar(ctx, st, m, memoIcon);
+  var autoIcon = { x: m.autoPlay.iconX, y: m.autoPlay.iconY, r: m.autoPlay.iconR };
+  drawTopBar(ctx, st, m, memoIcon, autoIcon);
   drawMemo(ctx, st, m);
   var seatInfo = drawSeats(ctx, st, m);
   drawTurnInfo(ctx, st, m, seatInfo.seatMap);
@@ -947,9 +1031,10 @@ function render(ctx, st) {
   return {
     btnLog: null, btnStage: btnBoxes, handHitboxes: handBoxes,
     seatHitboxes: seatInfo.boxes, markHits: seatInfo.markHits,
-    memoIcon: memoIcon, layout: m,
+    memoIcon: memoIcon, autoPlayIcon: autoIcon, layout: m,
     switchHit: switchHit,
     settleBtn: settleBtn,
+    cancelAutoPlayBox: (handBoxes || []).filter(function (b) { return b.cancelAutoPlay; })[0] || null,
   };
 }
 

@@ -90,9 +90,9 @@ check('连张 STRAIGHT (13 张最长龙 2..A)', enumReaches(
 
 check('双龙 DOUBLE_STRAIGHT (3 对连续)', enumReaches(groups([5, 6, 7], 2), 6, HAND_TYPES.DOUBLE_STRAIGHT));
 check('连珠蛋 STRAIGHT_TRIPLE (3 组连续)', enumReaches(groups([5, 6, 7], 3), 9, HAND_TYPES.STRAIGHT_TRIPLE));
-check('四连珠蛋 STRAIGHT_TRIPLE_LARGE (4 组连续)', enumReaches(groups([5, 6, 7, 8], 3), 12, HAND_TYPES.STRAIGHT_TRIPLE_LARGE));
+check('四连珠蛋 BIG_STRAIGHT_TRIPLE (4 组连续)', enumReaches(groups([5, 6, 7, 8], 3), 12, HAND_TYPES.BIG_STRAIGHT_TRIPLE));
 check('假八 FAKE_EIGHT (2 组连续)', enumReaches(groups([5, 6], 4), 8, HAND_TYPES.FAKE_EIGHT));
-check('三连假八 TRIPLE_FAKE_EIGHT (3 组连续)', enumReaches(groups([5, 6, 7], 4), 12, HAND_TYPES.TRIPLE_FAKE_EIGHT));
+check('三连假八 BIG_FAKE_EIGHT (3 组连续)', enumReaches(groups([5, 6, 7], 4), 12, HAND_TYPES.BIG_FAKE_EIGHT));
 
 check('双王 DOUBLE_JOKER', enumReaches([joker(true), joker(true)], 2, HAND_TYPES.DOUBLE_JOKER));
 check('三王 TRIPLE_JOKER', enumReaches([joker(true), joker(true), joker(false)], 3, HAND_TYPES.TRIPLE_JOKER));

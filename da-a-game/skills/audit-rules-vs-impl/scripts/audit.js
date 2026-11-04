@@ -62,9 +62,12 @@ var ENUM_CASES = [
   { name: '连张 2..A(最长龙)', hand: [2,3,4,5,6,7,8,9,10,11,12,13,14].map(function (r) { return card('H', r); }), len: 13 },
   { name: '双龙(DOUBLE_STRAIGHT)', hand: sameRank(5,2).concat(sameRank(6,2), sameRank(7,2)), len: 6 },
   { name: '连珠蛋(STRAIGHT_TRIPLE)', hand: sameRank(5,3).concat(sameRank(6,3), sameRank(7,3)), len: 9 },
-  { name: '四连珠蛋(STRAIGHT_TRIPLE_LARGE)', hand: sameRank(5,3).concat(sameRank(6,3), sameRank(7,3), sameRank(8,3)), len: 12 },
+  { name: '大连珠蛋(BIG_STRAIGHT_TRIPLE)', hand: sameRank(5,3).concat(sameRank(6,3), sameRank(7,3), sameRank(8,3)), len: 12 },
+  { name: '大连珠蛋5组(BIG_STRAIGHT_TRIPLE)', hand: sameRank(5,3).concat(sameRank(6,3), sameRank(7,3), sameRank(8,3), sameRank(9,3)), len: 15 },
   { name: '假八(FAKE_EIGHT)',  hand: sameRank(5,4).concat(sameRank(6,4)), len: 8 },
-  { name: '三连假八(TRIPLE_FAKE_EIGHT)', hand: sameRank(5,4).concat(sameRank(6,4), sameRank(7,4)), len: 12 },
+  { name: '大假八(BIG_FAKE_EIGHT)', hand: sameRank(5,4).concat(sameRank(6,4), sameRank(7,4)), len: 12 },
+  { name: '大假八-特例2组x5(BIG_FAKE_EIGHT)', hand: sameRank(5,5).concat(sameRank(6,5)), len: 10 },
+  { name: '大假八-2组x8(BIG_FAKE_EIGHT)', hand: sameRank(5,8).concat(sameRank(6,8)), len: 16 },
   { name: '双王(DOUBLE_JOKER)', hand: [joker(true), joker(true)], len: 2 },
   { name: '三王(TRIPLE_JOKER)', hand: [joker(true), joker(true), joker(false)], len: 3 },
   { name: '四王(FOUR_JOKER)',  hand: [joker(true), joker(true), joker(false), joker(false)], len: 4 }
@@ -94,8 +97,9 @@ function checkEnumReachability() {
 var CHAIN = [
   { key: 'DOUBLE_BIG_A',       hand: (function () { var a = bigA('H'), b = bigA('H'); return [a, b]; })() },
   { key: 'FOUR_JOKER',         hand: [joker(true), joker(true), joker(false), joker(false)] },
-  { key: 'TRIPLE_FAKE_EIGHT',  hand: sameRank(5,4).concat(sameRank(6,4), sameRank(7,4)) },
-  { key: 'STRAIGHT_TRIPLE_LARGE', hand: sameRank(5,3).concat(sameRank(6,3), sameRank(7,3), sameRank(8,3)) },
+  { key: 'BIG_FAKE_EIGHT',  hand: sameRank(5,4).concat(sameRank(6,4), sameRank(7,4)) },
+  { key: 'BIG_STRAIGHT_TRIPLE', hand: sameRank(5,3).concat(sameRank(6,3), sameRank(7,3), sameRank(8,3)) },
+  // [2026-11-04] 大连珠蛋/大假八 的**更大形态**也要能枚举(枚举层原来卡总张数<=13)
   { key: 'TRIPLE_JOKER',       hand: [joker(true), joker(true), joker(false)] },
   { key: 'TRUE_EIGHT',         hand: sameRank(8,8) },
   { key: 'TRUE_SEVEN',         hand: sameRank(7,7) },

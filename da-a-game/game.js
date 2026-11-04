@@ -25,6 +25,8 @@ var uiRender = require('./ui-render.js');
 //   (启动路径里它是 undefined -> AI 出牌时抛 "Cannot set properties of undefined")。
 //   这里的 uiPrevHandLens 在启动时也被读 -> 同样必须提前。
 var uiPassed = {};          // pid -> true (该玩家点了「不出」)
+var btnAutoPlay = null;
+var btnAutoPlayCancel = null;
 var uiPrevHandLens = {};    // pid -> 上次的手牌张数(用来发现谁出牌了)
 // [2026-10-26] **轮次跟踪**: 打大A 里每换一个点数, 引擎就收走旧桌牌 = 新的一轮开始。
 //   旧一轮的「各家最新出牌」必须清掉, 否则:
@@ -44,18 +46,26 @@ var uiPrevTableLen = 0;
 //   否则 65 个套件会被拖慢, 且 setTimeout 重入会让无头断言时序不稳。
 //   判据放在纯函数 _computeAiDelay 里, 便于无头测试直接验证各种环境。
 var AI_STEP_DELAY = _computeAiDelay(typeof wx !== 'undefined' ? wx : null);
-// [2026-11-03 用户] 「随机一个AI玩家的等待时间变成3秒」
-//   -> 每局随机挑一个 AI 玩家当「慢手」, 他行动前等 3 秒(其余仍 1 秒),
-//      这样真机上的倒计时闹钟能被看见(1 秒太快, 数字来不及看)。
-//   无头测试里 AI_STEP_DELAY=0 -> 慢手延迟也必须是 0, 否则套件会被拖慢。
-var AI_SLOW_DELAY = AI_STEP_DELAY > 0 ? 3000 : 0;
-var uiSlowAiPid = null;      // 本局被选中当「慢手」的 AI 玩家
+// [2026-11-04 用户] 「ai出牌有个随机3秒的去掉，AI默认都随机一秒出牌」
+//   -> 删除「每局随机挑一个 AI 当慢手、等 3 秒」的机制(AI_SLOW_DELAY / uiSlowAiPid)。
+//   -> 现在**所有** AI 统一「随机约 1 秒」出牌: 基准 AI_STEP_DELAY(真机/模拟器 1000ms),
+//      每个 AI 回合在基准上叠加 ±20% 随机抖动(见 _aiWaitMs), 避免所有 AI 节奏一模一样。
+var uiAiWaitPlan = 0;        // 当前 AI 回合的等待时长(ms); 0 = 还没定
 
 // 纯函数: 由 wx 运行时决定 AI 停顿(ms)。0 = 不同步等(无头测试), 1000 = 等 1 秒。
 function _computeAiDelay(wxObj) {
   if (!wxObj) return 0;              // node 无头且没装 mock -> 本来就没有 ctx, AI 也不跑
   if (wxObj.__isMock) return 0;      // node 无头 + mock-wx -> 不能等(setTimeout 会让无头断言不稳)
   return 1000;                       // 真机 / 微信开发者工具模拟器
+}
+
+// [2026-11-04 用户] AI 出牌统一「随机约 1 秒」(不再有 3 秒慢手)。
+//   纯函数: 基准 base 毫秒 + ±20% 随机抖动 -> 800~1200ms(真机/模拟器)。
+//   无头测试 base=0 -> 直接返回 0(不能等, 否则套件被拖慢)。
+function _aiWaitMs(base) {
+  if (!base) return 0;
+  var jitter = Math.round(base * 0.2 * (Math.random() * 2 - 1));
+  return Math.max(200, base + jitter);
 }
 
 // [2026-10-25 P0 修复] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
@@ -170,15 +180,170 @@ let lastEmptiedPlayer = null;
 //   顶部 5 个按钮仍可随时切换。
 var SEAT_IDS = ['A', 'B', 'C', 'D', 'E'];
 function _randomSeat() { return SEAT_IDS[Math.floor(Math.random() * SEAT_IDS.length)]; }
-// [2026-11-03] 随机挑一个**非真人**的 AI 玩家当「慢手」(等 3 秒)。
-function _pickSlowAiPid() {
-  var cands = SEAT_IDS.filter(function (id) { return id !== humanPlayer; });
-  if (!cands.length) return null;
-  return cands[Math.floor(Math.random() * cands.length)];
-}
 let humanPlayer = _randomSeat();
 let selectedCards = [];
 let handCardHitboxes = [];
+
+// ===== 逐轮发牌驱动 (2026-11-04 用户: 发牌过程中可亮A) =====
+// 每轮 0.5 秒发 5 张(每家1张); 真人手里一有 A 就能点花色按钮亮A。
+// 发牌期间**不设 5 秒闸门倒计时**(发牌本身就有时间窗); 发完后的亮A阶段仍保留 5 秒。
+var DEAL_STEP_MS = 500;            // 每轮间隔(真机/模拟器)
+var uiDealTimer = null;           // 发牌定时器
+var uiDealAces = [];              // 发牌期间真人手里**已发的** A(可亮的候选)
+
+// 由 wx 运行时决定发牌间隔: 无头测试 = 0ms(否则套件被拖慢)
+function _computeDealStep(wxObj) {
+  if (!wxObj) return 0;
+  if (wxObj.__isMock) return 0;
+  return DEAL_STEP_MS;
+}
+var DEAL_STEP = _computeDealStep(typeof wx !== 'undefined' ? wx : null);
+
+// 发一轮牌(只发牌, 不做收尾) -> 返回是否成功
+function _dealOneRound() {
+  var r = transition(gameState, { type: ACTIONS.DEAL_ROUND, payload: {} });
+  if (r && r.ok) {
+    gameState = r.state;
+  } else {
+    log('  逐轮发牌中断: ' + _errOf(r));
+    return false;
+  }
+  // 刷新可亮的 A 候选(只取**手里已发的** A, 底牌不在 hand 里)
+  uiDealAces = [];
+  var me = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+  if (me && me.hand) {
+    uiDealAces = me.hand.filter(function (c) { return c.rank === 14; });
+  }
+  return true;
+}
+
+// 发牌结束后的收尾: 判真人亮A资格 -> 交给闸门流程继续
+//   [2026-11-04] 单独拆出来, **不**在这里调 gateAutoAdvance:
+//     同步路径由 runGateStage 正常返回后继续推进(gateIdx 已 ++),
+//     异步路径由 _dealStepTick 调 gateAutoAdvance(此时 gateIdx 也已 ++)。
+//     若在这里调 gateAutoAdvance, 同步路径会**重入**阶段机(gateIdx 还没 ++)
+//     -> DEAL 被重跑 -> START_GAME 报 phase 错(实测全量套件失败)。
+function _afterDeal() {
+  log('  发牌完成');
+  uiDealAces = [];
+  // 发牌结束 -> 进入**发牌后的亮A阶段**(SKILL §3 第 5 步)
+  var e1 = canLiangA(gameState, humanPlayer);
+  log('  真人亮A资格: ' + (e1.ok ? '有' : '无') + ' — ' + e1.reason);
+  if (e1.ok) {
+    // 有A -> 等真人点花色按钮亮A(5 秒倒计时), 决策完自动进入下一阶段
+    _uiSetGateChoice({ kind: 'LIANG_A', eligible: true, reason: e1.reason, cards: e1.cards });
+  } else {
+    // 没有A -> 由 AI 依次尝试亮A, 完成后自动进入下一阶段
+    _aiLiangARound();
+  }
+}
+
+// 定时器驱动的一轮(真机/模拟器: 每 0.5 秒)
+function _dealStepTick() {
+  uiDealTimer = null;
+  if (!gameState || gameState.phase !== PHASES.DEALING) return;
+  if (!_dealOneRound()) return;
+  if (ctx) draw();
+  if (gameState.phase !== PHASES.DEALING) {
+    _afterDeal();
+    gateAutoAdvance();     // 继续闸门流程(强制排查/反A/翻底牌/身份)
+    enterPlayIfNeeded();
+    if (ctx) draw();
+    return;
+  }
+  uiDealTimer = setTimeout(_dealStepTick, DEAL_STEP);
+}
+
+// 发牌中真人点花色按钮 -> 亮A(引擎在 DEALING 阶段也接受 LIANG_A)
+function _dealLiangA(suit) {
+  if (!gameState || gameState.phase !== PHASES.DEALING) return false;
+  if (gameState['主A']) return false;              // 已有人亮A
+  var card = uiDealAces.filter(function (c) { return c && c.suit === suit; })[0];
+  if (!card) return false;                          // 没有该花色的 A -> 按钮本来就该是灰的
+  var r = transition(gameState, { type: ACTIONS.LIANG_A,
+    payload: { playerId: humanPlayer, cardId: card.id } });
+  if (r && r.ok) {
+    gameState = r.state;
+    log('  真人发牌中亮A: ' + psuit(card.suit) + ' (主A 由' + pn(humanPlayer) + ', 方式=主动亮)');
+    logState('发牌中亮A后');
+    if (ctx) draw();
+    return true;
+  }
+  log('  发牌中亮A失败: ' + _errOf(r));
+  return false;
+}
+
+// ===== 托管 (2026-11-04 用户: 顶栏小机器人按钮, AI 代打真人手牌) =====
+// 点击小机器人 -> 托管**开启/关闭**切换; 托管时 AI 替真人出牌, 真人不能手动操作。
+// 托管时真人手牌区显示**半透明「取消托管」**标识, 点该区域或顶栏机器人都能取消。
+// **不跨局保留**: 每局开始重置为关闭(见 newGame)。
+var uiAutoPlay = false;        // 托管开关
+
+function _uiToggleAutoPlay() {
+  uiAutoPlay = !uiAutoPlay;
+  log(uiAutoPlay ? '开启托管: AI 代打真人手牌' : '关闭托管: 恢复真人操作');
+  selectedCards = [];
+  if (uiAutoPlay) _autoPlayTakeover();
+  if (ctx) draw();
+}
+
+// AI 接管真人回合: 用引擎的 chooseAction 替真人做决策
+function _autoPlayTakeover() {
+  if (!uiAutoPlay) return false;
+  if (!gameState || gameState.phase !== PHASES.PLAY) return false;
+  if (currentPlayer !== humanPlayer) return false;
+  var act = chooseAction(gameState, humanPlayer);
+  if (!act) return false;
+  if (act.type === 'PLAY') {
+    var ids = act.cardIds || [];
+    if (!ids.length) return false;
+    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张');
+    _autoPlayDoPlay(ids);
+    return true;
+  }
+  if (act.type === 'PASS') {
+    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 不出');
+    _autoPlayDoPass();
+    return true;
+  }
+  return false;
+}
+
+// 托管出牌: 走和真人一样的引擎动作, 但绕过「是不是真人回合」守卫
+function _autoPlayDoPlay(ids) {
+  var r = transition(gameState, { type: ACTIONS.PLAY,
+    payload: { playerId: humanPlayer, cardIds: ids } });
+  if (r && r.ok) {
+    gameState = r.state;
+    var cards = (gameState.table || []).slice(-ids.length);
+    _uiRecordPlay(humanPlayer, cards);
+    log('  托管出牌: ' + ids.length + ' 张');
+    lastEmptiedPlayer = null;
+    advanceCurrentPlayer();
+    checkRoundEnd();
+    doPushWindIfPending(false);
+    enterPlayIfNeeded();
+  } else {
+    log('  托管出牌失败: ' + _errOf(r));
+  }
+  if (ctx) draw();
+}
+
+function _autoPlayDoPass() {
+  var r = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: humanPlayer } });
+  if (r && r.ok) {
+    gameState = r.state;
+    uiPassed[humanPlayer] = true;
+    log('  托管: 真人不出');
+    advanceCurrentPlayer();
+    checkRoundEnd();
+    doPushWindIfPending(false);
+    enterPlayIfNeeded();
+  } else {
+    log('  托管不出失败: ' + _errOf(r));
+  }
+  if (ctx) draw();
+}
 
 // === 画布 (WeChat 小程序运行时 = wx, Node 测试时跳过) ===
 var canvas = null, ctx = null, W = 0, H = 0;
@@ -267,23 +432,35 @@ function runGateStage() {
       // [B5 修正 2026-11-03] 原来写死 { startPlayerIndex: 0 }, 把引擎的随机发牌覆盖成了固定起点。
       //   SKILL §2.2: 「每局随机选择发牌起始玩家」。这里**不传** startPlayerIndex,
       //   交给 transition/dealGame 自己随机。
-      r = transition(gameState, { type: ACTIONS.START_GAME, payload: {} });
+      // [2026-11-04 用户] 「发牌过程中，持有可亮A的玩家可以亮A」-> **逐轮发牌**:
+      //   progressive = true -> 引擎只洗牌, phase=DEALING; 之后每 0.5 秒发一轮(5张),
+      //   发牌期间真人手里有 A 就能亮(四个花色按钮, 有A的可点、没有的置灰)。
+      //   引擎侧 hand 只含**已发的牌** -> 只能亮「已摸到的 A」; 底牌直接进底牌槽 -> 天然不可亮。
+      r = transition(gameState, { type: ACTIONS.START_GAME, payload: { progressive: true } });
       if (r && r.ok) {
         gameState = r.state;
-        log('  发牌完成');
+        log('  开始逐轮发牌(' + (gameState.dealRoundsTotal || 0) + ' 轮, 每轮 0.5 秒)');
+        // 启动发牌定时器(第一轮立刻发, 之后每轮 0.5 秒)
+        //   [2026-11-04] **无头测试里 DEAL_STEP=0 -> 同步把 22 轮跑完**:
+        //     否则发牌是异步的, 断言会在发牌完成前就执行 -> 79 套件大面积失配。
+        //     真机/模拟器 DEAL_STEP=500 -> 保留 0.5 秒逐轮节奏(用户要的观感)。
+        uiDealAces = [];
+        if (DEAL_STEP <= 0) {
+          // 无头: **同步**把 22 轮发完(只发牌, 收尾在循环后做一次)
+          while (gameState && gameState.phase === PHASES.DEALING) {
+            if (!_dealOneRound()) break;
+          }
+          if (gameState && gameState.phase !== PHASES.DEALING) _afterDeal();
+        } else {
+          uiDealTimer = setTimeout(_dealStepTick, DEAL_STEP);
+        }
         log('  座位: ' + ['A','B','C','D','E'].map(function (id) {
           return pn(id) + (id === humanPlayer ? '(真人)' : '(AI)');
 }).join(' ') + '  真人=' + pn(humanPlayer) + '(随机座位)');
       } else { log('  发牌失败: ' + _errOf(r)); break; }
-var e1 = canLiangA(gameState, humanPlayer);
-log('  真人亮A资格: ' + (e1.ok ? '有' : '无') + ' — ' + e1.reason);
-if (e1.ok) {
-  // 有A -> 等真人点【亮A】/【不亮A】, 决策完自动进入下一阶段
-  _uiSetGateChoice({ kind: 'LIANG_A', eligible: true, reason: e1.reason, cards: e1.cards });
-} else {
-  // 没有A -> 由 AI 依次尝试亮A, 完成后自动进入下一阶段
-  _aiLiangARound();
-}
+      // [2026-11-04] 逐轮发牌 -> **发牌后的亮A判定挪到发牌完成时**(_dealStepTick 收尾)。
+      //   原因: 发牌还没结束就判「真人手里有没有 A」, 看到的是**还没发到的手牌**(空)
+      //   -> 会误判成「无 A」, 还会让 AI 在发牌中途抢跑亮A。
       break;
 
     case 'FORCED_CHECK':
@@ -511,7 +688,6 @@ enterPlayIfNeeded();
 function initGame() {
   gateIdx = 0;
   gateChoice = null;
-  uiSlowAiPid = _pickSlowAiPid();   // [2026-11-03] 每局随机一个慢手 AI(等 3 秒)
   log('=== 对局初始化 ===');
 log('真人座位: ' + pn(humanPlayer) + ' (随机, 可用顶部 5 按钮切换)');
   log('阶段流程: 发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌');
@@ -541,6 +717,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
   uiPlays = {};                     // 清掉各家出牌显示
   uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
+  uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
   selectedCards = [];
   handCardHitboxes = [];
   lastEmptiedPlayer = null;
@@ -787,7 +964,7 @@ var uiTicker = null;
 function uiTurnTick() {
   // [2026-11-03 用户] 「出牌倒计时时间和真人玩家一样, 暂时先定 20 秒, 后面改成创建房间时设置的时间」
   //   -> 倒计时**跟着当前玩家走**(AI 回合同样计时), 总长统一 uiTurnTotal(20 秒)。
-  //   AI 自己**等几秒再出牌**是另一件事(节奏, 见 AI_STEP_DELAY / AI_SLOW_DELAY)。
+  //   AI 自己**等几秒再出牌**是另一件事(节奏, 见 AI_STEP_DELAY / _aiWaitMs)。
   //   每次换手都会重新计时 -> 这里**无条件清零再起表**。
   uiTurnDeadline = 0;
   if (currentPlayer && gameState.phase === PHASES.PLAY) {
@@ -884,7 +1061,20 @@ function uiButtons() {
   var playing = ph === PHASES.PLAY;
 
   if (!playing && !ended) {
-    // 阶段选择：亮A / 反A / 次方身份，按 gateChoice 的 kind 决定显示哪组
+    // [2026-11-04 用户] **发牌中**也显示四个花色按钮(有A的可点、没有的置灰)
+    if (ph === PHASES.DEALING) {
+      var _dealHasSuit = {};
+      (uiDealAces || []).forEach(function (card) { if (card && card.suit) _dealHasSuit[card.suit] = true; });
+      ['S', 'H', 'D', 'C'].forEach(function (s) {
+        out.push({
+          id: 'dealLiangA:' + s,
+          label: (uiRender.SUIT_CHAR && uiRender.SUIT_CHAR[s]) || s,
+          kind: 'suit', suit: s, enabled: !gameState['主A'] && !!_dealHasSuit[s]
+        });
+      });
+      return out;
+    }
+    // 阶段选择：亮A / 反A / 次方身份，按 gateChoice 的 kind 决定哪组
     if (c && c.kind === 'LIANG_A') {
       // [2026-10-26 用户] 亮A 阶段: 把「亮A」按钮换成**花色按钮** ——
       //   手上有几个花色的 A 就加几个按钮, 点哪个花色 = 亮哪个花色的大A
@@ -911,7 +1101,8 @@ function uiButtons() {
   }
 
   if (playing) {
-    var onTurn = currentPlayer === humanPlayer;
+    // [2026-11-04 用户] 托管中 -> 真人**不能手动操作**(AI 代打), 按钮全部禁用
+    var onTurn = currentPlayer === humanPlayer && !uiAutoPlay;
     out.push({ id: 'play', label: '出牌', enabled: onTurn });
     out.push({ id: 'pass', label: '不出', enabled: onTurn });
     // [2026-10-24] 【提示】: 只给**引擎校验过的合法候选**(见 uiHintCandidates)
@@ -952,6 +1143,10 @@ function uiClick(id) {
   // [2026-10-26] 花色按钮: id = 'liangA:<花色>' -> 亮那个花色的大A
   if (typeof id === 'string' && id.indexOf('liangA:') === 0) {
     return humanLiangA(true, id.slice('liangA:'.length));
+  }
+  // [2026-11-04] 发牌中亮A: id = 'dealLiangA:<花色>'
+  if (typeof id === 'string' && id.indexOf('dealLiangA:') === 0) {
+    return _dealLiangA(id.slice('dealLiangA:'.length));
   }
   switch (id) {
     case 'liangA':   return humanLiangA(true);
@@ -1260,6 +1455,7 @@ function _uiClearCountdowns() {
   uiTurnDeadline = 0;
   uiAiWaitDeadline = 0;
   uiAiTurnAt = 0;
+  uiAiWaitPlan = 0;
   _uiLiangCountdownStop();
 }
 
@@ -1307,6 +1503,7 @@ function draw() {
     turnTotal: (gameState.phase === PHASES.GAME_END) ? 0 : (uiLiangDeadline ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal)),
     turnIsLiang: !!(gateChoice && gateChoice.kind === 'LIANG_A'),   // [2026-10-27] 亮A 倒计时画大一点
     turnIsGate: !!uiGateKind,             // [2026-11-03] 三种闸门倒计时都用大表盘
+    autoPlay: uiAutoPlay,
     phase: gameState.phase
   });
   btnLog = out.btnLog;
@@ -1316,6 +1513,8 @@ function draw() {
   btnMarkHits = out.markHits;
   btnMemo = out.memoIcon;
   btnSettle = out.settleBtn;
+  btnAutoPlay = out.autoPlayIcon;
+  btnAutoPlayCancel = out.cancelAutoPlayBox;
 }
 
 // === 首次 draw (启动渲染) ===
@@ -1648,9 +1847,12 @@ function runAI() {
     //   -> 每个 AI 回合都有可感知的等待, 期间**点着倒计时闹钟**(用户:「其他玩家出牌时
     //   应该先显示倒计时, 等他们出牌或过牌后才会把闹钟隐藏掉」)。
     var _now = Date.now();
-    if (!uiAiTurnAt) uiAiTurnAt = _now;   // 刚进 PLAY 就轮到 AI 的情况
-    // [2026-11-03] 慢手 AI 等 3 秒(其余 AI 仍等 AI_STEP_DELAY)
-    var _waitMs = (currentPlayer === uiSlowAiPid) ? AI_SLOW_DELAY : AI_STEP_DELAY;
+    if (!uiAiTurnAt) {
+      uiAiTurnAt = _now;   // 刚进 PLAY 就轮到 AI 的情况
+      if (!uiAiWaitPlan) uiAiWaitPlan = _aiWaitMs(AI_STEP_DELAY);
+    }
+    // [2026-11-04] 所有 AI 统一「随机约 1 秒」出牌(本回合时长在 advanceCurrentPlayer 里定好)
+    var _waitMs = uiAiWaitPlan || AI_STEP_DELAY;
     var _waitLeft = _waitMs - (_now - uiAiTurnAt);
     if (_waitLeft > 0) {
       // 还在等这个 AI 行动 -> **闹钟点亮**(显示还剩多久)
@@ -1781,9 +1983,11 @@ function _uiClearTurnDisplay(pid) {
   delete uiPassed[pid];
   if (pid === humanPlayer) {
     uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
+    uiAiWaitPlan = 0;      // 真人回合 -> 清掉上一轮 AI 的等待时长
     uiAiWaitDeadline = 0;   // 真人回合 -> AI 的等待闹钟必须熄(否则残留的截止时间会继续倒数)
   } else {
     uiAiTurnAt = Date.now();   // AI 变成当前玩家 -> 开始算它的等待(闹钟)
+    uiAiWaitPlan = _aiWaitMs(AI_STEP_DELAY);   // 本回合的随机等待时长(约 1 秒)
   }
 }
 
@@ -1860,6 +2064,20 @@ if (typeof wx !== 'undefined') {
         y >= btnMemo.y - btnMemo.r && y <= btnMemo.y + btnMemo.r) {
       uiMemoOpen = !uiMemoOpen;
       log('记牌器: ' + (uiMemoOpen ? '展开' : '收起'));
+      draw();
+      return;
+    }
+    // [2026-11-04 用户] 顶栏小机器人按钮: 切换托管(AI 代打真人手牌)
+    if (btnAutoPlay && x >= btnAutoPlay.x - btnAutoPlay.r && x <= btnAutoPlay.x + btnAutoPlay.r &&
+        y >= btnAutoPlay.y - btnAutoPlay.r && y <= btnAutoPlay.y + btnAutoPlay.r) {
+      _uiToggleAutoPlay();
+      draw();
+      return;
+    }
+    // [2026-11-04 用户] 托管时真人手牌区的半透明「取消托管」标识: 点它也能取消
+    if (btnAutoPlayCancel && x >= btnAutoPlayCancel.x && x <= btnAutoPlayCancel.x + btnAutoPlayCancel.w &&
+        y >= btnAutoPlayCancel.y && y <= btnAutoPlayCancel.y + btnAutoPlayCancel.h) {
+      _uiToggleAutoPlay();
       draw();
       return;
     }
@@ -1960,13 +2178,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
     __setAiDelay: function (ms) {
     AI_STEP_DELAY = ms;
-    // [2026-11-03] 慢手延迟跟着走(测试把 AI 延迟调大 -> 慢手也要等, 否则慢手会立刻行动)
-    AI_SLOW_DELAY = ms > 0 ? Math.max(ms, 3000) : 0;
     uiAiTurnAt = 0;
+    uiAiWaitPlan = 0;
   },
-  // [2026-11-03] 慢手 AI 观测钩子
-  uiSlowAiPid: function () { return uiSlowAiPid; },
-  __setAiSlowPid: function (pid) { uiSlowAiPid = pid; },
+  // [2026-11-04] AI 本回合的随机等待时长观测钩子
+  uiAiWaitPlan: function () { return uiAiWaitPlan; },
+  // [2026-11-04] AI 等待时长的纯函数(基准 + ±20% 抖动), 供测试直接验证
+  __aiWaitMs: _aiWaitMs,
   // [2026-11-03] 提示文字观测钩子(点按钮要立刻清掉它)
   uiToastNow: function () { return uiToast; },
     // [2026-11-02] 测试钩子: AI 停顿的判定是纯函数, 暴露出来直接验证各环境取值
@@ -1974,6 +2192,8 @@ if (typeof module !== 'undefined' && module.exports) {
     __aiDelay: function () { return AI_STEP_DELAY; },
     uiPassed: function () { return uiPassed; },
     uiMemoOpen: function () { return uiMemoOpen; },   // [2026-10-27] 记牌器默认展开 -> 给测试读
+    uiAutoPlay: function () { return uiAutoPlay; },
+    toggleAutoPlay: _uiToggleAutoPlay,
     uiTrickId: function () { return uiTrickId; },
     uiPlaysTrick: function () { return uiPlaysTrick; },
     uiMemoItems: function () { return _uiMemo().items; },
@@ -2072,6 +2292,7 @@ steps.push('advance:' + (moved ? 'ok' : 'wait'));
     newGame: newGame,
     // [测试] 最近一次 draw 算好坐标的按钮列表; 以及结算数据
     btnStage: function () { return btnStage; },
+    uiButtonModel: function () { return uiButtons(); },
     settlementData: _settlementData,
     // ===== UI 日志 (需求十一) =====
     uiLogVisible: function () { return uiLogVisible; },

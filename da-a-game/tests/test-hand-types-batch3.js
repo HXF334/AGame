@@ -66,25 +66,25 @@ function makeGroups(ranks, groupSize) {
 }
 
 // ============================================================
-// §1  identifyHand: STRAIGHT_TRIPLE_LARGE (四连珠蛋, 4 组连续蛋子)
+// §1  identifyHand: BIG_STRAIGHT_TRIPLE (四连珠蛋, 4 组连续蛋子)
 // ============================================================
-section('1. identifyHand: STRAIGHT_TRIPLE_LARGE');
+section('1. identifyHand: BIG_STRAIGHT_TRIPLE');
 
-test('222-333-444-555 (12 张) → STRAIGHT_TRIPLE_LARGE, low=2', () => {
+test('222-333-444-555 (12 张) → BIG_STRAIGHT_TRIPLE, low=2', () => {
   const h = identifyHand(makeGroups([2, 3, 4, 5], 3));
-  assert.strictEqual(h.type, HAND_TYPES.STRAIGHT_TRIPLE_LARGE);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_STRAIGHT_TRIPLE);
   assert.strictEqual(h.low, 2);
 });
 
-test('AAA-222-333-444 (A 作低端, 12 张) → STRAIGHT_TRIPLE_LARGE, low=1', () => {
+test('AAA-222-333-444 (A 作低端, 12 张) → BIG_STRAIGHT_TRIPLE, low=1', () => {
   const h = identifyHand(makeGroups([14, 2, 3, 4], 3));
-  assert.strictEqual(h.type, HAND_TYPES.STRAIGHT_TRIPLE_LARGE);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_STRAIGHT_TRIPLE);
   assert.strictEqual(h.low, 1);
 });
 
-test('333-444-555-666 (12 张) → STRAIGHT_TRIPLE_LARGE, low=3', () => {
+test('333-444-555-666 (12 张) → BIG_STRAIGHT_TRIPLE, low=3', () => {
   const h = identifyHand(makeGroups([3, 4, 5, 6], 3));
-  assert.strictEqual(h.type, HAND_TYPES.STRAIGHT_TRIPLE_LARGE);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_STRAIGHT_TRIPLE);
   assert.strictEqual(h.low, 3);
 });
 
@@ -98,9 +98,11 @@ test('222-333-555 (12 张, 不连续) → INVALID', () => {
   assert.strictEqual(h.type, HAND_TYPES.INVALID);
 });
 
-test('222-333-444-555-666 (15 张, 5 组) → INVALID (固定 4 组)', () => {
+// [2026-11-04 用户裁定] 大连珠蛋扩到「4组及以上」-> 222-333-444-555-666 (15张, 5组) 现在是**大连珠蛋**
+test('222-333-444-555-666 (15 张, 5 组) → BIG_STRAIGHT_TRIPLE (大连珠蛋 4组及以上)', () => {
   const h = identifyHand(makeGroups([2, 3, 4, 5, 6], 3));
-  assert.strictEqual(h.type, HAND_TYPES.INVALID);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_STRAIGHT_TRIPLE);
+  assert.strictEqual(h.low, 2);
 });
 
 // ============================================================
@@ -324,9 +326,9 @@ test('4 BJ > 4 SJ (跨级)', () => {
 });
 
 // ============================================================
-// §7  compareHands: STRAIGHT_TRIPLE_LARGE (按 low)
+// §7  compareHands: BIG_STRAIGHT_TRIPLE (按 low)
 // ============================================================
-section('7. compareHands: STRAIGHT_TRIPLE_LARGE');
+section('7. compareHands: BIG_STRAIGHT_TRIPLE');
 
 test('222-333-444-555 (low=2) < 333-444-555-666 (low=3)', () => {
   const a = identifyHand(makeGroups([2, 3, 4, 5], 3));

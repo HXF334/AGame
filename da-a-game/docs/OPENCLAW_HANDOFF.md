@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-04 09:42 (Asia/Shanghai) · Git HEAD 见 `git log -1`
+> 最后更新：2026-11-04 18:40 (Asia/Shanghai) · Git HEAD 见 `git log -1`
 > 相关文档：**画面验收清单** UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** DECISIONS.md
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
@@ -29,10 +29,11 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  ├─ index.js              统一出口
 │  │  ├─ transition.js         状态机 + handler（+ 4 个资格判定纯函数）
 │  │  ├─ play.js / capture.js / hand-types.js / win-loss.js / scoring.js
-│  │  └─ ai.js / card.js / combos.js / deal.js / phases.js / push-wind.js / util.js
+│  │  ├─ deal.js               发牌原语（一次发完 / 逐轮发牌共用同一套规则）
+│  │  └─ ai.js / card.js / combos.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 77 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 81 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）

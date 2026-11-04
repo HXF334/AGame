@@ -180,9 +180,9 @@ test('222-333-555 (9 张, 不连续) → INVALID', () => {
   assert.strictEqual(h.type, HAND_TYPES.INVALID);
 });
 
-test('222-333-444-555 (12 张, 4 组) → STRAIGHT_TRIPLE_LARGE (批次 3 实现四连珠蛋)', () => {
+test('222-333-444-555 (12 张, 4 组) → BIG_STRAIGHT_TRIPLE (批次 3 实现四连珠蛋)', () => {
   const h = identifyHand(makeGroups([2, 3, 4, 5], 3));
-  assert.strictEqual(h.type, HAND_TYPES.STRAIGHT_TRIPLE_LARGE);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_STRAIGHT_TRIPLE);
   assert.strictEqual(h.low, 2);
 });
 
@@ -214,37 +214,39 @@ test('KKKK (4 张, 只 1 组) → INVALID (假八需 2 组)', () => {
   assert.strictEqual(h.type, HAND_TYPES.BIG_TRIPLE);
 });
 
-test('AAAA-KKKK-QQQQ (12 张, 3 组) → TRIPLE_FAKE_EIGHT (不是 FAKE_EIGHT)', () => {
+test('AAAA-KKKK-QQQQ (12 张, 3 组) → BIG_FAKE_EIGHT (不是 FAKE_EIGHT)', () => {
   const h = identifyHand(makeGroups([14, 13, 12], 4));
-  assert.strictEqual(h.type, HAND_TYPES.TRIPLE_FAKE_EIGHT);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_FAKE_EIGHT);
 });
 
 // ============================================================
-// §6  identifyHand: TRIPLE_FAKE_EIGHT (三连假八, 3 组连续四张)
+// §6  identifyHand: BIG_FAKE_EIGHT (三连假八, 3 组连续四张)
 // ============================================================
-section('6. identifyHand: TRIPLE_FAKE_EIGHT');
+section('6. identifyHand: BIG_FAKE_EIGHT');
 
-test('AAAA-KKKK-QQQQ (12 张) → TRIPLE_FAKE_EIGHT, low=12', () => {
+test('AAAA-KKKK-QQQQ (12 张) → BIG_FAKE_EIGHT, low=12', () => {
   const h = identifyHand(makeGroups([14, 13, 12], 4));
-  assert.strictEqual(h.type, HAND_TYPES.TRIPLE_FAKE_EIGHT);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_FAKE_EIGHT);
   assert.strictEqual(h.low, 12);
 });
 
-test('2222-3333-4444 (12 张) → TRIPLE_FAKE_EIGHT, low=2', () => {
+test('2222-3333-4444 (12 张) → BIG_FAKE_EIGHT, low=2', () => {
   const h = identifyHand(makeGroups([2, 3, 4], 4));
-  assert.strictEqual(h.type, HAND_TYPES.TRIPLE_FAKE_EIGHT);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_FAKE_EIGHT);
   assert.strictEqual(h.low, 2);
 });
 
-test('QQQ-KKK-AAA (A 作高端) → TRIPLE_FAKE_EIGHT, low=12', () => {
+test('QQQ-KKK-AAA (A 作高端) → BIG_FAKE_EIGHT, low=12', () => {
   const h = identifyHand(makeGroups([12, 13, 14], 4));
-  assert.strictEqual(h.type, HAND_TYPES.TRIPLE_FAKE_EIGHT);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_FAKE_EIGHT);
   assert.strictEqual(h.low, 12);
 });
 
-test('AAAA-KKKK-QQQQ-JJJJ (16 张, 4 组) → INVALID (固定 3 组)', () => {
+// [2026-11-04 用户裁定] 大假八扩到「3组及以上」-> AAAA-KKKK-QQQQ-JJJJ (16张, 4组) 现在是**大假八**
+test('AAAA-KKKK-QQQQ-JJJJ (16 张, 4 组) → BIG_FAKE_EIGHT (大假八 3组及以上)', () => {
   const h = identifyHand(makeGroups([14, 13, 12, 11], 4));
-  assert.strictEqual(h.type, HAND_TYPES.INVALID);
+  assert.strictEqual(h.type, HAND_TYPES.BIG_FAKE_EIGHT);
+  assert.strictEqual(h.low, 11);
 });
 
 // ============================================================
@@ -290,9 +292,9 @@ test('真八 55555555 < JJJJJJJJ (§6.2 顺序)', () => {
 });
 
 // ============================================================
-// §9  compareHands: STRAIGHT_TRIPLE / FAKE_EIGHT / TRIPLE_FAKE_EIGHT (比 low)
+// §9  compareHands: STRAIGHT_TRIPLE / FAKE_EIGHT / BIG_FAKE_EIGHT (比 low)
 // ============================================================
-section('9. compareHands: STRAIGHT_TRIPLE / FAKE_EIGHT / TRIPLE_FAKE_EIGHT');
+section('9. compareHands: STRAIGHT_TRIPLE / FAKE_EIGHT / BIG_FAKE_EIGHT');
 
 test('连珠蛋 222-333-444 < 333-444-555 (高 low 胜)', () => {
   const a = identifyHand(makeGroups([2, 3, 4], 3));

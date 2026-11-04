@@ -23,6 +23,8 @@
 //   SCORING            13. 计分结算
 const PHASES = Object.freeze({
   GAME_START:         'GAME_START',
+  // [2026-11-04] 发牌中: 逐轮发牌(每轮 0.5 秒), 期间**持有可亮A的玩家可以亮A**
+  DEALING:            'DEALING',
   LIANG_A:            'LIANG_A',
   LIANG_A_RESOLVED:   'LIANG_A_RESOLVED',
   FAN_A:              'FAN_A',
@@ -37,6 +39,7 @@ const PHASES = Object.freeze({
 // 本阶段允许的动作
 const ACTIONS = Object.freeze({
   START_GAME:       'START_GAME',     // GAME_START → LIANG_A（含发牌）
+  DEAL_ROUND:        'DEAL_ROUND',      // [2026-11-04] 发一轮牌(5张); DEALING → DEALING
   LIANG_A:          'LIANG_A',        // 主动亮A
   FORCED_CHECK:     'FORCED_CHECK',   // 触发强制排查
   FAN_A:            'FAN_A',          // 反A（§4.4）

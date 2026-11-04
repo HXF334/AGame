@@ -181,8 +181,13 @@ check('5.1 轮到 AI(正在等) -> 闹钟点亮(有等待截止时间)',
 check('5.2 AI 回合的倒计时同样是 20 秒(和真人一致)',
   g.uiTurnInfo().deadline > Date.now() && g.uiTurnInfo().total === 20000,
   'turnDeadline=' + g.uiTurnInfo().deadline + ' total=' + g.uiTurnInfo().total);
-check('5.3 闹钟总时长 = AI 思考间隔', aiWait.total === g.__aiDelay(),
-  'total=' + aiWait.total + ' delay=' + g.__aiDelay());
+// [2026-11-04 用户] 「ai出牌有个随机3秒的去掉，AI默认都随机一秒出牌」
+//   -> AI 等待不再是固定值: 基准 ±20% 的**随机抖动**(每个 AI 回合定一次),
+//      且「随机挑一个 AI 等 3 秒」的慢手机制已删除。
+var _dl = g.__aiDelay();
+check('5.3 闹钟总时长 = AI 思考间隔(基准 ±20% 抖动)',
+  aiWait.total >= Math.round(_dl * 0.8) && aiWait.total <= Math.round(_dl * 1.2),
+  'total=' + aiWait.total + ' delay=' + _dl);
 
 // 轮到真人 -> AI 闹钟熄, 换成真人自己的倒计时, 自己上一手牌也清掉
 g.__setState(g.gameState(), { currentPlayer: 'C', human: 'D', clearLog: false });

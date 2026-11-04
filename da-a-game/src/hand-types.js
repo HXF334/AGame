@@ -15,10 +15,10 @@ const HAND_TYPES = Object.freeze({
   TRUE_EIGHT: 'TRUE_EIGHT',             // 真八（8 张同点数）
   STRAIGHT_TRIPLE: 'STRAIGHT_TRIPLE',   // 连珠蛋（3 组连续蛋子）
   FAKE_EIGHT: 'FAKE_EIGHT',             // 假八（2 组连续四张）
-  TRIPLE_FAKE_EIGHT: 'TRIPLE_FAKE_EIGHT', // 三连假八（3 组连续四张）
+  BIG_FAKE_EIGHT: 'BIG_FAKE_EIGHT', // 三连假八（3 组连续四张）
   // 批次 3 占位
   TRIPLE_JOKER: 'TRIPLE_JOKER',
-  STRAIGHT_TRIPLE_LARGE: 'STRAIGHT_TRIPLE_LARGE',
+  BIG_STRAIGHT_TRIPLE: 'BIG_STRAIGHT_TRIPLE',
   FOUR_JOKER: 'FOUR_JOKER',
   DOUBLE_BIG_A: 'DOUBLE_BIG_A',
   INVALID: 'INVALID'
@@ -38,8 +38,8 @@ const POWER = Object.freeze({
   'TRUE_SEVEN': 7,              // 真七
   'TRUE_EIGHT': 8,              // 真八
   'TRIPLE_JOKER': 9,            // 三王
-  'STRAIGHT_TRIPLE_LARGE': 10,  // 四连珠蛋
-  'TRIPLE_FAKE_EIGHT': 11,      // 三连假八
+  'BIG_STRAIGHT_TRIPLE': 10,  // 四连珠蛋
+  'BIG_FAKE_EIGHT': 11,      // 三连假八
   'FOUR_JOKER': 12,             // 四王
   'DOUBLE_BIG_A': 13            // 双大A: 最高
 });
@@ -339,40 +339,62 @@ function identifyHand(cards) {
     return { type: HAND_TYPES.INVALID, reason: 'pairs not consecutive' };
   }
 
-  // 全 3 张/点数 → 连珠蛋 (3 组) 或 四连珠蛋 (4 组)
-  if (countsPerRank.every(function (c) { return c === 3; })) {
-    if (uniqueRanks.length === 3) {
-      // 连珠蛋
+  // [2026-11-04 用户] 牌型改名 + 组成扩大:
+  //   连珠蛋   (3 组连续蛋子, 每组3张)          —— 不变
+  //   大连珠蛋 (4组及以上连续蛋子, 每组3张)     —— 原「四连珠蛋」扩大
+  //   假八     (2 组连续, 每组4张 = 8张)        —— 不变(独立牌型)
+  //   大假八   (3组及以上连续, 每组4张)        —— 原「三连假八」扩大
+  //   大假八特例: 2组及以上连续, 每组5张及以上, 总张数 >= 10
+  //              (例 55555+66666 = 10张; 22222222+33333333 = 16张)
+  //   「各组张数必须相同」(用户裁定 Q3=B) -> 这里用「每点张数相同」的判定分支覆盖。
+  //
+  // 全 k 张/点数 (k 相同) → 连续点数组族: 蛋子族(k=3) / 假八族(k=4..8)
+  //   k=3: 3组=连珠蛋; 4组及以上=大连珠蛋
+  //   k=4: 2组=假八;   3组及以上=大假八
+  //   k=5..8: 组数>=2 且 总张数>=10 -> 大假八(特例)
+  var _uniformK = countsPerRank.every(function (c) { return c === countsPerRank[0]; })
+    ? countsPerRank[0] : 0;
+
+  if (_uniformK === 3) {
+    // 全 3 张/点数 → 连珠蛋 (3 组) 或 大连珠蛋 (4 组及以上)
+    if (uniqueRanks.length >= 3) {
       const r = isValidStraightSequenceRanks(uniqueRanks);
       if (r) {
-        return { type: HAND_TYPES.STRAIGHT_TRIPLE, low: r.low, cards: cards };
+        const type = uniqueRanks.length === 3
+          ? HAND_TYPES.STRAIGHT_TRIPLE
+          : HAND_TYPES.BIG_STRAIGHT_TRIPLE;
+        return { type: type, low: r.low, cards: cards };
       }
     }
-    if (uniqueRanks.length === 4) {
-      // 四连珠蛋
-      const r = isValidStraightSequenceRanks(uniqueRanks);
-      if (r) {
-        return { type: HAND_TYPES.STRAIGHT_TRIPLE_LARGE, low: r.low, cards: cards };
-      }
-    }
-    return { type: HAND_TYPES.INVALID, reason: 'invalid straight triple (need 3 or 4 groups consecutive)' };
+    return { type: HAND_TYPES.INVALID, reason: 'invalid straight triple (need 3+ groups consecutive)' };
   }
 
-  // 全 4 张/点数 → 假八 (2 组) 或 三连假八 (3 组)
-  if (countsPerRank.every(function (c) { return c === 4; })) {
+  if (_uniformK === 4) {
+    // 全 4 张/点数 → 假八 (2 组) 或 大假八 (3 组及以上)
     if (uniqueRanks.length === 2) {
       const r = isValidStraightSequenceRanks(uniqueRanks);
       if (r) {
         return { type: HAND_TYPES.FAKE_EIGHT, low: r.low, cards: cards };
       }
     }
-    if (uniqueRanks.length === 3) {
+    if (uniqueRanks.length >= 3) {
       const r = isValidStraightSequenceRanks(uniqueRanks);
       if (r) {
-        return { type: HAND_TYPES.TRIPLE_FAKE_EIGHT, low: r.low, cards: cards };
+        return { type: HAND_TYPES.BIG_FAKE_EIGHT, low: r.low, cards: cards };
       }
     }
-    return { type: HAND_TYPES.INVALID, reason: 'invalid fake eight (need 2 or 3 groups consecutive)' };
+    return { type: HAND_TYPES.INVALID, reason: 'invalid fake eight (need 2+ groups consecutive)' };
+  }
+
+  if (_uniformK >= 5 && _uniformK <= 8) {
+    // [2026-11-04 特例] 每组5张及以上, 2组及以上连续, 总张数>=10 -> 大假八
+    if (uniqueRanks.length >= 2 && cards.length >= 10) {
+      const r = isValidStraightSequenceRanks(uniqueRanks);
+      if (r) {
+        return { type: HAND_TYPES.BIG_FAKE_EIGHT, low: r.low, cards: cards };
+      }
+    }
+    return { type: HAND_TYPES.INVALID, reason: 'invalid big fake eight (need 2+ groups, 5+ each, 10+ cards)' };
   }
 
   return { type: HAND_TYPES.INVALID, reason: 'mixed card counts' };
@@ -407,8 +429,13 @@ function compareHands(a, b) {
       return pairRankEncoding(a.cards[0]) - pairRankEncoding(b.cards[0]);
     case HAND_TYPES.STRAIGHT_TRIPLE:
     case HAND_TYPES.FAKE_EIGHT:
-    case HAND_TYPES.TRIPLE_FAKE_EIGHT:
-    case HAND_TYPES.STRAIGHT_TRIPLE_LARGE:
+      // 这两个牌型张数固定(9张/8张), 直接比连续起点
+      return a.low - b.low;
+    case HAND_TYPES.BIG_FAKE_EIGHT:
+    case HAND_TYPES.BIG_STRAIGHT_TRIPLE:
+      // [2026-11-04 用户] 同型比较: **张数优先**, 张数相同再比连续起点
+      //   (大连珠蛋 12/15/18/21张; 大假八 10/12/14/15/16/18/20/21张 -> 张数会变)
+      if (a.cards.length !== b.cards.length) return a.cards.length - b.cards.length;
       return a.low - b.low;
     case HAND_TYPES.TRIPLE_JOKER:
     case HAND_TYPES.FOUR_JOKER:
@@ -435,6 +462,16 @@ function canBeat(play, current) {
       if (play.length !== current.length) return false;
     }
     return compareHands(play, current) > 0;
+  }
+
+  // [2026-11-04 用户] 大连珠蛋 ↔ 大假八 交叉比较:
+  //   **优先比较张数**, 张数相同则**大假八更大**
+  //   (例 12张大连珠蛋 vs 12张大假八 -> 大假八大; 18张大连珠蛋 vs 16张大假八 -> 大连珠蛋大)
+  if ((playType === HAND_TYPES.BIG_STRAIGHT_TRIPLE && currentType === HAND_TYPES.BIG_FAKE_EIGHT) ||
+      (playType === HAND_TYPES.BIG_FAKE_EIGHT && currentType === HAND_TYPES.BIG_STRAIGHT_TRIPLE)) {
+    var _pc = play.cards.length, _cc = current.cards.length;
+    if (_pc !== _cc) return _pc > _cc;
+    return playType === HAND_TYPES.BIG_FAKE_EIGHT;   // 张数相同 -> 大假八更大
   }
 
   // 特殊: 单大A (SKILL §6.4) 只能管单牌

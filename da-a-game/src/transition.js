@@ -22,7 +22,9 @@
 //   - 底牌是独立槽位，亮A / 强制排查只看 hand，绝不读底牌内容
 //   - 不实现反A、底牌翻开、身份选择、出牌、牌型识别、AI、界面
 
-const { dealGame } = require('./deal.js');
+const { dealGame, shuffle, createPlayer, buildDealOrder,
+        dealRoundsCount, dealRound } = require('./deal.js');
+const { createDeck } = require('./card.js');
 const playModule = require('./play.js');
 const { pushWind } = require('./push-wind.js');
 const { PHASES, ACTIONS, ERR } = require('./phases.js');
@@ -129,6 +131,8 @@ function transition(state, action) {
 function dispatch(state, type, payload) {
   switch (type) {
     case ACTIONS.START_GAME:      return handleStartGame(state, payload);
+    // [2026-11-04] 逐轮发牌(发牌中可亮A)
+    case ACTIONS.DEAL_ROUND:      return handleDealRound(state, payload);
     case ACTIONS.LIANG_A:         return handleLiangA(state, payload);
     case ACTIONS.FORCED_CHECK:    return handleForcedCheck(state, payload);
     case ACTIONS.FAN_A:           return handleFanA(state, payload);
@@ -143,6 +147,52 @@ function dispatch(state, type, payload) {
   }
 }
 
+// === handler: DEAL_ROUND（2026-11-04 逐轮发牌）===
+// 发一轮牌（5 张，每家 1 张），把牌真正放进 state 的 hand / 底牌槽。
+//   - 发牌**逐轮入 state**（不是 UI 假动画）-> 手牌里只含已发的牌，
+//     所以「只能亮已摸到的 A」「底牌不能亮」天然成立，无需额外判定。
+//   - 发完最后一轮 -> phase 转 LIANG_A（进入发牌后的亮A阶段）。
+//   - 发牌期间已经有人亮A（主A已确立）-> 发完直接进 LIANG_A_RESOLVED（跳过亮A阶段）。
+function handleDealRound(state, payload) {
+  if (state.phase !== PHASES.DEALING) {
+    return err(ERR.ILLEGAL_ACTION,
+      'DEAL_ROUND only allowed in DEALING, current=' + state.phase, state);
+  }
+  const roundIdx = (typeof state.dealRoundIndex === 'number') ? state.dealRoundIndex : 0;
+  const total = dealRoundsCount();
+  if (roundIdx >= total) {
+    return err(ERR.ILLEGAL_ACTION, 'deal already finished, round=' + roundIdx, state);
+  }
+
+  const players = dealRound(state.players, state.deck, state.dealOrder, roundIdx);
+  const nextRound = roundIdx + 1;
+  const finished = nextRound >= total;
+
+  const phase = finished
+    ? (state.主A ? PHASES.LIANG_A_RESOLVED : PHASES.LIANG_A)
+    : PHASES.DEALING;
+
+  return ok({
+    phase: phase,
+    players: players,
+    dealRoundIndex: nextRound,
+    dealRoundsTotal: total,
+    startPlayerIndex: state.startPlayerIndex,
+    deck: state.deck,
+    dealOrder: state.dealOrder,
+    主A: state.主A ?? null,
+    反A: state.反A ?? null,
+    次方: state.次方 ?? null,
+    mode: state.mode ?? null,
+    底牌公开: state.底牌公开 ?? false,
+    actions: state.actions.concat([{
+      type: ACTIONS.DEAL_ROUND,
+      payload: { roundIndex: roundIdx },
+      atPhase: phase
+    }])
+  });
+}
+
 // === handler: START_GAME ===
 // 唯一进入 LIANG_A 阶段的入口；调用 dealGame 做发牌，然后 phase = LIANG_A
 function handleStartGame(state, payload) {
@@ -153,6 +203,32 @@ function handleStartGame(state, payload) {
   const startPlayerIndex = (typeof payload.startPlayerIndex === 'number')
     ? payload.startPlayerIndex
     : Math.floor(Math.random() * NUM_PLAYERS);
+  // [2026-11-04] **逐轮发牌模式** (payload.progressive = true):
+  //   -> 只洗牌 + 排出发牌顺序, **不发牌**, phase = DEALING;
+  //      之后由 DEAL_ROUND 动作一轮一轮发(每轮 0.5 秒), 期间可亮A。
+  //   -> 默认(不带 progressive)仍是**一次发完** -> phase = LIANG_A (无头测试走这条)。
+  //   两条路径共用 deal.js 的 dealRound / bottomDeckIndex 同一套规则, 不写两份。
+  if (payload.progressive === true) {
+    const deck = shuffle(createDeck());
+    const dealOrder = buildDealOrder(startPlayerIndex);
+    const players = [];
+    for (let i = 0; i < NUM_PLAYERS; i++) players.push(createPlayer(PLAYER_NAMES[i]));
+    return ok({
+      phase: PHASES.DEALING,
+      players: players,
+      startPlayerIndex: startPlayerIndex,
+      deck: deck,
+      dealOrder: dealOrder,
+      dealRoundIndex: 0,
+      dealRoundsTotal: dealRoundsCount(),
+      主A: null,
+      反A: state.反A ?? null,
+      次方: state.次方 ?? null,
+      mode: state.mode ?? null,
+      底牌公开: state.底牌公开 ?? false,
+      actions: [{ type: ACTIONS.START_GAME, payload: payload, atPhase: PHASES.DEALING }]
+    });
+  }
   const game = dealGame({ startPlayerIndex: startPlayerIndex });
   return ok({
     phase: PHASES.LIANG_A,
@@ -180,9 +256,10 @@ function handleLiangA(state, payload) {
     return err(ERR.LIANG_A_REJECTED,
       '主A already established by ' + state.主A.establishedBy, state);
   }
-  if (state.phase !== PHASES.LIANG_A) {
+  // [2026-11-04] 发牌**过程中**也允许亮A（SKILL §3 第 3 步：发牌过程中，持有可亮A的玩家可以亮A）
+  if (state.phase !== PHASES.LIANG_A && state.phase !== PHASES.DEALING) {
     return err(ERR.ILLEGAL_ACTION,
-      'LIANG_A only allowed in LIANG_A, current=' + state.phase, state);
+      'LIANG_A only allowed in LIANG_A or DEALING, current=' + state.phase, state);
   }
   if (!payload || typeof payload.playerId !== 'string' || typeof payload.cardId !== 'string') {
     return err(ERR.MISSING_PAYLOAD,
@@ -776,7 +853,8 @@ function _findPlayer(state, pid) {
 // 亮 A 资格（§4.1 主动亮A）：主A 未确立 + 处于 LIANG_A 阶段 + 手牌含 A
 function canLiangA(state, playerId) {
   if (!state || !playerId) return { ok: false, reason: "缺少参数" };
-  if (state.phase !== PHASES.LIANG_A) {
+  // [2026-11-04] 发牌**过程中**也可亮A（手牌只含已发的牌 -> 只能亮已摸到的 A；底牌不在 hand 里 -> 天然不可亮）
+  if (state.phase !== PHASES.LIANG_A && state.phase !== PHASES.DEALING) {
     return { ok: false, reason: "当前阶段不是亮A(" + state.phase + ")" };
   }
   if (state.主A !== null && state.主A !== undefined) {

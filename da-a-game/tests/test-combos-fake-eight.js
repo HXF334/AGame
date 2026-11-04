@@ -66,8 +66,8 @@ var c12 = candidateCombos(hand12) || [];
 var twelve = c12.filter(function (ids) { return ids.length === 12; });
 check('3.1 candidateCombos 枚举出 12 张的组合', twelve.length >= 1,
   '组合数=' + c12.length + ' 12张组=' + twelve.length);
-check('3.2 其中有 12 张三连假八(TRIPLE_FAKE_EIGHT)',
-  twelve.some(function (ids) { return typeOf(hand12, ids) === HAND_TYPES.TRIPLE_FAKE_EIGHT; }),
+check('3.2 其中有 12 张三连假八(BIG_FAKE_EIGHT)',
+  twelve.some(function (ids) { return typeOf(hand12, ids) === HAND_TYPES.BIG_FAKE_EIGHT; }),
   JSON.stringify(twelve.map(function (ids) { return typeOf(hand12, ids); })));
 
 // ===== 4) 引擎 transition 接受这手假八压双王 (合法性由引擎裁决) =====
