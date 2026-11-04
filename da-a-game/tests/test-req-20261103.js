@@ -124,7 +124,7 @@ var atTurn = ctxAi.items.filter(function (i) {
   return Math.abs(i.x - lay.turn.x) < lay.vw * 0.05 && Math.abs(i.y - lay.turn.y) < lay.vh * 0.02;
 });
 check('3.1 AI 回合 -> 闹钟不画在真人那块(turn 位)', atTurn.length === 0, 'n=' + atTurn.length);
-var seatRows = [lay.vh * 0.215, lay.vh * 0.405];
+var seatRows = [lay.seats[0].y, lay.seats[1].y];   // [2026-11-04] 座位行**从 layout 取**(不再写死 Y: 用户调整过 AI 头像位置)
 var atSeat = ctxAi.items.filter(function (i) {
   return /^[0-9]+$/.test(i.t) && seatRows.some(function (y) { return Math.abs(i.y - y) < 3; });
 });

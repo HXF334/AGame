@@ -43,11 +43,13 @@ function layout(W, H) {
     top: { h: vh * 0.135 },
     table: { cx: vw * 0.5, cy: vh * 0.325, rx: vw * 0.40, ry: vh * 0.175 },
     // [2026-10-25] 座位往中间挪: 名字/牌数徽章要画在头像**外侧**, 需要 ~34px 文字宽度
+    // [2026-11-04 用户] 「AI玩家头像那一片整体往下移一点, 第二排多下移一点」
+    //   -> 第一排 +0.020H, 第二排 +0.045H(第二排多下移一点)
     seats: [
-      { x: safe + r + 44, y: vh * 0.215, side: 'L' },
-      { x: safe + r + 44, y: vh * 0.405, side: 'L' },
-      { x: vw - safe - r - 44, y: vh * 0.215, side: 'R' },
-      { x: vw - safe - r - 44, y: vh * 0.405, side: 'R' }
+      { x: safe + r + 44, y: vh * 0.235, side: 'L' },
+      { x: safe + r + 44, y: vh * 0.450, side: 'L' },
+      { x: vw - safe - r - 44, y: vh * 0.235, side: 'R' },
+      { x: vw - safe - r - 44, y: vh * 0.450, side: 'R' }
     ],
     // [2026-11-03 用户] 真人出的牌**不再画在牌桌中央**, 改画在**原来按钮的位置**
     //   (按钮行正中) —— 用户原话「真人手牌不是居中, 而是在原来按钮的位置显示, 按钮隐藏掉」。
@@ -62,7 +64,9 @@ function layout(W, H) {
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
     memo: { iconX: vw * 0.235, iconY: vh * 0.062, iconR: Math.round(vh * 0.034) },
     // [2026-11-04 用户] 顶栏**右上角**小机器人(托管开关): 靠右但不贴边(留出安全边距)
-    autoPlay: { iconX: vw - safe - Math.round(vh * 0.085), iconY: vh * 0.062, iconR: Math.round(vh * 0.032) }
+    // [2026-11-04 用户] 「机器人图标再往左移, 被小游戏的圆圈和三个点(胶囊按钮)挡住了」
+    //   -> 往左让出约 148px(约 0.38H), 整块避开胶囊按钮区域(胶囊约 90px 宽)。
+    autoPlay: { iconX: vw - Math.round(vh * 0.38), iconY: vh * 0.062, iconR: Math.round(vh * 0.032) }
   };
 }
 
@@ -390,7 +394,11 @@ function drawSeats(ctx, st, m) {
     var p = g.players.filter(function (x) { return x.id === pid; })[0];
     var isCur = st.currentPlayer === pid;
     var isPassed = inPlay && !!((st.uiPassed || {})[pid]);
-    var isOut = p && p.hand && p.hand.length === 0;
+    // [2026-11-04 用户] 「开局前每个人前面都显示已出完, 然后才开始发牌」
+    //   -> 发牌阶段手牌本来就是空的(还没发到), **不能**当成「已出完」。
+    //      只有真的打过牌的阶段(PLAY/GAME_END)手牌为空才算出完。
+    var outPhase = (g.phase === 'PLAY' || g.phase === 'GAME_END');
+    var isOut = outPhase && p && p.hand && p.hand.length === 0;
     var rr_ = Math.round(r * (isCur ? 1.14 : 1));
     var cx = pos.x, cy = pos.y;
     var outw = pos.side === 'L' ? -1 : 1;
@@ -774,7 +782,8 @@ function drawMeSeat(ctx, st, m) {
   //   (之前只有 AI 座位有 -> 真人过牌后看不到自己的状态; 也漏了「已出完」提示)
   //   位置: 头像**上方**(右边被手牌区占住)
   var _playedThisTrick = (st.uiPlaysTrick || {})[st.humanPlayer] === st.uiTrickId;
-  var _isOut = me && me.hand && me.hand.length === 0;
+  // [2026-11-04 用户] 「开局前每个人前面都显示已出完」-> 同上: 发牌阶段不算出完
+  var _isOut = (g.phase === 'PLAY' || g.phase === 'GAME_END') && me && me.hand && me.hand.length === 0;
   var _isPassed = (g.phase === 'PLAY') && !!((st.uiPassed || {})[st.humanPlayer]);
   if (!_playedThisTrick) {
     var _s2 = _isOut ? '已出完' : (_isPassed ? '不出' : '');

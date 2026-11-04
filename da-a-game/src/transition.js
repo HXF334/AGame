@@ -164,7 +164,12 @@ function handleDealRound(state, payload) {
     return err(ERR.ILLEGAL_ACTION, 'deal already finished, round=' + roundIdx, state);
   }
 
-  const players = dealRound(state.players, state.deck, state.dealOrder, roundIdx);
+  var players = dealRound(state.players, state.deck, state.dealOrder, roundIdx);
+  // [2026-11-04] 发牌**过程中**可能已经有人亮A -> 后续轮次才发到同花色的 A
+  //   也要算主方大A(SKILL §3: 主A花色确定后, 两张同花色A都属于大A)。
+  if (state.主A && state.主A.suit) {
+    players = markAllAcesAs主方大A(players, state.主A.suit);
+  }
   const nextRound = roundIdx + 1;
   const finished = nextRound >= total;
 
@@ -297,8 +302,18 @@ function handleLiangA(state, payload) {
   const 同花色A数 = player.hand.filter(function (c) {
     return c.suit === card.suit && c.rank === 14;
   }).length;
+  // [2026-11-04 用户报障] 「发牌过程中亮完大A后不发牌了」+「亮牌后不能选牌不能出牌」
+  //   根因: 亮A **无条件**把 phase 改成 LIANG_A_RESOLVED ->
+  //     1) 发牌定时器下一轮发现 phase 不是 DEALING -> **中断发牌**, 剩下的牌永远发不出去;
+  //     2) 闸门计划(强制排查/反A/翻底牌/身份/出牌)被连带**空转跑光** ->
+  //        永远进不了出牌阶段 -> 没有【出牌】按钮, 也不能选牌。
+  //   修法: **发牌中**亮A -> phase 保持 DEALING(牌继续发完),
+  //         由最后一轮 DEAL_ROUND 统一转 LIANG_A_RESOLVED
+  //         (见 handleDealRound: 主A已确立则直接跳过亮A阶段)。
+  const wasDealing = (state.phase === PHASES.DEALING);
+  const nextPhase = wasDealing ? PHASES.DEALING : PHASES.LIANG_A_RESOLVED;
   return ok({
-    phase: PHASES.LIANG_A_RESOLVED,
+    phase: nextPhase,
     players: newPlayers,
     startPlayerIndex: state.startPlayerIndex,
     deck: state.deck,
@@ -315,7 +330,7 @@ function handleLiangA(state, payload) {
     mode: state.mode ?? null,
     底牌公开: state.底牌公开 ?? false,
     actions: state.actions.concat([{
-      type: ACTIONS.LIANG_A, payload: payload, atPhase: PHASES.LIANG_A_RESOLVED
+      type: ACTIONS.LIANG_A, payload: payload, atPhase: nextPhase
     }])
   });
 }

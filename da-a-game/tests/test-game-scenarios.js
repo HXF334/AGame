@@ -155,8 +155,12 @@ section('S1 推风必须同阵营 (§9.3)');
     pushLine.indexOf('\u76ee\u6807=\u4e59') < 0 && pushLine.indexOf('\u76ee\u6807=\u4e19') < 0, 'pushLine=' + pushLine);
   check('S1.5 currentPlayer 非空 (同步已发生)', !!after, String(after));
   // 推风之后**第一个行动的人**必须是戊(戊 是 AI -> 引擎会替他行动, 日志里能看到)
+  // [2026-11-04 修 flaky] 原来从 _lines[0] 开始找「戊 出牌」行 -> 会撞上**开局随机发牌后
+  //   AI 戊自己的行动**(它在推风之前, index 更小) -> 偶发失败(约 1/20)。
+  //   inject() 没清日志, 所以日志里既有开局那局的行动, 也有本局的。
+  //   正确口径: 只在**推风行之后**找戊的第一个行动。
   var _wi = -1;
-  for (var _lj = 0; _lj < _lines.length; _lj++) {
+  for (var _lj = Math.max(0, _pi + 1); _lj < _lines.length; _lj++) {
     if (/^(AI )?\u620a (\u51fa|PLAY|PASS)/.test(_lines[_lj])) { _wi = _lj; break; }
   }
   check('S1.6 推风之后第一个行动的是戊', _wi > _pi && _wi >= 0,

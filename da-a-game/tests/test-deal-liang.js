@@ -60,7 +60,11 @@ section('2. 引擎: 发牌中亮A (DEALING 阶段允许 LIANG_A)');
   var rr = engine.transition(st2, { type: engine.ACTIONS.LIANG_A, payload: { playerId: me.id, cardId: aceCard.id } });
   check('2.3 DEALING 阶段亮A 引擎接受', rr.ok === true, rr.ok ? '' : JSON.stringify(rr.error));
   check('2.4 亮A 后主A确立', !!(rr.state && rr.state['主A']), '');
-  check('2.5 亮A 后 phase -> LIANG_A_RESOLVED', rr.state.phase === engine.PHASES.LIANG_A_RESOLVED, rr.state.phase);
+  // [2026-11-04 用户报障 #3] 「发牌过程中亮完大A后不发牌了」
+  //   -> 亮A 只确立主A, phase **保持 DEALING**(牌继续发完);
+  //      发完最后一轮才由 handleDealRound 转 LIANG_A_RESOLVED(跳过亮A阶段)。
+  check('2.5 亮A 后 phase 仍是 DEALING(发牌不中断)', rr.state.phase === engine.PHASES.DEALING, rr.state.phase);
+  check('2.6 亮A 后发牌轮次没被重置', rr.state.dealRoundIndex === 4, String(rr.state.dealRoundIndex));
 }
 
 section('3. 引擎: 底牌不能亮A (§4.2)');

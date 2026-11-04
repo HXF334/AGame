@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-04 18:40 (Asia/Shanghai) · Git HEAD 见 `git log -1`
+> 最后更新：2026-11-04 21:10 (Asia/Shanghai) · Git HEAD 见 `git log -1`
 > 相关文档：**画面验收清单** UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** DECISIONS.md
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
@@ -33,7 +33,7 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 81 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 82 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
@@ -74,6 +74,7 @@ node tests/_runall.js 10 20    # 只跑第 10~20 个
 2026-11-03 实测：`套件 74 个, 范围 1-74, 共执行 74 次; 失败 0 次`，退出码 0。
 
 > 2026-11-04 09:36 后**已跑全量**：`套件 77 个, 范围 1-77, 共执行 77 次; 失败 0 次`，退出码 0 ✓（新增 `tests/test-pushwind-edge.js`）
+> **2026-11-04 21:10 最新全量**：`套件 82 个, 范围 1-82, 共执行 82 次; 失败 0 次`；`preflight 13/13`；`audit-rules-vs-impl 4/4`。新增 `tests/test-deal-async.js`（34 条断言，**覆盖异步发牌路径**）。
 > （此前按用户「先不要全量测试」只跑定向套件；新增 `tests/test-req-20261103.js` / `test-req-20261103b.js` 后套件数 74 → 76。）
 
 **测试纪律**：
@@ -224,6 +225,16 @@ openclaw config set --batch-file .tmp-config-batch.json
    - `docs/DECISIONS.md`：**决策记录**（D-001~D-010，含依据与影响面；D-006 记下产品定位「主要真人对真人，AI 只用于验证规则，不追求强度」）。
    - `tests/test-pushwind-edge.js`：**推风边界回归**（连续两次推风 / 推风目标立刻出完→牌局结束 / 推风后回合显示清干净，10 条断言）。
    - 顺带把「牌局结束清闹钟」从只写在 `draw()` 改成**在真正置 GAME_END 的 7 处都清**（`_uiClearCountdowns()`），内部状态与画面一致。
+10. **2026-11-04 20:46 用户 7 条报障已修**（新增 `tests/test-deal-async.js`，34 条断言；全量 82/82 全绿；preflight 13/13）：
+   - **Q1「点数个数≤13 能枚举 21 张大连珠蛋吗」-> 能**：实测 7 组×3 张 = 21 张，点数个数 7，枚举出 10 个大连珠蛋候选（`BIG_STRAIGHT_TRIPLE`）。**无需改动**。（坑：`candidateCombos` 返回的是 **id 数组**，没有 `.type` 字段 —— 过滤必须逐个 `identifyHand`，别直接读 `.type`。）
+   - **#3「发牌过程中亮完大A后不发牌了」+ #4「亮牌后不能选牌不能出牌，没有出牌按钮了」-> 同一根因的两个症状**：
+     1. `handleLiangA` **无条件**把 phase 改成 `LIANG_A_RESOLVED`（即使当前是 `DEALING`）-> 发牌定时器下一轮发现 phase 不是 DEALING -> **中断发牌**。改法：`DEALING` 阶段亮A 只确立主A、**phase 保持 DEALING**，由最后一轮 `DEAL_ROUND` 统一转 `LIANG_A_RESOLVED`。
+     2. 逐轮发牌是**异步**的，但 `gateAutoAdvance()` 在发牌档跑完后继续往下跑闸门 -> 引擎在 `DEALING` 阶段**全部拒绝**这些动作，但 `gateIdx` 一路 `++` -> **闸门计划被空转跑光** -> 等牌发完、真人亮A后已无档可跑 -> 永远进不了 `PLAY` -> 没有出牌按钮。改法：`gateAutoAdvance()` 在 `phase === DEALING` 时**直接 break**，等 `_dealStepTick` 发完再续。
+     **教训**：无头默认 `DEAL_STEP=0` -> 22 轮**同步**跑完，**异步发牌路径从来没被测过**，而用户报障只发生在异步路径。已加 `__setDealStep` 测试钩子强制走异步。
+   - **#2「开局前每个人前面都显示已出完」-> 修**：`isOut = hand.length===0`，发牌阶段手牌本来就是空的 -> 误判成「已出完」。改：「已出完」只在 `PLAY`/`GAME_END` 阶段才算数。
+   - **#5 机器人图标左移**：`vw - safe - 0.085H` -> `vw - 0.38H`（离右边缘 >= 100px，避开小程序胶囊按钮）。
+   - **#6 AI 头像下移**：第一排 `0.215H -> 0.235H`、第二排 `0.405H -> 0.450H`（第二排多下移）。**连带**：两处闹钟位置断言原本写死座位行 Y -> 改为**从 `layout().seats` 取**（座位一动就失效）。
+   - **#7 发牌阶段记牌器收起**：新增 `_uiMemoOpenNow()` 为单一来源，`DEALING` 强制收起，进出牌阶段恢复用户设置。
 
 ---
 

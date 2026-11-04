@@ -583,6 +583,14 @@ function gateAutoAdvance() {
   var guard = 0;
   while (guard++ < GATE_PLAN.length + 4) {
     if (gateIdx >= GATE_PLAN.length) break;
+    // [2026-11-04 用户报障] 「亮牌后不能选牌不能出牌, 没有出牌按钮了」
+    //   逐轮发牌是**异步**的(每 0.5 秒一轮): 发牌档跑完时牌**还没发完**。
+    //   原来这里接着往下跑闸门(强制排查/反A/翻底牌/身份/出牌) ->
+    //   引擎在 DEALING 阶段把这些动作**全部拒绝**, 但 gateIdx 一路 ++ ->
+    //   **闸门计划被空转跑光**; 等牌发完再调 gateAutoAdvance 时已无档可跑
+    //   -> 永远进不了 PLAY 阶段 -> 没有【出牌】按钮, 也不能选牌。
+    //   修法: 发牌没结束就**停在这里**, 等 _dealStepTick 发完牌再续跑。
+    if (gameState && gameState.phase === PHASES.DEALING) break;
     if (gateChoice && gateChoice.eligible) return false;   // 等真人决策, 停下
     gateChoice = null;
     runGateStage();
@@ -1459,6 +1467,13 @@ function _uiClearCountdowns() {
   _uiLiangCountdownStop();
 }
 
+// [2026-11-04 用户] 「发牌阶段记牌器收起来, 等出牌阶段再判断要不要展开」
+//   -> 发牌阶段(牌还没发齐, 记出来的数没意义)强制收起; 进 PLAY 后按用户设置恢复。
+function _uiMemoOpenNow() {
+  if (gameState && gameState.phase === PHASES.DEALING) return false;
+  return uiMemoOpen;
+}
+
 function draw() {
   // [2026-10-25] 同步「不出」显示状态(谁出牌了/桌牌被收走了)
   _uiSyncPassState();
@@ -1485,7 +1500,10 @@ function draw() {
     uiPlaysTrick: uiPlaysTrick,
     uiTrickId: uiTrickId,
     marks: uiMarks,
-    memoOpen: uiMemoOpen,
+    // [2026-11-04 用户] 「发牌阶段记牌器收起来, 等出牌阶段再判断要不要展开」
+    //   -> 发牌阶段强制收起(牌还没发齐, 记出来的数没意义);
+    //      进入出牌阶段后按用户设置(默认展开)恢复。
+    memoOpen: _uiMemoOpenNow(),
     memoItems: _uiMemo().items,
     testMode: _uiTestMode(),
     isMainAce: _uiIsMainAce,
@@ -2181,6 +2199,12 @@ if (typeof module !== 'undefined' && module.exports) {
     uiAiTurnAt = 0;
     uiAiWaitPlan = 0;
   },
+    // [2026-11-04] 测试钩子: 强制逐轮发牌的间隔(ms)
+    //   背景: 无头默认 DEAL_STEP=0 -> 22 轮**同步**跑完, 异步发牌路径平时测不到;
+    //         而用户报障的 #3/#4 只在**异步**路径上出现。
+    __setDealStep: function (ms) { DEAL_STEP = ms; },
+    // [2026-11-04] 渲染层实际用的记牌器展开状态(发牌阶段强制收起) -> 给测试读
+    uiMemoOpenNow: _uiMemoOpenNow,
   // [2026-11-04] AI 本回合的随机等待时长观测钩子
   uiAiWaitPlan: function () { return uiAiWaitPlan; },
   // [2026-11-04] AI 等待时长的纯函数(基准 + ±20% 抖动), 供测试直接验证
