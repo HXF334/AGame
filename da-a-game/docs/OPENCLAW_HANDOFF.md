@@ -1,7 +1,8 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-04 01:16 (Asia/Shanghai) · Git HEAD 见 `git log -1`
+> 最后更新：2026-11-04 09:42 (Asia/Shanghai) · Git HEAD 见 `git log -1`
+> 相关文档：**画面验收清单** UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** DECISIONS.md
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
 ---
@@ -31,11 +32,11 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / deal.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 76 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 77 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
-│  ├─ docs/                    ← 交接文档（不进包）
+│  ├─ docs/                    ← 交接文档 / 画面验收清单 / 决策记录（不进包）
 │  ├─ game.json  project.config.json
 ├─ tools/                      ← wechat-cli.ps1（微信开发者工具 CLI 的 PowerShell 包装）
 └─ .gitattributes              ← 强制 LF，见 §4
@@ -71,7 +72,7 @@ node tests/_runall.js 10 20    # 只跑第 10~20 个
 
 2026-11-03 实测：`套件 74 个, 范围 1-74, 共执行 74 次; 失败 0 次`，退出码 0。
 
-> 2026-11-04 01:20 用户授权后**已跑全量**：`套件 76 个, 范围 1-76, 共执行 76 次; 失败 0 次`，退出码 0 ✓
+> 2026-11-04 09:36 后**已跑全量**：`套件 77 个, 范围 1-77, 共执行 77 次; 失败 0 次`，退出码 0 ✓（新增 `tests/test-pushwind-edge.js`）
 > （此前按用户「先不要全量测试」只跑定向套件；新增 `tests/test-req-20261103.js` / `test-req-20261103b.js` 后套件数 74 → 76。）
 
 **测试纪律**：
@@ -217,6 +218,11 @@ openclaw config set --batch-file .tmp-config-batch.json
 8. **2026-11-04 01:10 用户两条反馈已改**（`tests/test-req-20261103b.js` 第 10/11 节，全量 76/76 全绿）：
    - **AI 起手连张要带上高端的 A**：用户例「丁有 9 10 10 JQKA，出牌却只出 9 10 JQK」。根因：起手候选里「大牌保护」把含 A 的 6 张连张一起滤掉了。改法：大牌保护**只管锚点和同点组**，链本身允许带高端 A；同时补一条硬约束「**链必须从锚点起**」（链里不能有比锚点更小的牌），否则 `3-4-5-6` 会把大牌 3 拽进来（保护大牌的老断言仍成立）。
    - **AI 的出牌 /「不出」离头像再远一点**：`ui-render.js` 里 AI 侧「不出」文字 `rr_+10 → rr_+20`、打出的牌 `rr_+8 → rr_+18`、AI 等待闹钟同步外移 `+10 → +20`（三者同一档距离）。
+9. **2026-11-04 09:36 按用户指示补齐的配套件**：
+   - `docs/UI_ACCEPTANCE_CHECKLIST.md`：**画面验收清单**（17 条，分闸门 / 出牌提示 / AI 回合推风 / 收尾四段，每条含操作、期望、异常样貌、对应回归锁点）。
+   - `docs/DECISIONS.md`：**决策记录**（D-001~D-010，含依据与影响面；D-006 记下产品定位「主要真人对真人，AI 只用于验证规则，不追求强度」）。
+   - `tests/test-pushwind-edge.js`：**推风边界回归**（连续两次推风 / 推风目标立刻出完→牌局结束 / 推风后回合显示清干净，10 条断言）。
+   - 顺带把「牌局结束清闹钟」从只写在 `draw()` 改成**在真正置 GAME_END 的 7 处都清**（`_uiClearCountdowns()`），内部状态与画面一致。
 
 ---
 

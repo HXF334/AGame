@@ -1254,17 +1254,21 @@ function _uiRoundEnded() {
   });
 }
 
+// [2026-11-04 用户] 「牌局结束的时候后面的闹钟要清掉」
+//   -> 回合 20 秒 / AI 等待 / 闸门 5 秒的倒计时**全部**清零(画面上不该再有表盘)。
+function _uiClearCountdowns() {
+  uiTurnDeadline = 0;
+  uiAiWaitDeadline = 0;
+  uiAiTurnAt = 0;
+  _uiLiangCountdownStop();
+}
+
 function draw() {
   // [2026-10-25] 同步「不出」显示状态(谁出牌了/桌牌被收走了)
   _uiSyncPassState();
-  // [2026-11-03 用户] 「牌局结束的时候后面的闹钟要清掉」
+  // [2026-11-03/04 用户] 「牌局结束的时候后面的闹钟要清掉」
   //   -> 结束后不再有任何倒计时(回合 20 秒 / AI 等待 / 闸门 5 秒), 也不该继续倒数。
-  if (gameState.phase === PHASES.GAME_END) {
-    uiTurnDeadline = 0;
-    uiAiWaitDeadline = 0;
-    uiAiTurnAt = 0;
-    _uiLiangCountdownStop();
-  }
+  if (gameState.phase === PHASES.GAME_END) _uiClearCountdowns();
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
     gameState: gameState,
@@ -1442,7 +1446,7 @@ function doPlay() {
       advanceCurrentPlayer();
       var endR0 = checkGameEnd(gameState);
       if (endR0.ended) {
-        gameState.phase = 'GAME_END';
+        gameState.phase = 'GAME_END'; _uiClearCountdowns();
         log('牌局结束: ' + fmtResult(endR0) + ' reason=' + endR0.reason);
       } else {
         doPushWindIfPending(false);
@@ -1484,7 +1488,7 @@ function doPlay() {
       advanceCurrentPlayer();
       var endR = checkGameEnd(gameState);
       if (endR.ended) {
-        gameState.phase = 'GAME_END';
+        gameState.phase = 'GAME_END'; _uiClearCountdowns();
         log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
       } else {
         doPushWindIfPending(false);
@@ -1526,7 +1530,7 @@ function doPlay() {
         if (_mmAfter && _mmAfter.hand.length === 0) { lastEmptiedPlayer = currentPlayer; }
         advanceCurrentPlayer();
         var e2 = checkGameEnd(gameState);
-        if (e2.ended) { gameState.phase = 'GAME_END'; log('牌局结束: ' + fmtResult(e2)); } else { doPushWindIfPending(false); }
+        if (e2.ended) { gameState.phase = 'GAME_END'; _uiClearCountdowns(); log('牌局结束: ' + fmtResult(e2)); } else { doPushWindIfPending(false); }
         if (ctx) draw();
         runAI();
         _comboPlayed = true;   // 告诉 doPlay 已完成, 别再落到末尾的失败日志
@@ -1572,7 +1576,7 @@ function doPass() {
     advanceCurrentPlayer();
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
-      gameState.phase = 'GAME_END';
+      gameState.phase = 'GAME_END'; _uiClearCountdowns();
       log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
     } else {
       doPushWindIfPending(_roundEnded);
@@ -1624,7 +1628,7 @@ function doPushWind() {
     lastEmptiedPlayer = null;
     var endR = checkGameEnd(gameState);
     if (endR.ended) {
-      gameState.phase = 'GAME_END';
+      gameState.phase = 'GAME_END'; _uiClearCountdowns();
       log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
     } else {
       doPushWindIfPending(false);
@@ -1673,7 +1677,7 @@ function runAI() {
           advanceCurrentPlayer();
           var endR = checkGameEnd(gameState);
           if (endR.ended) {
-            gameState.phase = 'GAME_END';
+            gameState.phase = 'GAME_END'; _uiClearCountdowns();
             log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
           } else {
             doPushWindIfPending(_re0);
@@ -1739,7 +1743,7 @@ function runAI() {
         advanceCurrentPlayer();
         var endR1 = checkGameEnd(gameState);
         if (endR1.ended) {
-          gameState.phase = 'GAME_END';
+          gameState.phase = 'GAME_END'; _uiClearCountdowns();
           log('牌局结束: ' + fmtResult(endR1) + ' reason=' + endR1.reason);
         } else {
           doPushWindIfPending(_re1);
