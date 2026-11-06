@@ -17,6 +17,10 @@ var SUIT_CHAR = { H: '♥', D: '♦', C: '♣', S: '♠' };
 var SEAT_COLOR = ['#4f8f5b', '#3f7fa8', '#a86a3f', '#8a5aa8', '#a85555'];
 var RANKS_DESC = ['3', '2', 'A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4'];
 
+// [2026-11-06 用户] 「打出的手牌排序时按龙的顺序排序而不是按单张大小」
+//   -> 链序判定放在 src/sort-cards.js(纯逻辑), 渲染层只负责画
+var sortCards = require('./src/sort-cards.js');
+
 // ===== 座位环排 =====
 // 逆时针 = ids 顺序 A→B→C→D→E(=轮转顺序)。
 //   左上 = 真人逆时针前驱第2位   左下 = 前驱第1位
@@ -59,7 +63,9 @@ function layout(W, H) {
     btn: { y: vh * 0.560, h: vh * 0.100 },
     // [2026-10-25] 手牌上移, 避开手机底部横条
     // [2026-10-26] 底部暗区变矮 -> 手牌整体下移(牌的上沿 0.72H 正好贴暗区顶边)
-    hand: { y: vh * 0.805, maxW: vw * 0.70, cardH: vh * 0.170, ratio: 0.70 },
+    // [2026-11-06 用户] 「手牌高度多加一点」-> cardH 0.170H -> 0.185H;
+    //   牌变高 -> 同时把整排**上移**(y 0.805H -> 0.780H), 否则底部出屏
+    hand: { y: vh * 0.780, maxW: vw * 0.70, cardH: vh * 0.185, ratio: 0.70 },
     // [2026-11-04 用户] 「真人玩家头像那一片整体往上一点」-> 第一项 0.805H -> 0.780H
     me: { x: safe + r + 30, r: r, y: vh * 0.780 + vh * 0.200 * 0.42 },
     // [2026-10-25] 记牌器入口图标(顶部中央, 点击展开/收起)
@@ -72,9 +78,13 @@ function layout(W, H) {
     //   -> 往左让出约 148px(约 0.38H), 整块避开胶囊按钮区域(胶囊约 90px 宽)。
     // [2026-11-04 用户] 「按钮再往右移一点」(上一轮让开胶囊按钮让过头了)
     //   0.38H -> 0.33H(往右回一点但仍避开胶囊按钮); 大小与记牌器一致(0.042H)
-    autoPlay: { iconX: vw - Math.round(vh * 0.33), iconY: vh * 0.062, iconR: Math.round(vh * 0.042) },
+    // [2026-11-06 用户] 「机器人按钮左移一点」-> 0.33H -> 0.36H
+    autoPlay: { iconX: vw - Math.round(vh * 0.36), iconY: vh * 0.062, iconR: Math.round(vh * 0.042) },
     // 机器人图形比例(相对圆半径) -> 「占大部分按钮区域」
-    bot: { headW: 0.78, headH: 0.58, eye: 0.13, eyeDx: 0.25, antenna: 0.26, antennaDot: 0.36 }
+    // [2026-11-06 用户] 「机器人头像再大一点(不是按钮变大, 是按钮里的机器人)」
+    //   -> 头/眼/天线整体放大, **按钮本身大小不变**(0.042H, 与记牌器一致)
+    //   数值按「图形完全落在圆内」反推(头角到圆心 < r)
+    bot: { headW: 1.30, headH: 0.95, eye: 0.15, eyeDx: 0.32, antenna: 0.18, antennaDot: 0.19 }
   };
 }
 
@@ -110,14 +120,16 @@ function buttonLayout(list, m) {
   var gap = Math.round(m.vw * 0.012);
   // [2026-11-04 用户] 「亮A那四个花色按钮还是再分开一些」
   //   -> 相邻**花色**按钮之间用 suitGap(比普通 gap 宽)
-  var suitGap = Math.round(m.vw * 0.020);
+  // [2026-11-06 用户] 「亮A那四个花色按钮距离再小一些」-> 0.020vw -> 0.009vw
+  var suitGap = Math.round(m.vw * 0.009);
   var h = Math.round(m.btn.h);
   // [2026-10-26] **花色按钮窄一些**(一个花色符号不需要整行那么宽)
   var nSuit = 0, nOther = 0;
   for (var si = 0; si < list.length; si++) {
     if (list[si].kind === 'suit') nSuit++; else nOther++;
   }
-  var wSuit = Math.max(38, Math.round(h * 0.74));
+  // [2026-11-06 用户] 「亮A按钮太小了, 整体放大」-> 38/h*0.74 -> 50/h*1.02
+  var wSuit = Math.max(50, Math.round(h * 1.02));
   // [2026-11-04] 先按**实际间距**算总宽(花色之间是 suitGap), 再定普通按钮宽
   var gapTotal = 0;
   for (var tg = 0; tg < list.length - 1; tg++) {
@@ -516,14 +528,17 @@ function drawSeatPlays(ctx, st, m, seatMap) {
   Object.keys(plays).forEach(function (pid) {
     var cards = plays[pid];
     if (!cards || !cards.length) return;
-    // [2026-11-03 用户] 「打出去的手牌要从左往右按由小到大排序」
+    // [2026-11-06 用户] 「打出的手牌排序时按龙的顺序排序而不是按单张大小」
+    //   -> 龙型(连张/双龙/连珠蛋/假八)按**链序**排(3-4-5-6 显示成 3 4 5 6,
+    //      而不是按单张大小排成 4 5 6 3); 非龙型仍按单张大小排。
     var _isAce2 = st.isMainAce || function () { return false; };
-    cards = cards.slice().sort(function (a, b) {
+    cards = sortCards.sortByChain(cards) || cards.slice().sort(function (a, b) {
       return cardPower(a, _isAce2(a)) - cardPower(b, _isAce2(b));
     });
     var slot = seatMap[pid];
     if (!slot) return;
-    var cardH = Math.round(m.vh * 0.115);
+    // [2026-11-06 用户] 「打出的手牌整体大一些」-> 0.115H -> 0.130H
+    var cardH = Math.round(m.vh * 0.130);
     var cardW = Math.round(cardH * m.hand.ratio);
     var rr_ = Math.round(m.vh * 0.052);
     // [2026-11-04 用户] 「我出55667788991010JJQQ，桌面上显示不全」
@@ -535,20 +550,25 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     var avail = slot.side === 'C' ? (m.vw - m.safeL - m.safeR)
              : slot.side === 'L' ? (m.table.cx - (slot.x + rr_ + 18))
              : ((slot.x - rr_ - 18) - m.table.cx);
-    var MIN_STEP = 12;                       // 再窄就认不出点数了
+    // [2026-11-06 用户] 「禁止出现+N截断, 手牌和打出的牌都要显示全」
+    //   -> 删掉截断分支: 先压步长, 压到下限仍放不下就**等比缩小牌本身**,
+    //      保证**一张都不少**(宁可小, 不丢牌)。
+    var MIN_STEP = 8;                        // 再窄就认不出点数了
     var MAX_STEP = Math.round(cardW * 0.58);
-    var n = cards.length;                    // 不再截断
+    var n = cards.length;                    // 全部显示
     var step = MAX_STEP;
     if (n > 1 && avail > cardW) {
       var fit = Math.floor((avail - cardW) / (n - 1));
       if (fit < step) step = Math.max(MIN_STEP, fit);
     }
     var totalW = cardW + step * (n - 1);
-    // 实在放不下(步长已到下限)才截断, 并标 "+N"
-    var shown = n;
-    if (totalW > avail && n > 1 && step > 0) {
-      shown = Math.max(1, Math.floor((avail - cardW) / step) + 1);
-      totalW = cardW + step * (shown - 1);
+    if (totalW > avail && n > 1) {
+      // 步长压到下限仍放不下 -> 等比缩小牌(不截断)
+      var _sc = avail / totalW;
+      cardW = Math.max(10, Math.round(cardW * _sc));
+      cardH = Math.max(12, Math.round(cardH * _sc));
+      step = Math.max(1, Math.floor((avail - cardW) / (n - 1)));
+      totalW = cardW + step * (n - 1);
     }
     // [2026-11-02] side 'C' = 牌桌中央(真人自己的出牌): 整排**居中**画
     // [2026-11-04 用户] 「AI玩家打出的手牌离头像再远一点」(+8 -> +18)
@@ -556,13 +576,10 @@ function drawSeatPlays(ctx, st, m, seatMap) {
           : slot.side === 'C' ? Math.round(slot.x - totalW / 2)
           : (slot.x - rr_ - 18 - totalW);
     var y = slot.y - cardH / 2;
-    for (var j = 0; j < shown; j++) {
+    // [2026-11-06 用户] 「禁止 +N 截断」-> 全部画出, 不再有 "+N" 标记
+    for (var j = 0; j < n; j++) {
       // 内容一律按 step 宽居中 -> 和其他手牌位置一致
       drawMiniCard(ctx, cards[j], x0 + j * step, y, cardW, cardH, st, step);
-    }
-    if (cards.length > shown) {
-      text(ctx, '+' + (cards.length - shown), x0 + totalW + 4, y + cardH / 2,
-        Math.max(8, Math.round(m.vh * 0.026)), '#ffffff', 'left', false);
     }
   });
 }
@@ -686,8 +703,9 @@ function drawCard(ctx, card, x, y, w, h, isSel, st, visibleW) {
     }
     return;
   }
-  var numFs = Math.max(10, Math.round(w * 0.42));
-  var suitFs = Math.max(11, Math.round(w * 0.46));
+  // [2026-11-06 用户] 「牌上的字大一点」-> 0.42/0.46 -> 0.46/0.50
+  var numFs = Math.max(11, Math.round(w * 0.46));
+  var suitFs = Math.max(12, Math.round(w * 0.50));
   var numY = y + h / 2 - numFs * 0.78;   // [2026-10-26] 牌面文字整体上移
   var suitY = y + h / 2 + suitFs * 0.46;   // 跟着上移
   text(ctx, st.rankDesc(card), cx, numY, numFs, col, 'center', true);
@@ -736,8 +754,9 @@ function drawMiniCard(ctx, card, x, y, w, h, st, visibleW) {
     }
     return;
   }
-  var numFs = Math.max(8, Math.round(w * 0.40));
-  var suitFs = Math.max(9, Math.round(w * 0.44));
+  // [2026-11-06 用户] 「打出的手牌整体大一些」-> 字号同步放大
+  var numFs = Math.max(9, Math.round(w * 0.44));
+  var suitFs = Math.max(10, Math.round(w * 0.48));
   var numY = y + h / 2 - numFs * 0.78;
   var suitY = y + h / 2 + suitFs * 0.46;
   text(ctx, st.rankDesc(card), cx, numY, numFs, col, 'center', true);
@@ -837,7 +856,8 @@ function drawTurnInfo(ctx, st, m, seatMap) {
   // [2026-10-27 用户] 亮A 的 5 秒倒计时**要看得见**: 表盘更大 + 数字更大 + 下面写明后果
   // [2026-11-03] 反A / 次方身份的 5 秒倒计时同样用大表盘
   var isLiang = !!st.turnIsLiang || !!st.turnIsGate;
-  var r = Math.round(m.vh * (isLiang ? 0.062 : 0.048));
+  // [2026-11-06 用户] 「出牌的闹钟大小和亮A的闹钟一样」-> 统一 0.062H
+  var r = Math.round(m.vh * 0.062);
   // 铃铛耳朵
   ctx.strokeStyle = '#d9a05b'; ctx.lineWidth = Math.max(2, m.vh * 0.007);
   ctx.beginPath();
@@ -851,7 +871,7 @@ function drawTurnInfo(ctx, st, m, seatMap) {
   circle(ctx, c.x, c.y, r); ctx.stroke();
   // 秒数
   text(ctx, String(sec), c.x, c.y,
-       isLiang ? Math.max(22, Math.round(m.vh * 0.076)) : Math.max(12, Math.round(m.vh * 0.046)),
+       Math.max(22, Math.round(m.vh * 0.076)),
        sec <= 5 ? '#c8102e' : '#5e2417', 'center', true);
   // [2026-11-03 用户] 「出牌前亮A等倒计时的提示文字不要」
   //   -> 闸门倒计时**只画表盘和秒数**, 下面那行说明文字去掉。
@@ -910,7 +930,8 @@ function drawButtons(ctx, st, m, list) {
       ctx.strokeStyle = on ? '#ffd98a' : '#6a6a6a'; ctx.lineWidth = on ? 2 : 1;
       rr(ctx, b.x, b.y, b.w, b.h, Math.round(b.h * 0.30)); ctx.stroke();
     }
-    var fs2 = isSuit ? Math.max(16, Math.round(m.vh * 0.058)) : fs;
+    // [2026-11-06 用户] 「亮A按钮太小了, 整体放大」-> 花色符号跟着放大
+    var fs2 = isSuit ? Math.max(20, Math.round(m.vh * 0.068)) : fs;
     var col2 = on ? (isSuit ? suitColor(b.suit) : '#ffffff') : (isSuit ? 'rgba(255,255,255,0.22)' : '#9a9a9a');
     text(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, fs2, col2, 'center', true);
   }

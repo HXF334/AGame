@@ -22,11 +22,12 @@ function section(t) { console.log('\n=== ' + t + ' ==='); }
 var VW = 844, VH = 390;
 var lay = uiRender.layout(VW, VH);
 
-section('1. 发牌速度改为 0.3 秒');
+// [2026-11-06 用户] 发牌速度再次调整: 0.3 秒 -> **0.2 秒**
+section('1. 发牌速度改为 0.2 秒');
 {
-  check('1.1 发牌间隔 = 300ms', g.__dealStepMs() === 300, String(g.__dealStepMs()));
+  check('1.1 发牌间隔 = 200ms', g.__dealStepMs() === 200, String(g.__dealStepMs()));
   var totalS = (22 * g.__dealStepMs()) / 1000;
-  check('1.2 22 轮总时长 6.6 秒', Math.abs(totalS - 6.6) < 0.001, String(totalS));
+  check('1.2 22 轮总时长 4.4 秒', Math.abs(totalS - 4.4) < 0.001, String(totalS));
 }
 
 section('2. 机器人图标: 与记牌器同大小 / 两个都更大 / 往右移 / 图形占满按钮');
@@ -81,8 +82,9 @@ section('4. 亮A 那四个花色按钮再分开一些');
   for (var i = 1; i < bs.length; i++) gaps.push(Math.round(bs[i].x - (bs[i - 1].x + bs[i - 1].w)));
   check('4.1 四个花色按钮之间**有**间隙(不再挨在一起)',
     gaps.length === 3 && gaps.every(function (gp) { return gp > 0; }), JSON.stringify(gaps));
-  check('4.2 间隙 >= 12px(明显分开)',
-    gaps.every(function (gp) { return gp >= 12; }), JSON.stringify(gaps));
+  // [2026-11-06 用户] 「亮A那四个花色按钮距离再小一些」-> 上轮的 ">=12px" 改为 6~10px
+  check('4.2 间隙在 6~10px(比上轮更小)',
+    gaps.every(function (gp) { return gp >= 6 && gp <= 10; }), JSON.stringify(gaps));
   check('4.3 四个花色按钮等距',
     Math.abs(gaps[0] - gaps[1]) < 0.5 && Math.abs(gaps[1] - gaps[2]) < 0.5, JSON.stringify(gaps));
   check('4.4 整排仍居中',

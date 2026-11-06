@@ -128,8 +128,12 @@ console.log('=== 4. 源码级守卫: 硬截断语句已消失 ===');
   var src = fs.readFileSync(path.join(__dirname, '..', 'ui-render.js'), 'utf8');
   check('4.1 没有 `var n = Math.min(cards.length, 10)` 这种硬截断',
     src.indexOf('var n = Math.min(cards.length, 10)') < 0);
-  check('4.2 新的按宽度压缩逻辑在(seen/shown 变量)',
-    src.indexOf('var shown = n;') >= 0);
+  // [2026-11-06 用户] 「禁止出现+N截断, 手牌和打出的牌都要显示全」
+  //   -> 截断变量(shown)整个删掉, 改为"压步长 + 必要时等比缩小牌"
+  check('4.2 截断变量(shown)已删除 -> 一张都不截断',
+    src.indexOf('var shown') < 0);
+  check('4.3 没有 "+N" 截断标记',
+    src.indexOf('cards.length - shown') < 0);
 }
 
 console.log('test-ui-play-wide: ' + pass + ' passed, ' + fail + ' failed');
