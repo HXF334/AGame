@@ -12,6 +12,8 @@ var checkGameEnd = engine.checkGameEnd;
 // [fix] ai.js 的 chooseAction 未被 index.js 转发, 直接从 ai.js 引
 var chooseAction = require('./src/ai.js').chooseAction;
 var candidateCombos = require('./src/combos.js').candidateCombos;
+// [2026-11-06 用户] 起手选牌: AI 起手与【提示】**共用同一来源**(避免两处算法漂移)
+var leadChoice = require('./src/lead-choice.js');
 // 资格判定**由引擎提供**(判据与 transition 的 handler 同一套), UI 不自行判断
 var canLiangA = engine.canLiangA;
 var canFanA = engine.canFanA;
@@ -280,13 +282,35 @@ function _dealLiangA(suit) {
 // 托管时真人手牌区显示**半透明「取消托管」**标识, 点该区域或顶栏机器人都能取消。
 // **不跨局保留**: 每局开始重置为关闭(见 newGame)。
 var uiAutoPlay = false;        // 托管开关
+var uiAutoPlayTimer = 0;       // 托管排队中的动作(取消托管时必须清掉)
 
+// [2026-11-06 用户] 托管: 开启后**本局持续**由 AI 代打, 直到用户取消;
+//   取消后**不得再自动出牌**(排队中的动作必须作废)。
 function _uiToggleAutoPlay() {
   uiAutoPlay = !uiAutoPlay;
-  log(uiAutoPlay ? '开启托管: AI 代打真人手牌' : '关闭托管: 恢复真人操作');
+  log(uiAutoPlay ? '开启托管: AI 代打真人手牌(本局持续, 直到取消)' : '关闭托管: 恢复真人操作');
   selectedCards = [];
-  if (uiAutoPlay) _autoPlayTakeover();
+  if (uiAutoPlay) _autoPlaySchedule(500);
+  else _autoPlayCancelTimer();   // 取消 -> 排队中的动作作废(不许再自动出牌)
   if (ctx) draw();
+}
+
+// 托管调度: 轮到真人且托管中 -> 排一个延时动作(到点由 AI 代打)
+function _autoPlaySchedule(delayMs) {
+  _autoPlayCancelTimer();
+  if (!uiAutoPlay) return false;
+  if (!gameState || gameState.phase !== PHASES.PLAY) return false;
+  if (currentPlayer !== humanPlayer) return false;
+  uiAutoPlayTimer = setTimeout(function () {
+    uiAutoPlayTimer = 0;
+    _autoPlayTakeover();
+  }, delayMs === undefined ? 700 : delayMs);
+  return true;
+}
+
+// 取消排队中的托管动作
+function _autoPlayCancelTimer() {
+  if (uiAutoPlayTimer) { clearTimeout(uiAutoPlayTimer); uiAutoPlayTimer = 0; }
 }
 
 // AI 接管真人回合: 用引擎的 chooseAction 替真人做决策
@@ -728,6 +752,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiPlays = {};                     // 清掉各家出牌显示
   uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
+  _autoPlayCancelTimer();             // [2026-11-06] 同时作废排队中的托管动作
   selectedCards = [];
   handCardHitboxes = [];
   lastEmptiedPlayer = null;
@@ -788,16 +813,19 @@ function uiHintCandidates() {
   //     1) 候选按**牌型形状**去重(不是按牌的 id): 同点数的 4 张 5 只算一个候选;
   //     2) 同点数的组合只保留**最大**的一组(4 张 5 -> 只提示 5555, 不提示 55/555);
   //     3) 排序: **张数少的先**(2 张 -> 3 张 -> 4 张), 同张数再比牌力(小的先)。
-  function add(ids, key) {
+  function add(ids, key, isLead) {
     if (!ids || !ids.length) return false;
     if (seen[key]) return false;
+    // 同一组牌(换个 key 再来一次)只留一个候选 -> 起手推荐不会与后面的组合重复
+    var sig = ids.slice().sort().join(',');
+    for (var i = 0; i < out.length; i++) { if (out[i].sig === sig) return false; }
     var r = transition(gameState, { type: ACTIONS.PLAY,
       payload: { playerId: humanPlayer, cardIds: ids.slice() } });
     // 引擎不认 -> 不进候选; **seen 也不置位**(同形状的别的变体还有机会)
     if (!r || !r.ok) return false;
     seen[key] = 1;
     var cards = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
-    out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards) });
+    out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards), lead: !!isLead, sig: sig });
     return true;
   }
   // 单张的「点数标识」: 同点数的 4 张 5 只提示一次; 大A/王 与普通 A 区分开
@@ -806,6 +834,17 @@ function uiHintCandidates() {
     if (c.isBigJoker) return 'BJ';
     if (c.isSmallJoker) return 'SJ';
     return 'R' + c.rank;
+  }
+  // [2026-11-06 用户] 本轮有**优先出牌权**(桌面为空)时, 【提示】第一个推荐 = 起手选牌
+  //   「有优先出牌权且手牌有 55 时, 点提示应出 55, 而不是 5」
+  //   与 AI 起手**同一来源**(src/lead-choice.js) -> 两处算法不会漂移。
+  if (!(gameState.table || []).length) {
+    try {
+      var _lead = leadChoice.pickLead(me.hand);
+      if (_lead && _lead.cards && _lead.cards.length) {
+        add(_lead.cards.map(function (c) { return c.id; }), 'LEAD', true);
+      }
+    } catch (e) { }
   }
   var singleSeen = {};
   me.hand.forEach(function (c) {
@@ -862,6 +901,7 @@ function uiHintCandidates() {
   });
   // 排序: 张数少的先(2 张 -> 3 张 -> 4 张) -> 同张数比牌力(小的先)
   out.sort(function (a, b) {
+    if (!!a.lead !== !!b.lead) return a.lead ? -1 : 1;   // 起手推荐排第一
     if (a.cards.length !== b.cards.length) return a.cards.length - b.cards.length;
     var pa = _uiComboPower(a.cards), pb = _uiComboPower(b.cards);
     if (pa !== pb) return pa - pb;
@@ -2035,6 +2075,8 @@ function advanceCurrentPlayer() {
       //   -> 轮到谁就清掉他上一轮留下的出牌显示 / 「不出」标记:
       //      真人回合 -> 按钮位让出来(旧行为); AI 回合 -> 座位前方的闹钟不跟旧牌/「不出」打架。
       _uiClearTurnDisplay(next);
+      // [2026-11-06 用户] 托管: 轮到真人 -> 排一个 AI 代打动作(本局持续, 直到取消)
+      if (next === humanPlayer && uiAutoPlay) _autoPlaySchedule(700);
       // [2026-11-03 用户] 别人出牌时真人**可以提前选牌**(只是不能打出)
       //   -> 换手时**不能**无条件清空选中: 只有「刚才是真人在行动」才清
       //      (真人出牌/过牌时清; AI 行动时保留真人的预选)。

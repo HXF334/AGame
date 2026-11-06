@@ -244,6 +244,182 @@ section('1b. 全部显示(禁 +N)');
   check('1b.8 牌上的字**比上轮大**', fs > OLD_FS, 'new=' + fs + ' old~' + OLD_FS);
 }
 
-console.log('\ntest-req-20261106: ' + pass + ' passed, ' + fail + ' failed');
-if (fail) process.exit(1);
-process.exit(0);
+// ============================================================
+// B 批: AI 逻辑 + 提示 (2026-11-06 用户裁定)
+// ============================================================
+var cardMod = require('../src/card.js');
+var leadChoice = require('../src/lead-choice.js');
+var SB = require('./lib/state-builder.js');
+var aiMod = require('../src/ai.js');
+var handTypes = require('../src/hand-types.js');
+
+function mkCards(list) {
+  return list.map(function (x, i) {
+    if (x === 'BJ') return cardMod.createBigJoker('lc' + i);
+    if (x === 'SJ') return cardMod.createSmallJoker('lc' + i);
+    return cardMod.createNormalCard(x[0], x[1], 'lc' + i);
+  });
+}
+// 起手选牌的点数(升序) —— 顺序不重要, 只看**出哪几张**
+function leadRanks(list) {
+  var r = leadChoice.pickLead(mkCards(list));
+  if (!r) return '(null)';
+  return r.cards.map(function (c) { return c.rank; })
+    .sort(function (a, b) { return a - b; }).join(',');
+}
+function expectLead(name, list, want) {
+  var got = leadRanks(list);
+  check(name, got === want, 'got=' + got + ' want=' + want);
+}
+
+section('B1. 起手选牌 (最小牌锚点: 龙 > 对子 > 单张)');
+expectLead('B1.1 王322kkk -> 22', ['BJ', ['S',3], ['S',2], ['H',2], ['S',13], ['H',13], ['D',13]], '2,2');
+expectLead('B1.2 55567 -> 567', [['S',5],['H',5],['D',5],['S',6],['S',7]], '5,6,7');
+expectLead('B1.3 45567 -> 4567', [['S',4],['S',5],['S',6],['S',7]], '4,5,6,7');
+expectLead('B1.4 5666778 -> 5', [['S',5],['S',6],['H',6],['S',7],['H',7],['S',8]], '5');
+expectLead('B1.5 556667788 -> 双龙 55667788',
+  [['S',5],['H',5],['S',6],['H',6],['S',7],['H',7],['S',8],['H',8]], '5,5,6,6,7,7,8,8');
+expectLead('B1.6 5555/666/77 -> 77',
+  [['S',5],['H',5],['D',5],['C',5],['S',6],['H',6],['D',6],['S',7],['H',7]], '7,7');
+expectLead('B1.7 两张以上 4 排除出起手池', [['S',4],['H',4],['S',9]], '9');
+expectLead('B1.8 单张 4 保留(单 4 最先出)', [['S',4],['S',9]], '4');
+
+section('B2. AI 压制: 同牌型优先 + 不拆其他同点组');
+{
+  var C2 = SB.C;
+  var handD = [C2('S',2),C2('H',2),C2('D',2),C2('C',2),C2('S',10),C2('H',10),C2('D',10),
+               C2('S',13),C2('H',5),C2('D',6),C2('C',3)];
+  var table9 = [C2('S',9),C2('H',9)];
+  var st = SB.build({ handMap: { D: handD }, table: table9, lastPlayer: 'B',
+    '主A': { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    '次方': 'D', '次方公开': true, '主方': ['A','D'], '抓方': ['B','C','E'], mode: '2V3_暗打' });
+  var real = st.players.filter(function (p) { return p.id === 'D'; })[0].hand;
+  var act = aiMod.chooseAction(st, 'D');
+  var played = (act.cardIds || []).map(function (id) {
+    return real.filter(function (c) { return c.id === id; })[0];
+  }).filter(Boolean);
+  var th = handTypes.identifyHand(st.table);
+  var ph = handTypes.identifyHand(played);
+  check('B2.1 AI 出了牌', act.type === 'PLAY', act.type);
+  check('B2.2 同牌型优先(桌面 ' + th.type + ' -> 出同类型)', ph.type === th.type, ph.type);
+  var grp = {}, used = {};
+  real.forEach(function (c) { grp[c.rank] = (grp[c.rank] || 0) + 1; });
+  played.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+  var split = false;
+  for (var rk in used) { if (used[rk] < grp[rk]) split = true; }
+  check('B2.3 不拆其他同点组', !split, played.map(function (c) { return c.rank; }).join(','));
+  check('B2.4 没有甩 2222(大牌留着)', !(played.length === 4 && played.every(function (c) { return c.rank === 2; })),
+    played.map(function (c) { return c.rank; }).join(','));
+}
+
+section('B3. 提示: 有优先出牌权时手牌 55 -> 提示 55');
+{
+  var hcards = [createNormalCard('S', 5, 'p55a'), createNormalCard('H', 5, 'p55b')];
+  var st = SB.build({ handMap: { A: hcards }, table: [], lastPlayer: 'B',
+    '主A': { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    '次方': 'C', '次方公开': true, '主方': ['B','C'], '抓方': ['A','D','E'], mode: '2V3_暗打' });
+  var me = st.players.filter(function (p) { return p.id === 'A'; })[0];
+  st.discarded = st.discarded.concat(me.hand.slice(2));
+  me.hand = me.hand.slice(0, 2);
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  var cands = g.uiHintCandidates();
+  check('B3.1 有提示候选', cands.length > 0, 'n=' + cands.length);
+  var first = cands[0];
+  check('B3.2 第一个提示是 **55**(2 张 5, 不是单张 5)',
+    !!(first && first.cards.length === 2 && first.cards.every(function (c) { return c.rank === 5; })),
+    first ? first.cards.map(function (c) { return c.rank; }).join(',') + ' n=' + first.cards.length : '(无)');
+}
+
+section('C1. 「取消托管」标识: 手牌下半部、数字下方');
+{
+  var st = baseState({ autoPlay: true });
+  var hc = [C('S', 9, 'c1'), C('H', 6, 'c2'), C('D', 11, 'c3'), C('C', 3, 'c4')];
+  hc.forEach(function (c, i) { c._tag = 'H' + (i + 1); });
+  st.gameState.players[1].hand = hc;      // baseState 的 humanPlayer = 'B' -> players[1]
+  var ctx = mockCtx();
+  uiRender.render(ctx, st);
+  var labels = ctx.items.filter(function (i) { return i.t === '取消托管'; });
+  check('C1.1 画出了「取消托管」标识', labels.length === 1, 'n=' + labels.length);
+  if (labels.length) {
+    var label = labels[0];
+    var handTop = lay.hand.y, handH = lay.hand.cardH;
+    var numYs = ctx.items.filter(function (i) { return /^H\d+$/.test(i.t); })
+      .map(function (i) { return i.y; });
+    var maxNumY = numYs.length ? Math.max.apply(null, numYs) : -1;
+    check('C1.2 标识在**手牌下半部**', label.y > handTop + handH / 2,
+      'labelY=' + label.y.toFixed(1) + ' 手牌区=' + handTop.toFixed(1) + '..' + (handTop + handH).toFixed(1));
+    check('C1.3 标识在**数字下方**', label.y > maxNumY,
+      'labelY=' + label.y.toFixed(1) + ' numY=' + maxNumY.toFixed(1));
+    check('C1.4 标识没超出手牌区', label.y + fontSize(label) / 2 <= handTop + handH,
+      'labelBottom=' + (label.y + fontSize(label) / 2).toFixed(1) + ' 牌底=' + (handTop + handH).toFixed(1));
+  }
+}
+
+// ============================================================
+// C 批: 托管 (本局持续代打 / 取消后不再自动出牌)
+// ============================================================
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function waitUntil(fn, ms) {
+  var t0 = Date.now();
+  return (async function () {
+    while (Date.now() - t0 < ms) {
+      if (fn()) return true;
+      await sleep(50);
+    }
+    return fn();
+  })();
+}
+function humanHandLen() {
+  var gs = g.gameState();
+  var me = gs.players.filter(function (p) { return p.id === g.getHumanPlayer(); })[0];
+  return me ? me.hand.length : -1;
+}
+function sbState(handMap) {
+  return SB.build({ handMap: handMap, table: [], lastPlayer: 'B',
+    '主A': { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    '次方': 'C', '次方公开': true, '主方': ['B','C'], '抓方': ['A','D','E'], mode: '2V3_暗打' });
+}
+
+(async function () {
+  // [重要] 先把**启动阶段的闸门**跑完 —— 否则它会在下面的等待里自己开局,
+  //   把注入的局面冲掉(2026-11-06 实测: C2.3 因此误报失败)。
+  try { g.__driveGateToPlay({}); } catch (e) { }
+  section('C2. 托管: 取消后不得再自动出牌');
+  {
+    var C3 = SB.C;
+    var st = sbState({ A: [C3('S',5), C3('H',5)] });
+    g.__setState(st, { human: 'A', currentPlayer: 'A' });
+    var h0 = humanHandLen();
+    g.toggleAutoPlay();                       // 开启托管
+    check('C2.1 托管已开启', g.uiAutoPlay() === true, String(g.uiAutoPlay()));
+    g.toggleAutoPlay();                       // 立刻取消 -> 排队中的动作必须作废
+    check('C2.2 托管已关闭', g.uiAutoPlay() === false, String(g.uiAutoPlay()));
+    await sleep(1200);                        // 超过排队动作的延迟(500ms)
+    check('C2.3 取消后**没有自动出牌**',
+      humanHandLen() === h0 && (g.gameState().table || []).length === 0,
+      'hand=' + humanHandLen() + '(原 ' + h0 + ') table=' + (g.gameState().table || []).length);
+    check('C2.3b 注入的局面没被开局流程冲掉', g.gameState() === st, '');
+  }
+
+  section('C3. 托管: 开启后本局**持续**由 AI 代打');
+  {
+    var C4 = SB.C;
+    var st = sbState({ A: [C4('S',5), C4('H',5), C4('D',9)] });
+    g.__setState(st, { human: 'A', currentPlayer: 'A' });
+    var h1 = humanHandLen();
+    g.toggleAutoPlay();                       // 开启托管
+    check('C3.1 托管已开启', g.uiAutoPlay() === true, String(g.uiAutoPlay()));
+    var first = await waitUntil(function () { return humanHandLen() < h1; }, 4000);
+    var h2 = humanHandLen();
+    check('C3.2 托管中 AI 替真人出了牌', first, 'hand ' + h1 + ' -> ' + h2);
+    var second = await waitUntil(function () { return humanHandLen() < h2; }, 4000);
+    var h3 = humanHandLen();
+    check('C3.3 托管**持续**(本局连续代打, 不用手动再点)', second, 'hand ' + h2 + ' -> ' + h3);
+    g.toggleAutoPlay();                       // 收尾: 关掉托管
+    check('C3.4 收尾已关闭托管', g.uiAutoPlay() === false, String(g.uiAutoPlay()));
+  }
+
+  console.log('\ntest-req-20261106: ' + pass + ' passed, ' + fail + ' failed');
+  if (fail) process.exit(1);
+  process.exit(0);
+})();

@@ -39,6 +39,7 @@ var EXPECTED_PACK = [
   'src/deal.js',
   'src/hand-types.js',
   'src/index.js',
+  'src/lead-choice.js',
   'src/phases.js',
   'src/play.js',
   'src/push-wind.js',

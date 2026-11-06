@@ -66,11 +66,15 @@ test('C.1.2 桌空时 AI 出最小牌 (SKILL §6.2: 7 < 3, 所以出 D7)', funct
   assert.strictEqual(a.cardIds[0], C('D', 7).id, '应出最小 D7 (7 < 3 per §6.2)');
 });
 
-test('C.1.3 桌空时 AI 不出 4 (4 留给取牌)', function () {
+// [2026-11-06 用户裁定更新] 「2 张及以上 4 排除出起手池，**单张 4 保留**」
+//   -> 手上只有 1 张 4 时它留在起手池; 起手按**最小牌锚点**, 4 最小 -> 先出它。
+//   旧断言「桌空时 AI 不出 4」按新裁定作废。
+test('C.1.3 桌空时单张 4 保留(最小锚点 -> 出 4)', function () {
   const s = mk1V4('1V4_明打');
   s.players[1].hand = [C('H', 4), C('D', 7)];
   const a = chooseAction(s, 'B');
-  assert.strictEqual(a.cardIds[0], C('D', 7).id, '桌空应出 D7 而非 H4 (4 留给 capture)');
+  assert.strictEqual(a.type, 'PLAY', '桌空应 PLAY');
+  assert.strictEqual(a.cardIds[0], C('H', 4).id, '单张 4 保留 -> 起手出 H4 (4 最小)');
 });
 
 test('C.1.4 桌上大王时 AI 压不了 → PASS', function () {
@@ -158,12 +162,15 @@ test('C.3.1 IDENTITY_CHOICE 阶段 AI 返回 CHOOSE_IDENTITY/HIDDEN', function (
 
 section('C.4 AI 排序逻辑验证 (小→大)');
 
-test('C.4.1 全手牌排序: 出绝对最小 (大王>小王>3>2>A>K>...>5>4)', function () {
+// [2026-11-06 用户裁定更新] 起手按「最小牌锚点」, 且**单张 4 保留** -> 出 4。
+//   旧断言「4 留给 capture, 应出次小的 5」按新裁定作废。
+test('C.4.1 起手按最小锚点: 单张 4 保留 -> 出 4', function () {
   const s = mk1V4('1V4_暗打');
   // 桌空, B 手牌含大王/小王/3/2/A/K/5/4 → 最小是 4, 但 4 留给 capture, 应出 5
   s.players[1].hand = [BJ(), SJ(), C('H', 3), C('D', 2), C('S', 14), C('C', 13), C('H', 5), C('D', 4)];
   const a = chooseAction(s, 'B');
-  assert.strictEqual(a.cardIds[0], C('H', 5).id, '4 留给 capture, 应出次小的 5');
+  assert.strictEqual(a.type, 'PLAY', '桌空应 PLAY');
+  assert.strictEqual(a.cardIds[0], C('D', 4).id, '单张 4 保留 -> 起手出最小的 4');
 });
 
 test('C.4.2 无 4 时出绝对最小', function () {

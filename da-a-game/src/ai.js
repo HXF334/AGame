@@ -15,6 +15,8 @@
 const { identifyHand, canBeat } = require('./hand-types.js');
 const { canCapture } = require('./capture.js');
 const { candidateCombos } = require('./combos.js');
+// [2026-11-06 用户] 起手算法(与【提示】共用同一来源)
+const leadChoice = require('./lead-choice.js');
 
 // 牌的"保留价值"(越大越该留着)。仅用于 AI 排序, 不参与任何合法性判断。
 function keepValue(c) {
@@ -39,6 +41,23 @@ function cardPowerAsc(c) {
 }
 function isFour(c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; }
 
+// 同阵营判定(§9/§10: 主方=[主A(,次方已公开)], 抓方=其余人)
+//   同阵营 -> 不主动用 王/大A/蛋子及以上 去压制; 也不取他的蛋子。
+//   [注] 次方未公开时**不把次方算进主方**(暗打不该用未公开信息)。
+function _isSameCamp(state, a, b) {
+  if (!state || !a || !b || a === b) return false;
+  var main = [];
+  if (state['主A'] && state['主A'].establishedBy) main.push(state['主A'].establishedBy);
+  if (state['次方'] && (state['次方公开'] || state['次方'] === a || state['次方'] === b)) main.push(state['次方']);
+  var takers = (state['抓方'] || []).filter(function (id) { return main.indexOf(id) < 0; });
+  var aMain = main.indexOf(a) >= 0, bMain = main.indexOf(b) >= 0;
+  var aTake = takers.indexOf(a) >= 0, bTake = takers.indexOf(b) >= 0;
+  if (aMain && bMain) return true;
+  if (aTake && bTake) return true;
+  return false;
+}
+
+
 // AI 选择行动: { type: 'PLAY' | 'PASS' | 'CHOOSE_IDENTITY', playerId, cardIds? / choice? }
 function chooseAction(state, playerId) {
   // [A2 fix] state 或 players 缺失时安全返回 PASS (不 crash)
@@ -61,138 +80,57 @@ function chooseAction(state, playerId) {
   var currentHand = table.length > 0 ? identifyHand(table) : null;
 
   // ================= 新一轮起手 (§5) =================
-  // [2026-11-03 用户] 「AI也优先出对7, 不能为了出双龙或者单龙拆太多蛋子及以上牌型」
-  //   规则(用户 4 个例子 + 「优先出对7」全部吻合):
-  //   1) 池 = 手牌去掉 4 —— **只有 2 张以上 4 时才去掉**(4 是取牌专用 §7; 单张 4 可以进连张)
-  //      (用户例子 45567 -> 出 4567, 连张里就带 4)
-  //   2) 锚点 = 池里**最小**的一张; 跳过「属于蛋子及以上(3+ 同点)」的牌, 也跳过大牌(2/3/A/王/大A);
-  //      全都跳过时退回最小的一张。
-  //   3) 候选(必须**含锚点**):
-  //      - 含锚点的**最长**连张 / 最长双龙(每种只看最长的那个, 短的**不**回头再试)
-  //      - 锚点所在点数的**最大同点组**(对子 / 蛋子及以上)
-  //      - 锚点单张(锚点不属于 3+ 同点组时才有; 4 不单独出, 留着取牌)
-  //      含大牌(2/3/A/王/大A)的组合不起手(保护大牌)
-  //   4) 「拆散」同点组(拿了组里的一部分、没拿全)的连张/双龙 -> **拆了超过 1 组就淘汰**
-  //   5) 牌型阶梯: 双龙 > 单龙 > 对子 > 单张 > 蛋子及以上
-  //
-  //   用户例子:
-  //     56777       -> 567        (连张; 只拆了 777 一组)
-  //     5666778     -> 5          (5678 要拆 666 和 77 两组 -> 淘汰; 5 组不成任何牌型)
-  //     45567       -> 4567       (连张; 拆的是 55 一组)
-  //     556667788   -> 55667788   (双龙; 只拆了 666 一组)
-  //     5555/666/77 -> 对7        (双龙/连张都要拆两组 -> 淘汰; 对7 不拆任何组)
+  // [2026-11-06 用户] 「看最小的牌能组龙就出龙，能出对子就出对子，组不了就出单。」
+  //   「锚点能组龙包括双龙。」/「蛋子及以上排最后。」/「起手时 ≥2 张 4 全部排除出池」
+  //   -> 逻辑抽到 src/lead-choice.js(与【提示】共用同一来源, 避免两处算法漂移)
+  //   用户例子: 王322kkk->22 / 55567->567 / 45567->4567 / 5666778->5
   if (table.length === 0) {
-    var _fours = hand.filter(isFour);
-    var _pool = _fours.length >= 2
-      ? hand.filter(function (c) { return !isFour(c); })   // 2 张以上 4 -> 留给取牌(§7)
-      : hand.slice();
-    if (!_pool.length) _pool = hand.slice();                // 全是 4 -> 只能出 4
-    var _isBig = function (c) { return keepValue(c) >= 500; };   // 2/3/A/王/大A
-    // 同点组(用来算「拆散了几组」)
-    var _groups = {};
-    _pool.forEach(function (c) { (_groups[c.rank] = _groups[c.rank] || []).push(c); });
-    function _splitCount(cards) {
-      var used = {};
-      cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
-      var n = 0;
-      for (var rk in _groups) {
-        if (used[rk] && used[rk] < _groups[rk].length) n++;   // 拿了组里的一部分 = 拆散
-      }
-      return n;
-    }
-    // 锚点: 最小的一张(跳过蛋子及以上那一组 / 大牌)
-    var _byPow = _pool.slice().sort(function (a, b) { return cardPowerAsc(a) - cardPowerAsc(b); });
-    var _anchor = null;
-    for (var i0 = 0; i0 < _byPow.length; i0++) {
-      var _c0 = _byPow[i0];
-      if (_groups[_c0.rank].length >= 3) continue;   // 蛋子及以上: 留给整组
-      if (_isBig(_c0)) continue;                    // 大牌: 不做锚点
-      _anchor = _c0; break;
-    }
-    if (!_anchor) _anchor = _byPow[0] || null;
-    if (!_anchor) return { type: 'PASS', playerId: playerId };
-    var _cands = [];
-    var _combos = [];
-    try { _combos = candidateCombos(_pool) || []; } catch (e) { }
-    // 含锚点的最长「龙」: 连张 / 双龙 各自只取最长的那个
-    var _chainBest = {};
-    _combos.forEach(function (ids) {
-      if (!ids || ids.length < 2) return;
-      var cs = ids.map(function (id) { return hand.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
-      if (cs.length !== ids.length) return;
-      if (cs.indexOf(_anchor) < 0) return;             // 必须含锚点
-      var h = identifyHand(cs);
-      if (!h || (h.type !== 'STRAIGHT' && h.type !== 'DOUBLE_STRAIGHT')) return;
-      // [2026-11-04 用户] 「丁有 9 10 10 JQKA, 他出牌怎么只出 9 10 JQK? 不应该出 9 10 JQKA 吗?」
-      //   -> 链**允许**带高端的 A(那 6 张一起出更划算); 大牌保护只管「锚点」和「同点组」。
-      //   但链**必须从锚点起**: 锚点是链里最小的那张(否则 3-4-5-6 会把大牌 3 拽进来)。
-      var _startsAt = true;
-      for (var _ci = 0; _ci < cs.length; _ci++) {
-        if (cs[_ci].rank < _anchor.rank) { _startsAt = false; break; }
-      }
-      if (!_startsAt) return;
-      var cur = _chainBest[h.type];
-      if (!cur || cs.length > cur.cards.length) _chainBest[h.type] = { ids: ids.slice(), cards: cs, type: h.type };
-    });
-    if (_chainBest.DOUBLE_STRAIGHT && _splitCount(_chainBest.DOUBLE_STRAIGHT.cards) <= 1) {
-      _cands.push({ ids: _chainBest.DOUBLE_STRAIGHT.ids, cards: _chainBest.DOUBLE_STRAIGHT.cards, prio: 1 });
-    }
-    if (_chainBest.STRAIGHT && _splitCount(_chainBest.STRAIGHT.cards) <= 1) {
-      _cands.push({ ids: _chainBest.STRAIGHT.ids, cards: _chainBest.STRAIGHT.cards, prio: 2 });
-    }
-    // 锚点所在点数的最大同点组
-    var _grp = _groups[_anchor.rank] || [];
-    if (_grp.length >= 2 && !_grp.some(_isBig)) {
-      var _hg = identifyHand(_grp);
-      if (_hg && _hg.type !== 'INVALID') {
-        _cands.push({ ids: _grp.map(function (c) { return c.id; }), cards: _grp,
-                      prio: _hg.type === 'PAIR' ? 3 : 5 });
-      }
-    }
-    // 锚点单张(属于 3+ 同点组时那一组已整组出; 4 不单独出, 留着取牌)
-    if (_grp.length < 3 && !_isBig(_anchor) && !isFour(_anchor)) {
-      _cands.push({ ids: [_anchor.id], cards: [_anchor], prio: 4 });
-    }
-    if (_cands.length) {
-      var _best = null;
-      _cands.forEach(function (c) { if (!_best || c.prio < _best.prio) _best = c; });
-      return { type: 'PLAY', playerId: playerId, cardIds: _best.ids.slice() };
+    var _lead = leadChoice.pickLead(hand);
+    if (_lead) {
+      return { type: 'PLAY', playerId: playerId,
+               cardIds: _lead.cards.map(function (c) { return c.id; }) };
     }
     // 兜底: 组不成任何牌型 -> 出最小的一张(省大牌; 4 留着取牌)
-    var _safe = _pool.filter(function (c) { return !_isBig(c) && !isFour(c); });
-    var _pick = (_safe.length ? _safe : _pool)
+    var _safe = hand.filter(function (c) { return !isFour(c) && keepValue(c) < 500; });
+    var _pick = (_safe.length ? _safe : hand)
       .slice()
       .sort(function (a, b) { return cardPowerAsc(a) - cardPowerAsc(b); })[0];
     if (!_pick) return { type: 'PASS', playerId: playerId };
     return { type: 'PLAY', playerId: playerId, cardIds: [_pick.id] };
   }
-
   // ================= 1. [4]取牌 优先 (§7) =================
+  // [2026-11-06 用户] 4 与取牌:
+  //   「取 N 张目标用 N-1 张 4」(§7.1; 用户纠正: 取3张目标要2张4)
+  //   「拆4后剩余4最少两个」-> 手上4 减去用掉的, 至少留 2 张
+  //   「也避让, 不取同阵营的蛋子」
   var fours = hand.filter(isFour);
-  for (var n = 2; n <= fours.length && n <= 8; n++) {
-    var subset = fours.slice(0, n);
-    if (canCapture(subset, table).canCapture) {
-      return { type: 'PLAY', playerId: playerId, cardIds: subset.map(function (c) { return c.id; }) };
-    }
+  var _sameCampTable = _isSameCamp(state, state && state.lastPlayer, playerId);
+  var _need = table.length - 1;              // §7.1: N 张目标用 N-1 张 4
+  var _capSubset = null;
+  if (!_sameCampTable && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
+      && fours.length >= _need) {
+    var _sub = fours.slice(0, _need);
+    if (canCapture(_sub, table).canCapture) _capSubset = _sub;
   }
-
   // ================= 2. 压制: 候选组合交引擎裁决 =================
+  // [2026-11-06 用户] 压制时的挑牌顺序:
+  //   「优先用单独的同类型牌压制, 而不是直接出其他牌型或者拆其他牌」
+  //   「王, 大A, 蛋子及以上牌型不主动压制同阵营的玩家」
+  //   「独打的时候双大A尽量一起出, 不要和其他牌混出」
+  //   「单4优先出, 两个以上的4尽量不要单出」
+  //   例: 手牌 王322kkk, 别人出A -> 出3(同类型/不拆组/保留价值低)
+  //
   // candidateCombos 覆盖 对子/蛋子/大蛋子/真七/真八/连张/双龙 等;
-  // 单张不在其中, 需单独补 (1 张不属于任何组合枚举)。
-  // candidateCombos 只产出 2 张及以上的组合; 单张需单独补入
+  // 单张不在其中, 需单独补 (1 张不属于任何组合枚举)
   var cands = candidateCombos(hand).slice();
   hand.forEach(function (c) { cands.push([c.id]); });
-
-  // 排序策略**分场景** (2026-10-21 用户 IDE 报障后修正):
-  //
-  //   跟牌 (table 非空): 必须选【能压过桌面的最小手牌】。
-  //     原实现一律"张数多者优先", 导致 AI 在桌上有对4 时直接甩 2222 —— 虽然
-  //     2222 确实压得过对4, 但把 2 全打光极不划算, 而对7 同样能压且保留大A/2。
-  //     用户原话: "2222 确实比对4大, 但也应该从合适的手牌中由小往大出"。
-  //
-  //   首出 (table 为空): 保持"张数多者优先"。
-  //     这是当初把 AI 从"16种牌型只出单张"救到 9/16 覆盖的关键策略;
-  //     若一并改成张数少者优先, AI 会退化成只出单张, 覆盖度崩盘。
+  // 1V4 独打: 手上有两张同花色主方大A -> 候选里加「双大A」整手
+  var _bigAs = hand.filter(function (c) { return c.is主方大A && c.rank === 14; });
+  var _hasDoubleA = false;
+  if (_bigAs.length === 2 && _bigAs[0].suit === _bigAs[1].suit) {
+    _hasDoubleA = true;
+    cands.push([_bigAs[0].id, _bigAs[1].id]);
+  }
   var byId = {};
   hand.forEach(function (c) { byId[c.id] = c; });
   var uniq = {};
@@ -201,36 +139,76 @@ function chooseAction(state, playerId) {
     var key = c.slice().sort().join('|');
     if (!uniq[key]) { uniq[key] = true; dedup.push(c); }
   });
-  var following = !!(currentHand && table && table.length > 0);
-  dedup.sort(function (a, b) {
-    // [2026-10-21 再修] 主排序键必须是**保留价值**, 而不是张数。
-    //   首版修复曾用"跟牌时张数少者优先", 结果引入了新问题:
-    //     桌面是单张时, 单K(1张) 会排在 对Q(2张) 之前 -> AI 甩出单张,
-    //     而手上明明有 QQQ/KKK/AAA 这类更大的组合可用 (用户 2026-10-21 实测报障)。
-    //   用户的原意"由小往大出"指的是**牌的保留价值**, 不是张数:
-    //     keepValue: 7=70 < K=130 < Q=120 < A=500 < 2=600 < 3=700
-    //   两个场景都验证过:
-    //     桌上有对4:  对7(70) 优于 2222(600)  -> 出对7  ✓ (张数与价值一致)
-    //     桌面是单张:  对Q(120) 优于 单K(130)  -> 出对Q  ✓ (仅价值能区分)
-    var va = Math.max.apply(null, a.map(function (id) { return keepValue(byId[id] || {}); }));
-    var vb = Math.max.apply(null, b.map(function (id) { return keepValue(byId[id] || {}); }));
-    if (va !== vb) return va - vb;                            // 保留价值低者优先 (主键)
-    // 价值相同再按张数: 跟牌少消耗, 首出多减少
-    if (a.length !== b.length) return following ? (a.length - b.length) : (b.length - a.length);
-    return a[0] < b[0] ? -1 : 1;
-  });
-
-  for (var i = 0; i < dedup.length; i++) {
-    var combo = dedup[i];
+  // 手牌里的同点组(判断「拆其他牌」)
+  var _hgroups = {};
+  hand.forEach(function (c) { (_hgroups[c.rank] = _hgroups[c.rank] || []).push(c); });
+  function _splitCount(cards) {
+    var used = {};
+    cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+    var n = 0;
+    for (var rk in _hgroups) {
+      if (used[rk] && used[rk] < _hgroups[rk].length) n++;   // 拿了组里的一部分 = 拆牌
+    }
+    return n;
+  }
+  // 「重手」: 王 / 大A / 蛋子及以上 -> 同阵营时不主动用
+  var _heavyTypes = {
+    TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1,
+    STRAIGHT_TRIPLE: 1, BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1,
+    DOUBLE_JOKER: 1, TRIPLE_JOKER: 1, FOUR_JOKER: 1, DOUBLE_BIG_A: 1
+  };
+  function _isHeavy(cards, type) {
+    if (_heavyTypes[type]) return true;
+    return cards.some(function (c) {
+      return c.isBigJoker || c.isSmallJoker || c.is主方大A;
+    });
+  }
+  var _sameCamp = _isSameCamp(state, state && state.lastPlayer, playerId);
+  var _mode = (state && state.mode) || '';
+  var _solo = _mode.indexOf('1V4') === 0;      // 1V4 独打
+  var _picks = [];
+  dedup.forEach(function (combo) {
     var comboCards = combo.map(function (id) { return byId[id]; }).filter(Boolean);
-    if (!comboCards.length) continue;
+    if (!comboCards.length) return;
     var h = identifyHand(comboCards);
-    if (h.type === 'INVALID') continue;                        // 枚举出的组合不合法, 跳过
-    if (canBeat(h, currentHand)) {
-      return { type: 'PLAY', playerId: playerId, cardIds: combo.slice() };
+    if (!h || h.type === 'INVALID') return;
+    if (!canBeat(h, currentHand)) return;
+    var _nBig = comboCards.filter(function (c) { return c.is主方大A; }).length;
+    // 独打 + 手里有两张大A -> 一张大A不许单独出/混着出(要么两张一起出, 要么不出)
+    if (_solo && _hasDoubleA && _nBig === 1) return;
+    // 同阵营: 不用 王/大A/蛋子及以上 去压
+    if (_sameCamp && _isHeavy(comboCards, h.type)) return;
+    _picks.push({
+      cards: comboCards,
+      type: h.type,
+      sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,   // 同类型优先
+      bigPair: (_hasDoubleA && _nBig === 2) ? 0 : 1,                  // 双大A整手优先
+      split: _splitCount(comboCards),                                  // 不拆牌优先
+      kv: Math.max.apply(null, comboCards.map(keepValue)),
+      len: comboCards.length
+    });
+  });
+  _picks.sort(function (a, b) {
+    if (a.sameType !== b.sameType) return a.sameType - b.sameType;
+    if (a.bigPair !== b.bigPair) return a.bigPair - b.bigPair;
+    if (a.split !== b.split) return a.split - b.split;
+    if (a.kv !== b.kv) return a.kv - b.kv;
+    if (a.len !== b.len) return a.len - b.len;
+    return 0;
+  });
+  // 取牌 vs 压制: 「拆4后剩余4最少两个」是**偏好**——
+  //   拆得动且留得下 2 张 -> 取; 拆完剩不到 2 张, 但没有别的能压 -> 照样取(不能白送)
+  if (_capSubset) {
+    var _keep = fours.length - _capSubset.length;
+    if (_keep >= 2 || !_picks.length) {
+      return { type: 'PLAY', playerId: playerId,
+               cardIds: _capSubset.map(function (c) { return c.id; }) };
     }
   }
-
+  if (_picks.length) {
+    return { type: 'PLAY', playerId: playerId,
+             cardIds: _picks[0].cards.map(function (c) { return c.id; }) };
+  }
   // ================= 3. 无合法行动 -> 过牌 =================
   return { type: 'PASS', playerId: playerId };
 }

@@ -20,6 +20,8 @@
 //     (b) 能压过桌面
 //     (c) 在所有可压制的候选中, 张数最少
 //     (d) 同张数时, 保留价值最低 (即"由小往大出")
+// [2026-11-06 更新] (d) 已作废 —— 用户新裁定: 跟牌时「**同牌型优先 + 不拆其他同点组**」
+//   比"保留价值最低"优先(例: 桌面对9 -> 出 1313, 而不是蛋子 555)。
 //   这比写死具体牌更贴合真实意图, 也避免被填充牌干扰。
 var SB = require('./lib/state-builder.js');
 var { chooseAction } = require('../src/ai.js');
@@ -72,6 +74,15 @@ function allBeatingCombos(hand, tableCards) {
   return out;
 }
 
+
+// 出了这些牌之后, 是否**拆掉**了手牌里的某个同点组(只拿了组的一部分)
+function splitsGroup(played, hand) {
+  var g = {}, u = {};
+  hand.forEach(function (c) { g[c.rank] = (g[c.rank] || 0) + 1; });
+  played.forEach(function (c) { u[c.rank] = (u[c.rank] || 0) + 1; });
+  for (var rk in u) { if (u[rk] < g[rk]) return true; }
+  return false;
+}
 
 function kvOf(cards) {
   return Math.max.apply(null, cards.map(function (c) {
@@ -141,13 +152,19 @@ section('2. 跟牌 — 手上有 2222 但有更小可压制组合时, 不选 222
     check('2.2 未选择 2222', !isBigTriple, desc(played));
 
     var winners = allBeatingCombos(realHand, st.table);
-    // [2026-10-21 改] 排序主键已从"张数"改为"保留价值"(keepValue 升序),
-    //   张数仅作同价值时的次键。"由小往大出"指的是保留价值, 不是张数。
     var minKv = Math.min.apply(null, winners.map(function (w) { return kvOf(w); }));
-    check('2.3 保留价值 = 最低可压制保留价值', kvOf(played) === minKv,
-      'played kv=' + kvOf(played) + ' min kv=' + minKv);
+    // [2026-11-06 用户新裁定] 旧断言「保留价值 = 最低可压制保留价值」**作废**。
+    //   新策略 = 「同牌型优先 + 不拆其他同点组」:
+    //     桌面是**对子** -> 出**对子**(不是蛋子 555: 那是换牌型);
+    //     出 1010 会**拆掉 10101010 这一组** -> 不做;
+    //     1313 正好是完整对子 -> 出它。
+    var _th = identifyHand(st.table);
+    var _ph = identifyHand(played);
+    check('2.3 同牌型优先(桌面 ' + _th.type + ' -> 出同类型)', _ph.type === _th.type,
+      'played=' + desc(played) + ' type=' + _ph.type);
+    check('2.4 不拆其他同点组', !splitsGroup(played, realHand), desc(played));
     console.log('   [信息] 实际出 ' + desc(played) + ' (' + played.length +
-                '张) | 最低保留价值=' + minKv);
+                '张) | 最低保留价值(仅参考)=' + minKv);
     console.log('   [\u4fe1\u606f] \u5b9e\u9645\u51fa ' + desc(played) + ' (' + played.length +
                 '\u5f20) | \u6700\u5c0f\u53ef\u538b\u5236\u5f20\u6570=' + minLen);
   }
