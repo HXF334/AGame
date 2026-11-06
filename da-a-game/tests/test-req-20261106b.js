@@ -329,6 +329,40 @@ section('T17. 有假八时也不直接出假八: 4个9+4个10 对22 -> 出9999(�
   check('T17.2 出的是大蛋子(4 张同点)', typeOf(p17) === 'BIG_TRIPLE',
     typeOf(p17) + ' ranks=' + ranksOf(p17));
 }
+section('T18. 4 组成的蛋子+ 有其他选择时靠后(用户 00:19 报障: 丁出 4444)');
+{
+  // 桌面单张 K, 丁手里 4444 + 333 + 一张 2 -> 有更省的选择时, 不该出 4444
+  var hand18 = [C('S',4), C('H',4), C('D',4), C('C',4), C('S',3), C('H',3), C('D',3), C('S',2)];
+  var table18 = [C('S',13)];
+  var st18 = stateWith('D', hand18, table18, {});
+  var act18 = aiMod.chooseAction(st18, 'D');
+  var p18 = playedOf(st18, 'D', act18);
+  check('T18.1 没有把 4 组成的蛋子+ 整组打出去', typeOf(p18) !== 'BIG_TRIPLE',
+    typeOf(p18) + ' ranks=' + ranksOf(p18));
+  check('T18.2 出的牌里没有 4 组成的蛋子+', p18.every(function (c) { return c.rank !== 4; }),
+    typeOf(p18) + ' ranks=' + ranksOf(p18));
+}
+
+section('T19. 次方身份未明时, 抓方不对「阵营不明」的人出大蛋子+(用户 00:19)');
+{
+  // 桌面上是次方(未亮明), AI 是抓方, 手里只有 4444 能管 -> 不该用大蛋子+ 去压
+  var hand19 = [C('S',4), C('H',4), C('D',4), C('C',4), C('S',9)];
+  var table19 = [C('S',13)];
+  var st19 = stateWith('D', hand19, table19, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'C' });
+  var act19 = aiMod.chooseAction(st19, 'D');
+  var p19 = playedOf(st19, 'D', act19);
+  check('T19.1 阵营不明时不用大蛋子+ 去压', typeOf(p19) !== 'BIG_TRIPLE',
+    act19.type + ' ' + typeOf(p19) + ' ranks=' + ranksOf(p19));
+  var st19b = stateWith('D', hand19, table19, {
+    mode: '2V3_明打', 次方: 'C', 次方公开: true,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'C' });
+  var act19b = aiMod.chooseAction(st19b, 'D');
+  var p19b = playedOf(st19b, 'D', act19b);
+  check('T19.2 阵营公开(明打)时, 大蛋子+ 可以出', typeOf(p19b) === 'BIG_TRIPLE',
+    typeOf(p19b) + ' ranks=' + ranksOf(p19b));
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }

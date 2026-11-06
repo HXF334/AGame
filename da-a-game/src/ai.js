@@ -48,6 +48,19 @@ function isFour(c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; }
 //   - 次方未亮明时, **抓方不知道谁是次方** -> 不能拿暗地里的真阵营把次方当队友,
 //     否则抓方会对真正的次方(队友)不敢出王/大A/蛋子;
 //   - 次方未亮明且自己不是次方时, 其余人的阵营**不明** -> 一律当"可能的对手", 允许压制。
+// [2026-11-07 00:19 用户] 「在次方身份未明时抓方不出大蛋子+牌型压制身份未明的其他成员」
+//   -> 次方未亮明时, 抓方视角下**别人的阵营不明**(可能是队友), 对这种人不能用大蛋子+。
+//   返回 true = 阵营不明(慎用大蛋子+)。
+function _campUncertain(state, a, b) {
+  if (!state || !a || !b) return false;
+  if (state['次方公开'] === true) return false;            // 次方已亮明 -> 阵营公开
+  var next = state['次方'];
+  if (next && next === b) return false;                   // AI 自己就是次方 -> 他知道全部
+  var holder = state['主A'] && state['主A'].establishedBy;
+  if (holder && (holder === a || holder === b)) return false;   // 主A 持有者知道次方是谁
+  return true;                                            // 抓方视角: 桌上那人可能是次方(队友)
+}
+
 function _isSameCamp(state, a, b) {
   if (!state || !a || !b || a === b) return false;
   // [2026-11-06 用户] 「丙和甲是同阵营, 甲出666, 丙出222, 现在身份是公开的, 并不应该压制甲」
@@ -210,6 +223,11 @@ function chooseAction(state, playerId) {
   //   - bigGroup: 大组牌型(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙) -> 靠后,
   //     但排在「不拆同点组」之后(拆开假八能管上时, 别直接出整个假八)
   var _topTypeSet = { DOUBLE_BIG_A: 1, DOUBLE_JOKER: 1, TRIPLE_JOKER: 1, FOUR_JOKER: 1 };
+  // 「大蛋子+」牌型: 蛋子级别的大组(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙)+双大A
+  var _bigGroupPlus = { BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1, STRAIGHT_TRIPLE: 1,
+    BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1, DOUBLE_STRAIGHT: 1, DOUBLE_BIG_A: 1 };
+  // [2026-11-07 00:19] 阵营不明时不能用大蛋子+ 去压
+  var _uncertain = _campUncertain(state, state && state.lastPlayer, playerId);
   var _bigGroupTypes = {
     BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1, STRAIGHT_TRIPLE: 1,
     BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1, DOUBLE_STRAIGHT: 1
@@ -238,6 +256,8 @@ function chooseAction(state, playerId) {
     // [2026-11-06 23:54 用户] 「单张大A不加在龙里出, 单张普通A可以加在龙里出」
     if ((h.type === HAND_TYPES.STRAIGHT || h.type === HAND_TYPES.DOUBLE_STRAIGHT) &&
         comboCards.some(function (c) { return !!c.is主方大A; })) return;
+    // [2026-11-07 00:19 用户] 阵营不明(次方未亮明)时, 不用大蛋子+ 去压
+    if (_uncertain && _bigGroupPlus[h.type]) return;
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     if (_sameCamp && _isHeavy(comboCards, h.type)) return;
     _picks.push({
@@ -260,9 +280,11 @@ function chooseAction(state, playerId) {
   _picks.sort(function (a, b) {
     if (a.sameType !== b.sameType) return a.sameType - b.sameType;
     if (a.topType !== b.topType) return a.topType - b.topType;         // 双大A/双王/大A -> 最后
-    if (a.split !== b.split) return a.split - b.split;             // 不拆同点组(优先于「大组靠后」)
+    // [2026-11-07 00:19 用户] 「4 组成的蛋子+ 在有其他选项时, 优先度靠后」-> 排在「不拆组」之前:
+    //   否则 4444(整组不拆)会赢过 333(拆组的便宜蛋子) —— 用户报障: 丁出 4444 压大王。
+    if (a.fourEgg !== b.fourEgg) return a.fourEgg - b.fourEgg;   // 4 组成的蛋子+ 靠后
+    if (a.split !== b.split) return a.split - b.split;             // 不拆同点组
     if (a.bigGroup !== b.bigGroup) return a.bigGroup - b.bigGroup;   // 大组(大蛋子/假八)靠后
-    if (a.fourEgg !== b.fourEgg) return a.fourEgg - b.fourEgg;   // 4 蛋子靠后
     if (a.kv !== b.kv) return a.kv - b.kv;
     if (a.len !== b.len) return a.len - b.len;
     return 0;

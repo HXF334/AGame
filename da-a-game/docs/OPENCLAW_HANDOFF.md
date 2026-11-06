@@ -301,6 +301,10 @@ openclaw config set --batch-file .tmp-config-batch.json
 - **大A 不进龙**: ai.js 压制候选 + lead-choice.js 起手选链都排除含大A的链(普通A 可进链)。
 - **结算标头名**: game.js `_settlementData` 带出 头名; ui-render.js 结算画面画金色「头名」标。
 - **大组口径**: 4个9+3个10 对22 -> 出 101010; 4个9+4个10 对22 -> 出 9999(不直接出假八)。
+### 7.9 2026-11-07 00:19 批次(4 组成蛋子+靠后 + 阵营不明不出大蛋子+)
+
+- **排序键**(src/ai.js): 同类型 -> topType(双大A/双王/大A -> 最后) -> **4 组成的蛋子+(靠后)** -> 不拆同点组 -> bigGroup(大组靠后) -> 4 蛋子靠后 -> 保留价值低 -> 张数少。
+- **阵营不明**: ai.js 新增 `_campUncertain` —— 次方未亮明且 AI 既不是次方也不是主A 持有者时, 桌上那人的阵营不明(可能是队友) -> 不用大蛋子+ 去压。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

@@ -434,6 +434,27 @@ section('B5. 结算画面标出谁是头名(用户 23:54)');
   var marks = ctx.items.filter(function (i) { return i.t === '头名'; });
   check('B5.1 结算画面画出了「头名」标', marks.length === 1, 'n=' + marks.length);
 }
+section('B6. 提示: 同牌型优先(上家出JJ, 我有22777 -> 应选 22)(用户 00:19)');
+{
+  var hand = [createNormalCard('S',2,'q22a'), createNormalCard('H',2,'q22b'),
+              createNormalCard('D',7,'q777a'), createNormalCard('C',7,'q777b'),
+              createNormalCard('S',7,'q777c')];
+  var st = SB.build({ handMap: { A: hand },
+    table: [createNormalCard('S',11,'tj1'), createNormalCard('H',11,'tj2')],
+    lastPlayer: 'B',
+    '主A': { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    '次方': 'C', '次方公开': true,
+    '主方': ['B','C'], '抓方': ['A','D','E'], mode: '2V3_暗打' });
+  var me = st.players.filter(function (p) { return p.id === 'A'; })[0];
+  st.discarded = st.discarded.concat(me.hand.slice(hand.length));
+  me.hand = hand;
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  var cands = g.uiHintCandidates();
+  var first = cands[0];
+  check('B6.1 第一个提示是**同牌型**的对子(22)',
+    !!(first && first.cards.length === 2 && first.cards.every(function (c) { return c.rank === 2; })),
+    first ? first.cards.map(function (c) { return c.rank; }).join(',') + ' n=' + first.cards.length : '(无)');
+}
   section('C3. 托管: 开启后本局**持续**由 AI 代打');
   {
     var C4 = SB.C;
