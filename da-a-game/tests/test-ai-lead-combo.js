@@ -86,13 +86,13 @@ section('2. 起手保护大牌');
   var st = mk(hand);
   var act = chooseAction(st, 'A');
   var t = typeOf(act, hand);
-  // [2026-11-03 用户新规] 保护大牌: 起手出的牌**不含** 2/3/A/王/大A
-  //   (这手会出 4-5-6 连张, 但 3 不在里面)
+  // [2026-11-06 用户新规] 「手牌3456, 出龙的时候只出了456, 3漏下了」-> 龙要**带上能接上的牌**,
+  //   单张的 A/2/3 也要进龙。旧的「起手不含 3(保护大牌)」按新裁定作废。
   var _c21 = (act.cardIds || []).map(function (id) {
     return hand.filter(function (c) { return c.id === id; })[0];
   }).filter(Boolean);
-  check('2.1 起手不含 3(保护大牌)',
-    _c21.length > 0 && _c21.every(function (c) { return c.rank !== 3; }),
+  check('2.1 起手出的龙带上了 3(链用满能连上的牌)',
+    _c21.length === hand.length,
     'ranks=' + _c21.map(function (c) { return c.rank; }).join(','));
 }
 

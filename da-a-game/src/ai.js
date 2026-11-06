@@ -41,20 +41,26 @@ function cardPowerAsc(c) {
 }
 function isFour(c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; }
 
-// 同阵营判定(§9/§10: 主方=[主A(,次方已公开)], 抓方=其余人)
-//   同阵营 -> 不主动用 王/大A/蛋子及以上 去压制; 也不取他的蛋子。
-//   [注] 次方未公开时**不把次方算进主方**(暗打不该用未公开信息)。
+// 同阵营判定(§9/§10) —— **只用公开信息**, 不用引擎给的**真阵营表**。
+// [2026-11-06 用户] 「AI 大牌不压制同阵营」指的是**已经公开**的同阵营:
+//   - 主方 = 主A 持有者 + (次方公开/亮明时) 次方;
+//   - 次方**本人**知道自己是次方 -> 也算主方(所以次方不会去压主A);
+//   - 次方未亮明时, **抓方不知道谁是次方** -> 不能拿暗地里的真阵营把次方当队友,
+//     否则抓方会对真正的次方(队友)不敢出王/大A/蛋子;
+//   - 次方未亮明且自己不是次方时, 其余人的阵营**不明** -> 一律当"可能的对手", 允许压制。
 function _isSameCamp(state, a, b) {
   if (!state || !a || !b || a === b) return false;
   var main = [];
   if (state['主A'] && state['主A'].establishedBy) main.push(state['主A'].establishedBy);
-  if (state['次方'] && (state['次方公开'] || state['次方'] === a || state['次方'] === b)) main.push(state['次方']);
-  var takers = (state['抓方'] || []).filter(function (id) { return main.indexOf(id) < 0; });
-  var aMain = main.indexOf(a) >= 0, bMain = main.indexOf(b) >= 0;
-  var aTake = takers.indexOf(a) >= 0, bTake = takers.indexOf(b) >= 0;
-  if (aMain && bMain) return true;
-  if (aTake && bTake) return true;
-  return false;
+  var next = state['次方'];
+  // 次方身份是否**已知**: 公开/亮明, 或**自己就是次方**(本人当然知道)
+  var nextKnown = !!(next && (state['次方公开'] || next === b));
+  if (nextKnown) main.push(next);
+  var aMain = main.indexOf(a) >= 0;
+  var bMain = main.indexOf(b) >= 0;
+  if (aMain && bMain) return true;      // 都自认主方 -> 同阵营
+  if (!nextKnown) return false;         // 次方未亮明: 阵营不明 -> 不当同阵营
+  return !aMain && !bMain;              // 次方已知且是别人: 其余都是抓方 -> 同阵营
 }
 
 
@@ -107,10 +113,19 @@ function chooseAction(state, playerId) {
   var _sameCampTable = _isSameCamp(state, state && state.lastPlayer, playerId);
   var _need = table.length - 1;              // §7.1: N 张目标用 N-1 张 4
   var _capSubset = null;
+  // [2026-11-06 用户] 取牌优先度**靠前**, 但**不能拆散 4 组**:
+  //   手牌 33344  + 别人出 222 -> 4 只有 2 张(不是蛋子), 取 2 张=整组 -> 取牌;
+  //   手牌 333444 + 别人出 222 -> 4 是 444(蛋子), 取 2 张会拆散它 -> **不取**, 改出 333;
+  //   手牌 444    + 别人出 5555 -> 取 3 张=整组 -> 取牌 (§7.1: 取 N 张用 N-1 张 4)。
   if (!_sameCampTable && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
       && fours.length >= _need) {
-    var _sub = fours.slice(0, _need);
-    if (canCapture(_sub, table).canCapture) _capSubset = _sub;
+    var _g4 = fours.length;
+    var _wholeGroup = (_g4 === _need);         // 整组用掉 -> 不拆散
+    var _tinyGroup = (_g4 < 3);                // 4 组不足 3 张 -> 不是蛋子, 用掉不拆牌型
+    if (_wholeGroup || _tinyGroup) {
+      var _sub = fours.slice(0, _need);
+      if (canCapture(_sub, table).canCapture) _capSubset = _sub;
+    }
   }
   // ================= 2. 压制: 候选组合交引擎裁决 =================
   // [2026-11-06 用户] 压制时的挑牌顺序:
@@ -130,6 +145,18 @@ function chooseAction(state, playerId) {
   if (_bigAs.length === 2 && _bigAs[0].suit === _bigAs[1].suit) {
     _hasDoubleA = true;
     cands.push([_bigAs[0].id, _bigAs[1].id]);
+  }
+  // [2026-11-06 用户] 大A 与王都是**成组**的, 不能拆开打, 也不能和别的牌混打:
+  //   - 双大A(两张同花色主A): 要么两张**一起出**(且不带别的牌), 要么一张都不出
+  //     (用户 2026-11-06 报障: AI 打出 ♣A♣A♠A -> 正常是双大A一起出, 不和其他A一起出)
+  //   - 双王(大王+小王): 要么两个**一起出**, 要么都不出(不拆开出单王)
+  var _bigAIds = hand.filter(function (c) { return !!c.is主方大A; }).map(function (c) { return c.id; });
+  var _jokerIds = hand.filter(function (c) { return c.isBigJoker || c.isSmallJoker; }).map(function (c) { return c.id; });
+  // [2026-11-06 用户] 「多个王拆开出了」-> 把「双王」整手加进候选
+  //   (candidateCombos 不枚举王对; 不加的话 AI 只能拆开出单王 -> 违反「不拆王」)
+  if (_jokerIds.length === 2) cands.push([_jokerIds[0], _jokerIds[1]]);
+  function _cntGroup(ids, comboCards) {
+    return comboCards.filter(function (c) { return ids.indexOf(c.id) >= 0; }).length;
   }
   var byId = {};
   hand.forEach(function (c) { byId[c.id] = c; });
@@ -174,16 +201,29 @@ function chooseAction(state, playerId) {
     if (!h || h.type === 'INVALID') return;
     if (!canBeat(h, currentHand)) return;
     var _nBig = comboCards.filter(function (c) { return c.is主方大A; }).length;
-    // 独打 + 手里有两张大A -> 一张大A不许单独出/混着出(要么两张一起出, 要么不出)
-    if (_solo && _hasDoubleA && _nBig === 1) return;
+    // 双大A: 不许拆开(出一张留一张), 也不许和别的牌(含另一张普通A)混出
+    if (_bigAIds.length >= 2) {
+      var _inBig = _cntGroup(_bigAIds, comboCards);
+      if (_inBig > 0 && (_inBig < _bigAIds.length || comboCards.length > _bigAIds.length)) return;
+    }
+    // 双王: 不许拆开出单王
+    if (_jokerIds.length >= 2) {
+      var _inJk = _cntGroup(_jokerIds, comboCards);
+      if (_inJk > 0 && _inJk < _jokerIds.length) return;
+    }
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     if (_sameCamp && _isHeavy(comboCards, h.type)) return;
     _picks.push({
       cards: comboCards,
       type: h.type,
       sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,   // 同类型优先
-      bigPair: (_hasDoubleA && _nBig === 2) ? 0 : 1,                  // 双大A整手优先
+      bigPair: (_hasDoubleA && _nBig === 2 && comboCards.length === _bigAIds.length) ? 0 : 1, // 双大A整手优先
       split: _splitCount(comboCards),                                  // 不拆牌优先
+      // [2026-11-06 用户] 「4 当作蛋子及以上牌型出的时候, 优先度靠后」
+      //   (必须出蛋子时, 手上有 444 和别的蛋子 -> 优先出别的蛋子)
+      fourEgg: (comboCards.length >= 3 && comboCards.every(function (c) {
+        return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker;
+      })) ? 1 : 0,
       kv: Math.max.apply(null, comboCards.map(keepValue)),
       len: comboCards.length
     });
@@ -192,18 +232,16 @@ function chooseAction(state, playerId) {
     if (a.sameType !== b.sameType) return a.sameType - b.sameType;
     if (a.bigPair !== b.bigPair) return a.bigPair - b.bigPair;
     if (a.split !== b.split) return a.split - b.split;
+    if (a.fourEgg !== b.fourEgg) return a.fourEgg - b.fourEgg;   // 4 蛋子靠后
     if (a.kv !== b.kv) return a.kv - b.kv;
     if (a.len !== b.len) return a.len - b.len;
     return 0;
   });
-  // 取牌 vs 压制: 「拆4后剩余4最少两个」是**偏好**——
-  //   拆得动且留得下 2 张 -> 取; 拆完剩不到 2 张, 但没有别的能压 -> 照样取(不能白送)
+  // [2026-11-06 用户] 「4 用来取牌时, 优先度靠前」-> 取牌排在普通压制之前
+  //   (手牌 33344 + 别人出 222 -> 直接用 4 取, 不出 333)
   if (_capSubset) {
-    var _keep = fours.length - _capSubset.length;
-    if (_keep >= 2 || !_picks.length) {
-      return { type: 'PLAY', playerId: playerId,
-               cardIds: _capSubset.map(function (c) { return c.id; }) };
-    }
+    return { type: 'PLAY', playerId: playerId,
+             cardIds: _capSubset.map(function (c) { return c.id; }) };
   }
   if (_picks.length) {
     return { type: 'PLAY', playerId: playerId,

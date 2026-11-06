@@ -162,15 +162,18 @@ test('C.3.1 IDENTITY_CHOICE 阶段 AI 返回 CHOOSE_IDENTITY/HIDDEN', function (
 
 section('C.4 AI 排序逻辑验证 (小→大)');
 
-// [2026-11-06 用户裁定更新] 起手按「最小牌锚点」, 且**单张 4 保留** -> 出 4。
-//   旧断言「4 留给 capture, 应出次小的 5」按新裁定作废。
-test('C.4.1 起手按最小锚点: 单张 4 保留 -> 出 4', function () {
+// [2026-11-06 用户裁定更新] 起手按「最小牌锚点」; **单张 4 保留**在起手池里;
+//   而「龙要带上能接上的牌」-> 2-3-4-5 成链时, 单张的 2/3 一起进链。
+//   旧的「起手出 4」按新裁定作废(4 仍在链里, 但不再单独出)。
+test('C.4.1 起手: 单张 4 保留, 龙带上有接上的牌', function () {
   const s = mk1V4('1V4_暗打');
-  // 桌空, B 手牌含大王/小王/3/2/A/K/5/4 → 最小是 4, 但 4 留给 capture, 应出 5
+  // 桌空, B 手牌含大王/小王/3/2/A/K/5/4 -> 最小锚点是 4, 2-3-4-5 成链
   s.players[1].hand = [BJ(), SJ(), C('H', 3), C('D', 2), C('S', 14), C('C', 13), C('H', 5), C('D', 4)];
   const a = chooseAction(s, 'B');
   assert.strictEqual(a.type, 'PLAY', '桌空应 PLAY');
-  assert.strictEqual(a.cardIds[0], C('D', 4).id, '单张 4 保留 -> 起手出最小的 4');
+  const played = a.cardIds.map((id) => s.players[1].hand.filter((c) => c.id === id)[0]).filter(Boolean);
+  assert.strictEqual(played.length, 5, '链把 A/2/3/4/5 都带上(5 张)');
+  assert.ok(played.some((c) => c.rank === 4), '单张 4 仍在起手牌里');
 });
 
 test('C.4.2 无 4 时出绝对最小', function () {
@@ -180,15 +183,27 @@ test('C.4.2 无 4 时出绝对最小', function () {
   assert.strictEqual(a.cardIds[0], C('H', 5).id, '无 4, 应出最小 5');
 });
 
-test('C.4.3 capture 时 4s 数量从小到大尝试', function () {
+// [2026-11-06 用户裁定] 取牌只能用**整组**的 4: 4 组 >= 3 张(蛋子/四张组)不许拆散去取牌;
+//   旧断言「capture 时 4s 数量从小到大尝试(2 个即可)」按新裁定作废。
+test('C.4.3 capture: 4 组 >= 3 张时不拆组取牌', function () {
   const s = mk1V4('1V4_暗打');
-  // 目标是 3 张同点数, B 有 4 个 4 → 应用最小可用数 (2 个)
+  // 目标是 3 张同点数, B 有 4 个 4(四张组) -> 不拆组去取牌
   s.table = [C('H', 9), C('D', 9), C('S', 9)];
   s.lastPlayer = 'A';
   s.players[1].hand = [C('H', 4), C('D', 4), C('C', 4), C('S', 4)];
   const a = chooseAction(s, 'B');
+  assert.ok(!(a.type === 'PLAY' && a.cardIds.length === 2), '不该拆四张组用 2 个 4 去取牌');
+});
+
+test('C.4.3b capture: 4 只有 2 张时整组取', function () {
+  const s = mk1V4('1V4_暗打');
+  // 目标是 3 张同点数, B 只有 2 个 4(不足 3 张, 不是蛋子) -> 整组取牌
+  s.table = [C('H', 9), C('D', 9), C('S', 9)];
+  s.lastPlayer = 'A';
+  s.players[1].hand = [C('H', 4), C('D', 4), C('S', 8)];
+  const a = chooseAction(s, 'B');
   assert.strictEqual(a.type, 'PLAY');
-  assert.strictEqual(a.cardIds.length, 2, '3 张目标用 2 个 4 即可, 不该用 4 个');
+  assert.strictEqual(a.cardIds.length, 2, '3 张目标用 2 个 4(整组)取牌');
 });
 
 test('C.4.4 双王可压单大A (§6.4)', function () {

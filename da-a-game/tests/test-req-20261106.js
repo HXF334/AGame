@@ -139,7 +139,7 @@ section('7. 亮A 花色按钮间距小 + 放大');
 // ============================================================
 section('8. 闹钟大小统一');
 {
-  var OLD_LIANG_R = Math.round(VH * 0.062);
+  var OLD_LIANG_R = Math.round(VH * 0.055);
   var OLD_TURN_R = Math.round(VH * 0.048);
   function clockArc(st) {
     var ctx = mockCtx();
@@ -155,7 +155,7 @@ section('8. 闹钟大小统一');
   var stTurn = baseState({ currentPlayer: 'B', turnDeadline: Date.now() + 5000, turnIsLiang: false, turnIsGate: false });
   var rLiang = clockArc(stLiang);
   var rTurn = clockArc(stTurn);
-  check('8.1 亮A/闸门闹钟半径 = 0.062H', rLiang === OLD_LIANG_R, rLiang + ' vs ' + OLD_LIANG_R);
+  check('8.1 亮A/闸门闹钟半径 = 0.055H', rLiang === OLD_LIANG_R, rLiang + ' vs ' + OLD_LIANG_R);
   check('8.2 出牌闹钟半径**与亮A一样**', rTurn === rLiang,
     'turn=' + rTurn + ' liang=' + rLiang + ' oldTurn=' + OLD_TURN_R);
   check('8.3 出牌闹钟确实变大了(比上轮的 0.048H 大)', rTurn > OLD_TURN_R,

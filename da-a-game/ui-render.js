@@ -648,7 +648,7 @@ function drawHand(ctx, st, m) {
     var _cx = m.vw / 2 - _cw / 2;
     // [2026-11-06 用户] 「取消托管」标识放到**手牌下半部、数字下方**
     //   -> 原来画在手牌**上方**(L2.y - _ch/2), 现在压在手牌下半部、点数数字下面。
-    var _cy = Math.round(L2.y + L2.cardH * 0.72 - _ch / 2);
+    var _cy = Math.round(L2.y + L2.cardH * 0.64 - _ch / 2);
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     rr(ctx, _cx, _cy, _cw, _ch, Math.round(_ch * 0.35)); ctx.fill();
     ctx.strokeStyle = 'rgba(255,217,138,0.85)'; ctx.lineWidth = 1.5;
@@ -848,7 +848,7 @@ function drawTurnInfo(ctx, st, m, seatMap) {
   if (_pid && _pid !== st.humanPlayer && _slot && _slot.side !== 'C') {
     var _rr = Math.round(m.vh * 0.052);
     var _inw = _slot.side === 'L' ? 1 : -1;
-    var _rad = Math.round(m.vh * 0.048);
+    var _rad = Math.round(m.vh * 0.055);
     // [2026-11-04] 跟出牌/「不出」保持同一档距离(离头像更远)
     c = { x: _slot.x + _inw * (_rr + _rad + 20), y: _slot.y };
   }
@@ -859,7 +859,8 @@ function drawTurnInfo(ctx, st, m, seatMap) {
   // [2026-11-03] 反A / 次方身份的 5 秒倒计时同样用大表盘
   var isLiang = !!st.turnIsLiang || !!st.turnIsGate;
   // [2026-11-06 用户] 「出牌的闹钟大小和亮A的闹钟一样」-> 统一 0.062H
-  var r = Math.round(m.vh * 0.062);
+  // [2026-11-06 用户] 所有闹钟稍微小一点 -> 0.055H
+  var r = Math.round(m.vh * 0.055);
   // 铃铛耳朵
   ctx.strokeStyle = '#d9a05b'; ctx.lineWidth = Math.max(2, m.vh * 0.007);
   ctx.beginPath();

@@ -79,6 +79,13 @@ function leadCandidates(hand) {
     const h = identifyHand(cs);
     if (!h || (h.type !== HAND_TYPES.STRAIGHT && h.type !== HAND_TYPES.DOUBLE_STRAIGHT)) return;
     if (splitCount(cs) > 1) return;                       // 拆散超过 1 组 -> 淘汰
+    // [2026-11-06 用户] 双大A/双王不能拆开: 链里带一张大A 或 一个王都不行
+    var _bigAIds = pool.filter(function (c) { return !!c.is主方大A; }).map(function (c) { return c.id; });
+    var _jokerIds = pool.filter(function (c) { return c.isBigJoker || c.isSmallJoker; }).map(function (c) { return c.id; });
+    var _inBig = cs.filter(function (c) { return _bigAIds.indexOf(c.id) >= 0; }).length;
+    if (_bigAIds.length >= 2 && _inBig > 0 && _inBig < _bigAIds.length) return;
+    var _inJk = cs.filter(function (c) { return _jokerIds.indexOf(c.id) >= 0; }).length;
+    if (_jokerIds.length >= 2 && _inJk > 0 && _inJk < _jokerIds.length) return;
     chains.push({ cards: cs, type: h.type, minRank: Math.min.apply(null, cs.map(function (c) { return c.rank; })) });
   });
   // 逐张牌(由小到大)当锚点
@@ -87,19 +94,19 @@ function leadCandidates(hand) {
   var _fallback = null;
   for (const anchor of sorted) {
     const grp = groupOf(anchor);
-    // 含锚点的龙: 必须从锚点起(不能带比锚点更小的牌), 双龙优先, 同型取最长
-    let dbl = null, str8 = null;
+    // [2026-11-06 用户] 龙要**带上能接上的牌**: 手牌 3456 -> 出 3456(不能只出 456 把 3 漏下);
+    //   单张的 A/2/3 也要进龙。规则: **含锚点** + **取最长**(最长链自然把相邻的都带上)。
+    //   [2026-11-04 用户] 链里可以带高端 A(例 9 10 10 JQKA -> 出 6 张) —— 最长链满足这条。
+    let best = null;
     chains.forEach(function (ch) {
-      if (ch.cards.indexOf(anchor) < 0) return;
-      for (const c of ch.cards) { if (c.rank < anchor.rank) return; }   // 从锚点起
-      if (ch.type === HAND_TYPES.DOUBLE_STRAIGHT) {
-        if (!dbl || ch.cards.length > dbl.cards.length) dbl = ch;
-      } else {
-        if (!str8 || ch.cards.length > str8.cards.length) str8 = ch;
+      if (ch.cards.indexOf(anchor) < 0) return;                 // 必须含锚点
+      if (!best || ch.cards.length > best.cards.length
+          || (ch.cards.length === best.cards.length
+              && ch.type === HAND_TYPES.DOUBLE_STRAIGHT && best.type !== HAND_TYPES.DOUBLE_STRAIGHT)) {
+        best = ch;
       }
     });
-    if (dbl) return [{ cards: dbl.cards, type: dbl.type }];
-    if (str8) return [{ cards: str8.cards, type: str8.type }];
+    if (best) return [{ cards: best.cards, type: best.type }];
     // 该点数是 3 张以上(蛋子及以上) -> 留着整组, 跳过(留到最后兜底)
     if (grp.length >= 3) {
       if (!_fallback && !_isDoubleBigA(grp)) _fallback = grp;
