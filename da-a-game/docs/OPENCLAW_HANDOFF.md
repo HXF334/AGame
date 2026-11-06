@@ -289,6 +289,11 @@ openclaw config set --batch-file .tmp-config-batch.json
 - **回归**: test-req-20261106b.js T9 三条。
 
 ---
+### 7.7 2026-11-06 23:33 批次(提示跟托管 + 大组最后手段 + 引擎明打公开)
+
+- **提示 = 托管那一手**: `uiHintCandidates` 的第一个候选改为 `chooseAction` 的结果(起手=起手选牌, 跟牌=AI 压制选择), 其余候选照旧轮换。
+- **大组牌型当最后手段**: 大蛋子(4 张同点)/假八(8 张两组)排序键 `bigGroup` 靠后 —— 有更省的选择就不用它们, 实在只有它能压才出。
+- **引擎**: CHOOSE_IDENTITY 在 `2V3_明打` 时把 `次方公开` 置 true(身份公开只有一个口径)。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

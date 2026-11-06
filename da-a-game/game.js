@@ -813,7 +813,7 @@ function uiHintCandidates() {
   //     1) 候选按**牌型形状**去重(不是按牌的 id): 同点数的 4 张 5 只算一个候选;
   //     2) 同点数的组合只保留**最大**的一组(4 张 5 -> 只提示 5555, 不提示 55/555);
   //     3) 排序: **张数少的先**(2 张 -> 3 张 -> 4 张), 同张数再比牌力(小的先)。
-  function add(ids, key, isLead) {
+  function add(ids, key, isFirst) {
     if (!ids || !ids.length) return false;
     if (seen[key]) return false;
     // 同一组牌(换个 key 再来一次)只留一个候选 -> 起手推荐不会与后面的组合重复
@@ -825,7 +825,7 @@ function uiHintCandidates() {
     if (!r || !r.ok) return false;
     seen[key] = 1;
     var cards = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
-    out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards), lead: !!isLead, sig: sig });
+    out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards), aiFirst: !!isFirst, sig: sig });
     return true;
   }
   // 单张的「点数标识」: 同点数的 4 张 5 只提示一次; 大A/王 与普通 A 区分开
@@ -835,17 +835,16 @@ function uiHintCandidates() {
     if (c.isSmallJoker) return 'SJ';
     return 'R' + c.rank;
   }
-  // [2026-11-06 用户] 本轮有**优先出牌权**(桌面为空)时, 【提示】第一个推荐 = 起手选牌
-  //   「有优先出牌权且手牌有 55 时, 点提示应出 55, 而不是 5」
-  //   与 AI 起手**同一来源**(src/lead-choice.js) -> 两处算法不会漂移。
-  if (!(gameState.table || []).length) {
-    try {
-      var _lead = leadChoice.pickLead(me.hand);
-      if (_lead && _lead.cards && _lead.cards.length) {
-        add(_lead.cards.map(function (c) { return c.id; }), 'LEAD', true);
-      }
-    } catch (e) { }
-  }
+  // [2026-11-06 23:33 用户] 「点提示应该和托管是类似的逻辑」
+  //   -> 第一个候选 = **AI(托管)对同一手牌会出的那一手**(同一个 chooseAction):
+  //      起手时 = 起手选牌(src/lead-choice.js), 跟牌时 = AI 的压制选择。
+  //   其余候选照旧轮换, 只是第一个跟着 AI 走。
+  try {
+    var _aiAct = chooseAction(gameState, humanPlayer);
+    if (_aiAct && _aiAct.type === 'PLAY' && _aiAct.cardIds && _aiAct.cardIds.length) {
+      add(_aiAct.cardIds.slice(), 'AIFIRST', true);
+    }
+  } catch (e) { }
   var singleSeen = {};
   me.hand.forEach(function (c) {
     var k = '1|' + pointKey(c);
@@ -901,7 +900,7 @@ function uiHintCandidates() {
   });
   // 排序: 张数少的先(2 张 -> 3 张 -> 4 张) -> 同张数比牌力(小的先)
   out.sort(function (a, b) {
-    if (!!a.lead !== !!b.lead) return a.lead ? -1 : 1;   // 起手推荐排第一
+    if (!!a.aiFirst !== !!b.aiFirst) return a.aiFirst ? -1 : 1;   // AI(托管)会出的那一手排第一
     if (a.cards.length !== b.cards.length) return a.cards.length - b.cards.length;
     var pa = _uiComboPower(a.cards), pb = _uiComboPower(b.cards);
     if (pa !== pb) return pa - pb;

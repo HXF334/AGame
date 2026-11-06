@@ -401,6 +401,28 @@ function sbState(handMap) {
     check('C2.3b 注入的局面没被开局流程冲掉', g.gameState() === st, '');
   }
 
+section('B4. 提示: 第一个候选 = AI(托管)会出的那一手(用户 23:33)');
+{
+  // 上家出 55, 真人手牌 77JJ -> 托管出 77(同类型 + 保留价值低), 提示也应是 77
+  var hand = [createNormalCard('S',7,'h77a'), createNormalCard('H',7,'h77b'),
+              createNormalCard('D',11,'hJJa'), createNormalCard('C',11,'hJJb')];
+  var st = SB.build({ handMap: { A: hand },
+    table: [createNormalCard('S',5,'t5a'), createNormalCard('H',5,'t5b')],
+    lastPlayer: 'B',
+    '主A': { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    '次方': 'C', '次方公开': true,
+    '主方': ['B','C'], '抓方': ['A','D','E'], mode: '2V3_暗打' });
+  var me = st.players.filter(function (p) { return p.id === 'A'; })[0];
+  st.discarded = st.discarded.concat(me.hand.slice(hand.length));
+  me.hand = hand;
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  var cands = g.uiHintCandidates();
+  var first = cands[0];
+  check('B4.1 提示有候选', cands.length > 0, 'n=' + cands.length);
+  check('B4.2 第一个提示 = 托管会出的那一手(77)',
+    !!(first && first.cards.length === 2 && first.cards.every(function (c) { return c.rank === 7; })),
+    first ? first.cards.map(function (c) { return c.rank; }).join(',') + ' n=' + first.cards.length : '(无)');
+}
   section('C3. 托管: 开启后本局**持续**由 AI 代打');
   {
     var C4 = SB.C;

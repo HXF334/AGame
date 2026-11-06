@@ -771,6 +771,10 @@ function handleChooseIdentity(state, payload) {
     主A: state.主A,
     反A: state.反A ?? null,
     次方: state.次方,
+    // [2026-11-06 用户] 2V3 明打 -> 次方身份**公开**: 直接把 次方公开 置 true。
+    //   (引擎原来不置, 导致「身份是否公开」在各处的口径不一致: ai.js 的 _isSameCamp /
+    //    game.js 的 secondOpen / push-wind.js 的 次方明确 各自判断)
+    次方公开: newMode === '2V3_明打' ? true : state.次方公开,
     mode: newMode,
     底牌公开: true,
     actions: state.actions.concat([{

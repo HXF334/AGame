@@ -12,7 +12,7 @@
 //   3. 无合法行动 -> 过牌
 //   4. 新一轮起手: 出安全牌 (非 2/3/A/王/大A), 保留大牌
 
-const { identifyHand, canBeat } = require('./hand-types.js');
+const { identifyHand, canBeat, HAND_TYPES } = require('./hand-types.js');
 const { canCapture } = require('./capture.js');
 const { candidateCombos } = require('./combos.js');
 // [2026-11-06 用户] 起手算法(与【提示】共用同一来源)
@@ -205,6 +205,10 @@ function chooseAction(state, playerId) {
       return c.isBigJoker || c.isSmallJoker || c.is主方大A;
     });
   }
+  // [2026-11-06 23:33 用户] 「大组」牌型: 4 张同点(大蛋子) / 8 张两组(假八) / 更大。
+  //   -> **当最后手段**: 有更省的选择(同类型的便宜牌型)时不用它们; 实在只有它能压才出。
+  //   (例: 桌面对22, 手牌 9999+10101010 -> 出 999(3 张蛋子), 不出 9999/假八)
+  var _bigGroupTypes = { BIG_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1 };
   var _sameCamp = _isSameCamp(state, state && state.lastPlayer, playerId);
   var _mode = (state && state.mode) || '';
   var _solo = _mode.indexOf('1V4') === 0;      // 1V4 独打
@@ -233,6 +237,7 @@ function chooseAction(state, playerId) {
       type: h.type,
       sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,   // 同类型优先
       bigPair: (_hasDoubleA && _nBig === 2 && comboCards.length === _bigAIds.length) ? 0 : 1, // 双大A整手优先
+      bigGroup: _bigGroupTypes[h.type] ? 1 : 0,                        // 大组牌型当最后手段
       split: _splitCount(comboCards),                                  // 不拆牌优先
       // [2026-11-06 用户] 「4 当作蛋子及以上牌型出的时候, 优先度靠后」
       //   (必须出蛋子时, 手上有 444 和别的蛋子 -> 优先出别的蛋子)
@@ -246,6 +251,7 @@ function chooseAction(state, playerId) {
   _picks.sort(function (a, b) {
     if (a.sameType !== b.sameType) return a.sameType - b.sameType;
     if (a.bigPair !== b.bigPair) return a.bigPair - b.bigPair;
+    if (a.bigGroup !== b.bigGroup) return a.bigGroup - b.bigGroup;   // 大组(大蛋子/假八)靠后
     if (a.split !== b.split) return a.split - b.split;
     if (a.fourEgg !== b.fourEgg) return a.fourEgg - b.fourEgg;   // 4 蛋子靠后
     if (a.kv !== b.kv) return a.kv - b.kv;

@@ -16,6 +16,7 @@ var SB = require('./lib/state-builder.js');
 var cardMod = require('../src/card.js');
 var aiMod = require('../src/ai.js');
 var handTypes = require('../src/hand-types.js');
+var eng = require('../src/index.js');
 
 var pass = 0, fail = 0;
 var failures = [];
@@ -223,6 +224,45 @@ section('T9. 明打: 阵营公开, 同阵营不压制(用户 2026-11-06 23:21 �
   check('T9.3 明打时, 次方**不压**主A(队友)', a3.type === 'PASS', a3.type);
 }
 console.log('');
+section('T10. 4 张同点(大蛋子)是重手: 不用来压对子(用户 2026-11-06 23:33 报障)');
+{
+  // 上家出 22(对子), AI 手牌 9999 101010 -> 不该把 9999 整组打出去
+  var hand = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',10), C('H',10), C('D',10), C('C',10)];
+  var table = [C('S',2), C('H',2)];   // 对子 22(用户原话: 上家出22)
+  var st = stateWith('D', hand, table, {});
+  var act = aiMod.chooseAction(st, 'D');
+  var played = playedOf(st, 'D', act);
+  var sameRank = played.length > 1 && played.every(function (c) { return c.rank === played[0].rank; });
+  check('T10.1 没有把 4 张同点(大蛋子)整组打出去', !(sameRank && played.length === 4),
+    'played=' + played.length + ' ranks=' + ranksOf(played));
+  check('T10.2 也没有打 8 张两组(假八)', played.length !== 8,
+    'played=' + played.length + ' ranks=' + ranksOf(played));
+  check('T10.3 出的是蛋子(3 张同点)', typeOf(played) === 'TRIPLE',
+    typeOf(played) + ' ranks=' + ranksOf(played));
+}
+
+section('T12. 引擎: 2V3 明打 -> 次方公开 = true(用户 2026-11-06 23:33 指令)');
+{
+  function idState() {
+    var st = SB.build({ handMap: {}, table: [], lastPlayer: 'B',
+      '主A': { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+      '次方': 'C', '次方公开': false,
+      '主方': ['A','C'], '抓方': ['B','D','E'], mode: '2V3_暗打' });
+    st.phase = eng.PHASES.IDENTITY_CHOICE;
+    st.mode = null;
+    return st;
+  }
+  var r1 = eng.transition(idState(), { type: eng.ACTIONS.CHOOSE_IDENTITY,
+    payload: { playerId: 'C', choice: 'PUBLIC' } });
+  check('T12.1 2V3 明打: mode = 2V3_明打', r1.ok && r1.state.mode === '2V3_明打',
+    r1.ok ? r1.state.mode : JSON.stringify(r1.error));
+  check('T12.2 2V3 明打: 次方公开 = true', r1.ok && r1.state['次方公开'] === true,
+    r1.ok ? String(r1.state['次方公开']) : 'transition failed');
+  var r2 = eng.transition(idState(), { type: eng.ACTIONS.CHOOSE_IDENTITY,
+    payload: { playerId: 'C', choice: 'HIDDEN' } });
+  check('T12.3 2V3 暗打: 次方公开 仍为 false', r2.ok && r2.state['次方公开'] === false,
+    r2.ok ? String(r2.state['次方公开']) : 'transition failed');
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }
