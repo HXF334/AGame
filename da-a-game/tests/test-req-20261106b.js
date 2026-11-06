@@ -203,6 +203,25 @@ section('T8. 阵营: 只按已公开的同阵营');
   check('T8.5 次方本人不对主A用大牌', act.type === 'PASS', act.type);
 }
 
+section('T9. 明打: 阵营公开, 同阵营不压制(用户 2026-11-06 23:21 报障)');
+{
+  // 内部 id: A=甲 B=乙 C=丙 D=丁 E=戊; 主A=乙(B), 次方=丁(D), 抓方=甲/丙/戊
+  function mingState(pid, table, last) {
+    var hand = [C('S',2), C('H',2), C('D',2), C('C',5)];
+    return stateWith(pid, hand, table, {
+      mode: '2V3_明打',
+      主A: { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+      次方: 'D', 次方公开: false,
+      主方: ['B','D'], 抓方: ['A','C','E'], lastPlayer: last });
+  }
+  var egg = [C('S',6), C('H',6), C('D',6)];
+  var a1 = aiMod.chooseAction(mingState('C', egg, 'A'), 'C');
+  check('T9.1 明打时, 抓方**不压**同阵营的抓方', a1.type === 'PASS', a1.type);
+  var a2 = aiMod.chooseAction(mingState('C', egg, 'D'), 'C');
+  check('T9.2 明打时, 抓方可以压次方(对手)', a2.type === 'PLAY', a2.type);
+  var a3 = aiMod.chooseAction(mingState('D', egg, 'B'), 'D');
+  check('T9.3 明打时, 次方**不压**主A(队友)', a3.type === 'PASS', a3.type);
+}
 console.log('');
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);

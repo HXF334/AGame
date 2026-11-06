@@ -50,6 +50,21 @@ function isFour(c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; }
 //   - 次方未亮明且自己不是次方时, 其余人的阵营**不明** -> 一律当"可能的对手", 允许压制。
 function _isSameCamp(state, a, b) {
   if (!state || !a || !b || a === b) return false;
+  // [2026-11-06 用户] 「丙和甲是同阵营, 甲出666, 丙出222, 现在身份是公开的, 并不应该压制甲」
+  //   -> **明打**(2V3_明打 / 1V4_明打)或次方已亮明时, 阵营是**公开**的:
+  //      直接用引擎的真阵营表(同在主方 或 同在抓方 = 同阵营), 不用王/大A/蛋子去压队友。
+  //      注: 引擎在 2V3_明打 时**不会**把 次方公开 置 true(见 src/transition.js 注释),
+  //      约定上「明打=身份公开」—— 与 src/push-wind.js 的 次方明确、game.js 的 secondOpen 一致。
+  var _mode = state['mode'] || '';
+  var _mainList = state['主方'] || [];
+  var _takerList = state['抓方'] || [];
+  var _campsPublic = (state['次方公开'] === true) || (_mode.indexOf('明打') >= 0);
+  if (_campsPublic && (_mainList.length || _takerList.length)) {
+    var _aM = _mainList.indexOf(a) >= 0, _bM = _mainList.indexOf(b) >= 0;
+    if (_aM && _bM) return true;                       // 都是主方
+    if (_takerList.indexOf(a) >= 0 && _takerList.indexOf(b) >= 0) return true;   // 都是抓方
+    return false;                                       // 不同阵营
+  }
   var main = [];
   if (state['主A'] && state['主A'].establishedBy) main.push(state['主A'].establishedBy);
   var next = state['次方'];
