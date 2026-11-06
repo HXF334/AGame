@@ -550,6 +550,8 @@ function canBeat(play, current) {
 
 module.exports = {
   HAND_TYPES: HAND_TYPES,
+  // [2026-11-06 23:54] 牌型强度表(数字越大越强) —— AI 排序按**实际牌力**用
+  POWER: POWER,
   identifyHand: identifyHand,
   compareHands: compareHands,
   canBeat: canBeat

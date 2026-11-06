@@ -79,11 +79,12 @@ function leadCandidates(hand) {
     const h = identifyHand(cs);
     if (!h || (h.type !== HAND_TYPES.STRAIGHT && h.type !== HAND_TYPES.DOUBLE_STRAIGHT)) return;
     if (splitCount(cs) > 1) return;                       // 拆散超过 1 组 -> 淘汰
-    // [2026-11-06 用户] 双大A/双王不能拆开: 链里带一张大A 或 一个王都不行
+    // [2026-11-06 23:54 用户] 「单张大A不加在龙里出, 单张普通A可以加在龙里出」
+    //   -> 链里**任何**大A 都不能带(不管手里有几张); 双大A/双王也不能拆开带
     var _bigAIds = pool.filter(function (c) { return !!c.is主方大A; }).map(function (c) { return c.id; });
     var _jokerIds = pool.filter(function (c) { return c.isBigJoker || c.isSmallJoker; }).map(function (c) { return c.id; });
     var _inBig = cs.filter(function (c) { return _bigAIds.indexOf(c.id) >= 0; }).length;
-    if (_bigAIds.length >= 2 && _inBig > 0 && _inBig < _bigAIds.length) return;
+    if (_inBig > 0) return;
     var _inJk = cs.filter(function (c) { return _jokerIds.indexOf(c.id) >= 0; }).length;
     if (_jokerIds.length >= 2 && _inJk > 0 && _inJk < _jokerIds.length) return;
     chains.push({ cards: cs, type: h.type, minRank: Math.min.apply(null, cs.map(function (c) { return c.rank; })) });

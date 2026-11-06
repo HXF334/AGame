@@ -1223,7 +1223,9 @@ function _settlementData() {
   if (!res || !res.winner) res = { winner: 'draw', reason: '' };
   var scores = {};
   try { scores = calculateScore(gameState, res) || {}; } catch (e) { scores = {}; }
-  return { res: res, scores: scores };
+  // [2026-11-06 23:54 用户] 结算画面标出谁是头名 -> 把 头名 带进结算数据
+  var headName = (gameState && gameState['头名']) || null;
+  return { res: res, scores: scores, '头名': headName };
 }
 
 // ===== UI 日志 + 【Log】开关 (需求十一) =====

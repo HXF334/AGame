@@ -423,6 +423,17 @@ section('B4. 提示: 第一个候选 = AI(托管)会出的那一手(用户 23:33
     !!(first && first.cards.length === 2 && first.cards.every(function (c) { return c.rank === 7; })),
     first ? first.cards.map(function (c) { return c.rank; }).join(',') + ' n=' + first.cards.length : '(无)');
 }
+section('B5. 结算画面标出谁是头名(用户 23:54)');
+{
+  var st = baseState();
+  st.phase = 'GAME_END';
+  st.settlement = { res: { winner: '甲', reason: '' }, scores: { A: 3, B: -3, C: 0, D: 0, E: 0 }, '头名': 'C' };
+  st.gameState['头名'] = 'C';
+  var ctx = mockCtx();
+  uiRender.render(ctx, st);
+  var marks = ctx.items.filter(function (i) { return i.t === '头名'; });
+  check('B5.1 结算画面画出了「头名」标', marks.length === 1, 'n=' + marks.length);
+}
   section('C3. 托管: 开启后本局**持续**由 AI 代打');
   {
     var C4 = SB.C;

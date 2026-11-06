@@ -1022,6 +1022,8 @@ function drawSettlement(ctx, st, m) {
   var title = (w === 'draw') ? '平局' : (w + '胜');
   text(ctx, '本局结束 · ' + title, px + pw / 2, py + titleH * 0.5, titleFs, '#ffd98a', 'center', true);
   var camps = (st.gameState['主方'] || []);
+  // [2026-11-06 23:54 用户] 结算画面把谁是头名标出来
+  var _head = (d && d['头名']) || (st.gameState && st.gameState['头名']) || null;
   var rowY = py + titleH;
   var cw = 17, ch = 24, cstep = 12;   // [2026-10-26] 还原原来的小牌尺寸
   var isAce = st.isMainAce || function () { return false; };
@@ -1038,6 +1040,9 @@ function drawSettlement(ctx, st, m) {
     rr(ctx, px + 12, y - rowH * 0.46, pw - 24, rowH * 0.92, 3); ctx.fill();
     text(ctx, st.names[i] + (pid === st.humanPlayer ? '(你)' : ''), px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), '#ffffff', 'left', true);
     text(ctx, camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0), px + 92, y, Math.max(9, Math.round(m.vh * 0.028)), '#aaaaaa', 'left', false);
+    if (_head && pid === _head) {
+      text(ctx, '头名', px + pw - 68, y, Math.max(9, Math.round(m.vh * 0.026)), '#ffd98a', 'right', true);
+    }
     // **全部**剩余手牌, 顺序与手牌区一致(大A > 大王 > 小王 > 3 > 2 > A > K ...)
     var hand = (p && p.hand) ? p.hand : [];
     if (hand.length) {

@@ -224,7 +224,7 @@ section('T9. 明打: 阵营公开, 同阵营不压制(用户 2026-11-06 23:21 �
   check('T9.3 明打时, 次方**不压**主A(队友)', a3.type === 'PASS', a3.type);
 }
 console.log('');
-section('T10. 4 张同点(大蛋子)是重手: 不用来压对子(用户 2026-11-06 23:33 报障)');
+section('T10. 大组牌型: 不直接出整个假八, 该出大蛋子就出大蛋子(用户 23:33 + 23:54)');
 {
   // 上家出 22(对子), AI 手牌 9999 101010 -> 不该把 9999 整组打出去
   var hand = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',10), C('H',10), C('D',10), C('C',10)];
@@ -232,12 +232,11 @@ section('T10. 4 张同点(大蛋子)是重手: 不用来压对子(用户 2026-11
   var st = stateWith('D', hand, table, {});
   var act = aiMod.chooseAction(st, 'D');
   var played = playedOf(st, 'D', act);
-  var sameRank = played.length > 1 && played.every(function (c) { return c.rank === played[0].rank; });
-  check('T10.1 没有把 4 张同点(大蛋子)整组打出去', !(sameRank && played.length === 4),
+  check('T10.1 不直接出整个假八(8 张两组)', typeOf(played) !== 'FAKE_EIGHT' && typeOf(played) !== 'BIG_FAKE_EIGHT',
+    typeOf(played) + ' ranks=' + ranksOf(played));
+  check('T10.2 也没有打 8 张', played.length !== 8,
     'played=' + played.length + ' ranks=' + ranksOf(played));
-  check('T10.2 也没有打 8 张两组(假八)', played.length !== 8,
-    'played=' + played.length + ' ranks=' + ranksOf(played));
-  check('T10.3 出的是蛋子(3 张同点)', typeOf(played) === 'TRIPLE',
+  check('T10.3 出的是大蛋子(4 张同点)', typeOf(played) === 'BIG_TRIPLE',
     typeOf(played) + ' ranks=' + ranksOf(played));
 }
 
@@ -262,6 +261,73 @@ section('T12. 引擎: 2V3 明打 -> 次方公开 = true(用户 2026-11-06 23:33 
     payload: { playerId: 'C', choice: 'HIDDEN' } });
   check('T12.3 2V3 暗打: 次方公开 仍为 false', r2.ok && r2.state['次方公开'] === false,
     r2.ok ? String(r2.state['次方公开']) : 'transition failed');
+}
+section('T13. 双大A / 双王: 优先度最后(用户 23:54)');
+{
+  // 桌面对22, 手里有双大A + 一手蛋子 -> 该出蛋子, 不出双大A
+  var bigA1 = C('S',14); bigA1.is主方大A = true;
+  var bigA2 = C('S',14); bigA2.is主方大A = true;
+  var hand13 = [bigA1, bigA2, C('H',3), C('D',3), C('C',3)];
+  var table13 = [C('S',2), C('H',2), C('D',2)];   // 蛋子 222
+  var st13 = stateWith('D', hand13, table13, {
+    主A: { suit: 'S', establishedBy: 'D', viaMethod: 'FORCED_CHECK' },
+    次方: 'C', 次方公开: true, 主方: ['D','C'], 抓方: ['A','B','E'], lastPlayer: 'B' });
+  var act13 = aiMod.chooseAction(st13, 'D');
+  var p13 = playedOf(st13, 'D', act13);
+  check('T13.1 有更省的选择时不出双大A', typeOf(p13) !== 'DOUBLE_BIG_A',
+    typeOf(p13) + ' ranks=' + ranksOf(p13));
+  check('T13.2 出的是蛋子', typeOf(p13) === 'TRIPLE', typeOf(p13) + ' ranks=' + ranksOf(p13));
+}
+{
+  // 桌面对22, 手里有双王 + 一手蛋子 -> 该出蛋子, 不出双王
+  var hand14 = [BJ(), SJ(), C('H',3), C('D',3), C('C',3)];
+  var table14 = [C('S',2), C('H',2), C('D',2)];   // 蛋子 222
+  var st14 = stateWith('D', hand14, table14, {});
+  var act14 = aiMod.chooseAction(st14, 'D');
+  var p14 = playedOf(st14, 'D', act14);
+  check('T14.1 有更省的选择时不出双王', typeOf(p14) !== 'DOUBLE_JOKER',
+    typeOf(p14) + ' ranks=' + ranksOf(p14));
+  check('T14.2 出的是蛋子', typeOf(p14) === 'TRIPLE', typeOf(p14) + ' ranks=' + ranksOf(p14));
+}
+
+section('T15. 单张大A 不加进龙(单张普通A 可以)(用户 23:54)');
+{
+  var ace = C('S',14); ace.is主方大A = true;
+  var hand15 = [ace, C('H',9), C('D',10), C('C',11)];
+  var st15 = stateWith('D', hand15, [], {
+    主A: { suit: 'S', establishedBy: 'D', viaMethod: 'FORCED_CHECK' },
+    次方: 'C', 次方公开: true, 主方: ['D','C'], 抓方: ['A','B','E'], lastPlayer: 'B' });
+  var act15 = aiMod.chooseAction(st15, 'D');
+  var p15 = playedOf(st15, 'D', act15);
+  check('T15.1 出的龙里没有大A', p15.every(function (c) { return !c.is主方大A; }),
+    'ranks=' + ranksOf(p15));
+  check('T15.2 出的还是一条龙', typeOf(p15) === 'STRAIGHT', typeOf(p15) + ' ranks=' + ranksOf(p15));
+}
+
+section('T16. 大组别轻用: 4个9+3个10 对22 -> 出3个10(用户 23:54)');
+{
+  var hand16 = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',10), C('H',10), C('D',10)];
+  var table16 = [C('S',2), C('H',2)];
+  var st16 = stateWith('D', hand16, table16, {});
+  var act16 = aiMod.chooseAction(st16, 'D');
+  var p16 = playedOf(st16, 'D', act16);
+  var same16 = p16.length > 1 && p16.every(function (c) { return c.rank === p16[0].rank; });
+  check('T16.1 没有把 4 张同点整组打出去', !(same16 && p16.length === 4),
+    'played=' + p16.length + ' ranks=' + ranksOf(p16));
+  check('T16.2 出的是蛋子', typeOf(p16) === 'TRIPLE', typeOf(p16) + ' ranks=' + ranksOf(p16));
+}
+
+section('T17. 有假八时也不直接出假八: 4个9+4个10 对22 -> 出9999(用户 23:54)');
+{
+  var hand17 = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',10), C('H',10), C('D',10), C('C',10)];
+  var table17 = [C('S',2), C('H',2)];
+  var st17 = stateWith('D', hand17, table17, {});
+  var act17 = aiMod.chooseAction(st17, 'D');
+  var p17 = playedOf(st17, 'D', act17);
+  check('T17.1 不直接出整个假八', typeOf(p17) !== 'FAKE_EIGHT' && typeOf(p17) !== 'BIG_FAKE_EIGHT',
+    typeOf(p17) + ' ranks=' + ranksOf(p17));
+  check('T17.2 出的是大蛋子(4 张同点)', typeOf(p17) === 'BIG_TRIPLE',
+    typeOf(p17) + ' ranks=' + ranksOf(p17));
 }
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
