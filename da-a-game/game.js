@@ -11,6 +11,8 @@ var determineFirstPlayer = engine.determineFirstPlayer;
 var checkGameEnd = engine.checkGameEnd;
 // [fix] ai.js 的 chooseAction 未被 index.js 转发, 直接从 ai.js 引
 var chooseAction = require('./src/ai.js').chooseAction;
+// [2026-11-07 用户 C] AI 决策轨迹(候选集 + 排序键 + 阵营三态) -> 打日志
+var getAiTrace = require('./src/ai.js').getLastTrace;
 var candidateCombos = require('./src/combos.js').candidateCombos;
 // [2026-11-06 用户] 起手选牌: AI 起手与【提示】**共用同一来源**(避免两处算法漂移)
 var leadChoice = require('./src/lead-choice.js');
@@ -313,6 +315,33 @@ function _autoPlayCancelTimer() {
   if (uiAutoPlayTimer) { clearTimeout(uiAutoPlayTimer); uiAutoPlayTimer = 0; }
 }
 
+// [2026-11-07 用户 C] 把 AI 决策轨迹压成一行日志: 目视报障时直接看「为什么选这手」
+function _aiTraceLine(tr, who) {
+  if (!tr) return '';
+  var out = '  [AI决策] ' + (who || tr.playerId);
+  out += ' | 桌: ' + (tr.tableType ? (tr.tableType + '(' + tr.tableCount + '张)') : '空');
+  if (tr.camp) {
+    var cs = [];
+    if (tr.camp.uncertain) cs.push('阵营不明');
+    if (tr.camp.sameCamp) cs.push('同阵营');
+    if (tr.camp.inferred) cs.push('推定次方=' + tr.camp.inferred);
+    if (cs.length) out += ' | ' + cs.join(',');
+  }
+  if (tr.chosen) {
+    out += ' | 选: ' + tr.chosen.type + '(' + tr.chosen.count + '张) ' + tr.chosen.ranks;
+  } else {
+    out += ' | 选: 无';
+  }
+  if (tr.candidates && tr.candidates.length) {
+    out += ' | 候选: ' + tr.candidates.slice(0, 3).map(function (c) {
+      return c.type + '(' + c.count + '张){' + c.keyText + '}';
+    }).join(' ');
+  }
+  if (tr.decidingKey) out += ' | 决定键: ' + tr.decidingKey;
+  if (tr.note) out += ' | ' + tr.note;
+  return out;
+}
+
 // AI 接管真人回合: 用引擎的 chooseAction 替真人做决策
 function _autoPlayTakeover() {
   if (!uiAutoPlay) return false;
@@ -324,11 +353,13 @@ function _autoPlayTakeover() {
     var ids = act.cardIds || [];
     if (!ids.length) return false;
     log('  托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张');
+    log(_aiTraceLine(getAiTrace(), pn(humanPlayer)));
     _autoPlayDoPlay(ids);
     return true;
   }
   if (act.type === 'PASS') {
     log('  托管: AI 代打 ' + pn(humanPlayer) + ' 不出');
+    log(_aiTraceLine(getAiTrace(), pn(humanPlayer)));
     _autoPlayDoPass();
     return true;
   }
@@ -1999,6 +2030,7 @@ function runAI() {
         gameState = r1.state;
         var _re1 = _hadT1 && (gameState.table || []).length === 0;
         log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' ' + action.type + (action.cardIds ? ' (' + action.cardIds.length + '张)' + aiCardsDesc : ''));
+        log(_aiTraceLine(getAiTrace(), pn(currentPlayer)));
         if (wasEmpty) {
           lastEmptiedPlayer = currentPlayer;
           log('  → ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' AI 出完牌 (待轮次结束触发推风)');

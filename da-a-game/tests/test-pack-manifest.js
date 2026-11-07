@@ -33,6 +33,7 @@ var EXPECTED_PACK = [
   'project.config.json',
   'ui-render.js',
   'src/ai.js',
+  'src/ai-policy.js',
   'src/capture.js',
   'src/card.js',
   'src/combos.js',

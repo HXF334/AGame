@@ -312,6 +312,12 @@ openclaw config set --batch-file .tmp-config-batch.json
 - **「大蛋子+」改名「蛋子+」**: 集合不变(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙/双大A)。
 - **暗打推定次方**: 引擎记 `state.plays`(公开出牌流水); ai.js `_canInferNext`/`_inferredNext` —— 身份未明的人对身份未明的人出蛋子+ -> 其他抓方标记他是次A(本局有效) -> 可以出任何牌压制他。
 - **口径表**: `docs/AI_POLICY.md`(建议稿, 待定稿)。
+### 7.11 2026-11-07 22:26 批次(口径配置化 + 「X+」定义 + AI 决策日志)
+
+- **新增 `src/ai-policy.js`**: 口径唯一来源 —— 「X+」牌型集合(蛋子+=蛋子及以上 12 型 / 大蛋子+=大蛋子及以上 11 型, **双龙不在内**)、`SORT_KEYS`(排序键顺序)、`SORT_KEY_LABELS`、`comparePicks`。
+- **src/ai.js**: 排序/集合改走 policy; 新增 `getLastTrace()` 决策轨迹(含决定键); 修 `_campUncertain` 漏判「明打=身份公开」的 bug。
+- **game.js**: 每手 AI 出牌后打一行 `[AI决策]` 日志(桌/阵营三态/选中/候选带排序键/决定键)。
+- **口径定稿**: `docs/AI_POLICY.md`(A-E 结论 + 日志怎么读 + 报障对照清单)。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

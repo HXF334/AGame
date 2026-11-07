@@ -17,6 +17,8 @@ const { canCapture } = require('./capture.js');
 const { candidateCombos } = require('./combos.js');
 // [2026-11-06 用户] 起手算法(与【提示】共用同一来源)
 const leadChoice = require('./lead-choice.js');
+// [2026-11-07 用户 D] 口径配置(排序键 / 「X+」牌型集合)单独一个文件: 改口径只改那里
+const policy = require('./ai-policy.js');
 
 // 牌的"保留价值"(越大越该留着)。仅用于 AI 排序, 不参与任何合法性判断。
 function keepValue(c) {
@@ -30,6 +32,13 @@ function keepValue(c) {
   return (c.rank || 0) * 10;
 }
 
+// [2026-11-07 用户 C] 决策日志用: 把排序键压成一行短文本
+function _keyText(pick) {
+  return policy.SORT_KEYS.map(function (k) {
+    return (policy.SORT_KEY_LABELS[k] || k) + (pick[k] === undefined ? '' : pick[k]);
+  }).join(' ');
+}
+
 // 单张出牌顺序 (§6.2: 4 < 5 < ... < K), 供起手选安全牌
 function cardPowerAsc(c) {
   if (c.isBigJoker) return 180;
@@ -41,12 +50,13 @@ function cardPowerAsc(c) {
 }
 function isFour(c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; }
 
+// [2026-11-07 用户 C] 最近一次 AI 决策轨迹(候选集 + 排序键), 供 game.js 打日志
+var _lastTrace = null;
+
 // [2026-11-07 21:47 用户] 「蛋子+」牌型集合(用户把原来的「大蛋子+」改名为「蛋子+」):
 //   蛋子级别的大组: 大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙, 外加双大A。
-var EGG_PLUS_TYPES = {
-  BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1, STRAIGHT_TRIPLE: 1,
-  BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1, DOUBLE_STRAIGHT: 1, DOUBLE_BIG_A: 1
-};
+// [2026-11-07 22:26 用户 B] 「蛋子+」= 蛋子及以上; 「大蛋子+」= 大蛋子及以上 —— 定义在 src/ai-policy.js
+var EGG_PLUS_TYPES = policy.EGG_PLUS;
 
 // [2026-11-07 21:47 用户] 暗打时的「推定次方」:
 //   「身份未明的人」对「另一个身份未明的人」打出蛋子+ -> 其他抓方默认把他标记为次A(本局有效),
@@ -92,6 +102,9 @@ function _inferredNext(state, viewerId) {
 function _campUncertain(state, a, b) {
   if (!state || !a || !b) return false;
   if (state['次方公开'] === true) return false;            // 次方已亮明 -> 阵营公开
+  // [2026-11-07 22:26 用户 B] 明打 = 身份公开(与 _isSameCamp 同一口径, 引擎在 2V3_明打 也置次方公开)
+  //   -> 明打里没有「阵营不明」这回事, 不能拿蛋子+ 去压也无所谓。
+  if ((state.mode || '').indexOf('明打') >= 0) return false;
   var next = state['次方'];
   if (next && next === b) return false;                   // AI 自己就是次方 -> 他知道全部
   var holder = state['主A'] && state['主A'].establishedBy;
@@ -135,24 +148,30 @@ function _isSameCamp(state, a, b) {
 
 // AI 选择行动: { type: 'PLAY' | 'PASS' | 'CHOOSE_IDENTITY', playerId, cardIds? / choice? }
 function chooseAction(state, playerId) {
+  // [2026-11-07 用户 C] AI 决策日志: 记下候选集 + 排序键, 目视报障时直接看「为什么选这手」
+  var _trace = { playerId: playerId, action: null, tableType: null, tableCount: 0,
+                 camp: null, candidates: [], chosen: null, note: '' };
+  function _done(action) { _trace.action = action.type; _lastTrace = _trace; return action; }
   // [A2 fix] state 或 players 缺失时安全返回 PASS (不 crash)
   if (!state || !state.players || !Array.isArray(state.players)) {
-    return { type: 'PASS', playerId: playerId };
+    return _done({ type: 'PASS', playerId: playerId });
   }
   // §12: IDENTITY_CHOICE 阶段 AI 选 HIDDEN (隐藏身份, 避免暴露)
   if (state.phase === 'IDENTITY_CHOICE') {
-    return { type: 'CHOOSE_IDENTITY', playerId: playerId, choice: 'HIDDEN' };
+    return _done({ type: 'CHOOSE_IDENTITY', playerId: playerId, choice: 'HIDDEN' });
   }
 
   var player = state.players.find(function (p) { return p.id === playerId; });
   if (!player || !Array.isArray(player.hand) || player.hand.length === 0) {
     // 手牌空 (推风场景应由引擎处理推风) -> 安全过牌
-    return { type: 'PASS', playerId: playerId };
+    return _done({ type: 'PASS', playerId: playerId });
   }
 
   var hand = player.hand;
   var table = Array.isArray(state.table) ? state.table : [];
   var currentHand = table.length > 0 ? identifyHand(table) : null;
+  _trace.tableType = currentHand ? currentHand.type : null;
+  _trace.tableCount = table.length;
 
   // ================= 新一轮起手 (§5) =================
   // [2026-11-06 用户] 「看最小的牌能组龙就出龙，能出对子就出对子，组不了就出单。」
@@ -162,16 +181,20 @@ function chooseAction(state, playerId) {
   if (table.length === 0) {
     var _lead = leadChoice.pickLead(hand);
     if (_lead) {
-      return { type: 'PLAY', playerId: playerId,
-               cardIds: _lead.cards.map(function (c) { return c.id; }) };
+      _trace.note = '起手(lead-choice)';
+      _trace.chosen = { type: identifyHand(_lead.cards).type, count: _lead.cards.length,
+        ranks: _lead.cards.map(function (c) { return c.rank; }).join(','), keyText: '' };
+      return _done({ type: 'PLAY', playerId: playerId,
+               cardIds: _lead.cards.map(function (c) { return c.id; }) });
     }
     // 兜底: 组不成任何牌型 -> 出最小的一张(省大牌; 4 留着取牌)
     var _safe = hand.filter(function (c) { return !isFour(c) && keepValue(c) < 500; });
     var _pick = (_safe.length ? _safe : hand)
       .slice()
       .sort(function (a, b) { return cardPowerAsc(a) - cardPowerAsc(b); })[0];
-    if (!_pick) return { type: 'PASS', playerId: playerId };
-    return { type: 'PLAY', playerId: playerId, cardIds: [_pick.id] };
+    if (!_pick) return _done({ type: 'PASS', playerId: playerId });
+    _trace.note = '起手兜底(单张)';
+    return _done({ type: 'PLAY', playerId: playerId, cardIds: [_pick.id] });
   }
   // ================= 1. [4]取牌 优先 (§7) =================
   // [2026-11-06 用户] 4 与取牌:
@@ -265,13 +288,9 @@ function chooseAction(state, playerId) {
     return n;
   }
   // 「重手」: 王 / 大A / 蛋子及以上 -> 同阵营时不主动用
-  var _heavyTypes = {
-    TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1,
-    STRAIGHT_TRIPLE: 1, BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1,
-    DOUBLE_JOKER: 1, TRIPLE_JOKER: 1, FOUR_JOKER: 1, DOUBLE_BIG_A: 1
-  };
   function _isHeavy(cards, type) {
-    if (_heavyTypes[type]) return true;
+    // [2026-11-07 22:26 用户 B] 「蛋子及以上」= policy.EGG_PLUS(含双龙)
+    if (policy.EGG_PLUS[type]) return true;
     return cards.some(function (c) {
       return c.isBigJoker || c.isSmallJoker || c.is主方大A;
     });
@@ -281,10 +300,7 @@ function chooseAction(state, playerId) {
   //   - bigGroup: 大组牌型(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙) -> 靠后,
   //     但排在「不拆同点组」之后(拆开假八能管上时, 别直接出整个假八)
   var _topTypeSet = { DOUBLE_BIG_A: 1, DOUBLE_JOKER: 1, TRIPLE_JOKER: 1, FOUR_JOKER: 1 };
-  // 「蛋子+」牌型 [2026-11-07 21:47 用户把「大蛋子+」改名为「蛋子+」]:
-  //   蛋子级别的大组(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙)+双大A
-  var _eggPlus = { BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1, STRAIGHT_TRIPLE: 1,
-    BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1, DOUBLE_STRAIGHT: 1, DOUBLE_BIG_A: 1 };
+  // [2026-11-07 22:26 用户 B] 「蛋子+」= 蛋子及以上(含双龙/大蛋子/王/双大A), 集合见 src/ai-policy.js
   // [2026-11-07 00:19] 阵营不明时不能用大蛋子+ 去压
   var _uncertain = _campUncertain(state, state && state.lastPlayer, playerId);
   var _bigGroupTypes = {
@@ -292,6 +308,12 @@ function chooseAction(state, playerId) {
     BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1, DOUBLE_STRAIGHT: 1
   };
   var _sameCamp = _isSameCamp(state, state && state.lastPlayer, playerId);
+  // [2026-11-07 用户 C] 决策日志用: 阵营三态(公开/推定/不明)
+  _trace.camp = {
+    uncertain: _uncertain,
+    sameCamp: _sameCamp,
+    inferred: _inferredNext(state, playerId)
+  };
   var _mode = (state && state.mode) || '';
   var _solo = _mode.indexOf('1V4') === 0;      // 1V4 独打
   var _picks = [];
@@ -316,10 +338,10 @@ function chooseAction(state, playerId) {
     if ((h.type === HAND_TYPES.STRAIGHT || h.type === HAND_TYPES.DOUBLE_STRAIGHT) &&
         comboCards.some(function (c) { return !!c.is主方大A; })) return;
     // [2026-11-07 00:19 用户] 阵营不明(次方未亮明)时, 不用大蛋子+ 去压
-    if (_uncertain && _eggPlus[h.type]) return;
+    if (_uncertain && policy.EGG_PLUS[h.type]) return;
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     if (_sameCamp && _isHeavy(comboCards, h.type)) return;
-    _picks.push({
+    var _pick = {
       cards: comboCards,
       type: h.type,
       sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,   // 同类型优先
@@ -336,37 +358,46 @@ function chooseAction(state, playerId) {
       })) ? 1 : 0,
       kv: Math.max.apply(null, comboCards.map(keepValue)),
       len: comboCards.length
+    };
+    _picks.push(_pick);
+    _trace.candidates.push({
+      type: _pick.type, count: _pick.cards.length,
+      ranks: _pick.cards.map(function (c) { return c.rank; }).join(','),
+      keyText: _keyText(_pick)
     });
   });
-  _picks.sort(function (a, b) {
-    // [2026-11-07 21:47 用户] 「不拆蛋子级同点组」排在「同类型优先」之前:
-    //   手里 22222 却拆出 222 去压 888 -> 用户报障。
-    if (a.splitEgg !== b.splitEgg) return a.splitEgg - b.splitEgg;
-    if (a.sameType !== b.sameType) return a.sameType - b.sameType;
-    if (a.topType !== b.topType) return a.topType - b.topType;         // 双大A/双王/大A -> 最后
-    // [2026-11-07 00:19 用户] 「4 组成的蛋子+ 在有其他选项时, 优先度靠后」-> 排在「不拆组」之前:
-    //   否则 4444(整组不拆)会赢过 333(拆组的便宜蛋子) —— 用户报障: 丁出 4444 压大王。
-    if (a.fourEgg !== b.fourEgg) return a.fourEgg - b.fourEgg;   // 4 组成的蛋子+ 靠后
-    if (a.split !== b.split) return a.split - b.split;             // 不拆同点组
-    if (a.bigGroup !== b.bigGroup) return a.bigGroup - b.bigGroup;   // 大组(大蛋子/假八)靠后
-    if (a.kv !== b.kv) return a.kv - b.kv;
-    if (a.len !== b.len) return a.len - b.len;
-    return 0;
-  });
+  // [2026-11-07 22:26 用户 D] 排序键顺序外置到 src/ai-policy.js 的 SORT_KEYS
+  //   (顺序即优先级; 不拆组 > 同类型优先, 见裁定 E)。改口径只改那个文件。
+  _picks.sort(policy.comparePicks);
+  // [2026-11-07 用户 C] 决定键: 选中的这手和「第二名」在哪个键上分出胜负
+  if (_picks.length >= 2) {
+    for (var _di = 0; _di < policy.SORT_KEYS.length; _di++) {
+      var _dk2 = policy.SORT_KEYS[_di];
+      if (_picks[0][_dk2] !== _picks[1][_dk2]) { _trace.decidingKey = policy.SORT_KEY_LABELS[_dk2] || _dk2; break; }
+    }
+  }
   // [2026-11-06 用户] 「4 用来取牌时, 优先度靠前」-> 取牌排在普通压制之前
   //   (手牌 33344 + 别人出 222 -> 直接用 4 取, 不出 333)
   if (_capSubset) {
-    return { type: 'PLAY', playerId: playerId,
-             cardIds: _capSubset.map(function (c) { return c.id; }) };
+    _trace.note = '用4取牌';
+    return _done({ type: 'PLAY', playerId: playerId,
+             cardIds: _capSubset.map(function (c) { return c.id; }) });
   }
   if (_picks.length) {
-    return { type: 'PLAY', playerId: playerId,
-             cardIds: _picks[0].cards.map(function (c) { return c.id; }) };
+    _trace.chosen = { type: _picks[0].type, count: _picks[0].cards.length,
+      ranks: _picks[0].cards.map(function (c) { return c.rank; }).join(','),
+      keyText: _keyText(_picks[0]) };
+    _trace.note = _trace.note || '压制';
+    return _done({ type: 'PLAY', playerId: playerId,
+             cardIds: _picks[0].cards.map(function (c) { return c.id; }) });
   }
   // ================= 3. 无合法行动 -> 过牌 =================
-  return { type: 'PASS', playerId: playerId };
+  _trace.note = '无合法行动';
+  return _done({ type: 'PASS', playerId: playerId });
 }
 
 module.exports = {
-  chooseAction: chooseAction
+  chooseAction: chooseAction,
+  // [2026-11-07 用户 C] 最近一次决策轨迹(候选集 + 排序键 + 阵营三态)
+  getLastTrace: function () { return _lastTrace; }
 };

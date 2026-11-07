@@ -437,6 +437,24 @@ section('T23. 引擎记录出牌流水(AI 推定次方的数据来源)');
     pl23.length === 1 && pl23[0].type === 'TRIPLE' && pl23[0].beat === 'E',
     JSON.stringify(pl23[0]));
 }
+section('T24. AI 决策日志: 候选集 + 排序键 + 决定键(用户 22:26 裁定 C)');
+{
+  var hand24 = [C('S',2), C('H',2), C('D',2), C('C',2), C('S',9)];
+  var table24 = [C('S',8), C('H',8), C('D',8)];
+  var st24 = stateWith('D', hand24, table24, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  aiMod.chooseAction(st24, 'D');
+  var tr24 = aiMod.getLastTrace();
+  check('T24.1 决策后有轨迹', !!tr24, JSON.stringify(tr24));
+  check('T24.2 轨迹里有候选集', !!(tr24 && tr24.candidates && tr24.candidates.length > 0),
+    tr24 ? 'n=' + tr24.candidates.length : '');
+  check('T24.3 候选带排序键文本', !!(tr24 && tr24.candidates[0] && tr24.candidates[0].keyText),
+    tr24 ? JSON.stringify(tr24.candidates[0]) : '');
+  check('T24.4 轨迹里有选中的一手', !!(tr24 && tr24.chosen), tr24 ? JSON.stringify(tr24.chosen) : '');
+  check('T24.5 轨迹里有决定键', !!(tr24 && tr24.decidingKey), tr24 ? String(tr24.decidingKey) : '');
+  check('T24.6 轨迹里有阵营三态', !!(tr24 && tr24.camp), tr24 ? JSON.stringify(tr24.camp) : '');
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }
