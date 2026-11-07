@@ -83,7 +83,15 @@ function handlePlay(state, payload) {
       lastPlayer: playerId,
       passedPlayers: [],
       passCount: 0,
-      players: newPlayers
+      players: newPlayers,
+      // [2026-11-07 21:47 用户] 出牌流水(公开信息): 供 AI 推断「谁可能是次方」
+      //   beat = 这次压的是谁的牌(起手则为 null)
+      plays: (state.plays || []).concat([{
+        playerId: playerId,
+        type: hand.type,
+        count: playCards.length,
+        beat: (state.table && state.table.length > 0) ? (state.lastPlayer || null) : null
+      }])
     })
   };
 }

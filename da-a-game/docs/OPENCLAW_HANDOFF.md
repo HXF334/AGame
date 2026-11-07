@@ -305,6 +305,13 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 - **排序键**(src/ai.js): 同类型 -> topType(双大A/双王/大A -> 最后) -> **4 组成的蛋子+(靠后)** -> 不拆同点组 -> bigGroup(大组靠后) -> 4 蛋子靠后 -> 保留价值低 -> 张数少。
 - **阵营不明**: ai.js 新增 `_campUncertain` —— 次方未亮明且 AI 既不是次方也不是主A 持有者时, 桌上那人的阵营不明(可能是队友) -> 不用大蛋子+ 去压。
+### 7.10 2026-11-07 21:47 批次(不拆蛋子级组 + 蛋子+ 改名 + 暗打推定次方)
+
+- **排序键**(src/ai.js): `splitEgg(不拆蛋子级同点组) -> sameType -> topType -> fourEgg -> split -> bigGroup -> kv -> len`。
+  - 新增 `splitEgg`: 蛋子级牌型只用了手里某个 ≥3 张同点组的一部分 -> 罚。例: 手里 22222 桌面蛋子 -> 出 22222 整组, 不拆 222 凑同牌型。
+- **「大蛋子+」改名「蛋子+」**: 集合不变(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙/双大A)。
+- **暗打推定次方**: 引擎记 `state.plays`(公开出牌流水); ai.js `_canInferNext`/`_inferredNext` —— 身份未明的人对身份未明的人出蛋子+ -> 其他抓方标记他是次A(本局有效) -> 可以出任何牌压制他。
+- **口径表**: `docs/AI_POLICY.md`(建议稿, 待定稿)。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

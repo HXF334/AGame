@@ -58,6 +58,8 @@ function build(o) {
     passedPlayers: (o.passedPlayers || []).slice(),
     passCount: (o.passedPlayers || []).length,
     lastPlayer: o.lastPlayer || 'B',
+    // [2026-11-07] 出牌流水(公开信息): AI 靠它推定「谁可能是次方」
+    plays: (o.plays || []).slice(),
     actions: [],
     players: players
   };

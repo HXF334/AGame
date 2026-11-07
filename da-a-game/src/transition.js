@@ -92,6 +92,7 @@ var STATE_DEFAULTS = {
   主方: [], 抓方: [], 头名: null, 推风触发者: null,
   底牌公开: false, 次方公开: false,
   table: [], discarded: [], passedPlayers: [], passCount: 0, lastPlayer: null,
+  plays: [],                       // [2026-11-07] 出牌流水(公开): [{playerId, type, count, beat}]
   actions: []
 };
 function ensureState(state) {
@@ -101,6 +102,7 @@ function ensureState(state) {
   if (!Array.isArray(out.table)) out.table = [];
   if (!Array.isArray(out.discarded)) out.discarded = [];
   if (!Array.isArray(out.passedPlayers)) out.passedPlayers = [];
+  if (!Array.isArray(out.plays)) out.plays = [];
   if (!Array.isArray(out.players)) out.players = [];
   return out;
 }

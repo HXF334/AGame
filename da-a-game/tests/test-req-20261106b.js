@@ -363,6 +363,80 @@ section('T19. 次方身份未明时, 抓方不对「阵营不明」的人出大�
   check('T19.2 阵营公开(明打)时, 大蛋子+ 可以出', typeOf(p19b) === 'BIG_TRIPLE',
     typeOf(p19b) + ' ranks=' + ranksOf(p19b));
 }
+section('T20. 手上有整组同点牌时, 不拆组去凑同牌型(用户 21:47)');
+{
+  // 桌面是蛋子(3 张), AI 手里有 5 张同点 -> 该整组出, 不该拆出 3 张去压
+  var hand20 = [C('S',2), C('H',2), C('D',2), C('C',2), C('S',5), C('H',5), C('D',5)];
+  var table20 = [C('S',8), C('H',8), C('D',8)];
+  var st20 = stateWith('D', hand20, table20, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act20 = aiMod.chooseAction(st20, 'D');
+  var p20 = playedOf(st20, 'D', act20);
+  check('T20.1 出的牌能压过桌面',
+    p20.length > 0 && handTypes.canBeat(handTypes.identifyHand(p20), handTypes.identifyHand(table20)),
+    act20.type + ' ' + typeOf(p20) + ' ranks=' + ranksOf(p20));
+  // 不拆同点组: 出的每个点数, 张数必须等于手里该点数的全部
+  var hc = {}, uc = {};
+  hand20.forEach(function (c) { hc[c.rank] = (hc[c.rank] || 0) + 1; });
+  p20.forEach(function (c) { uc[c.rank] = (uc[c.rank] || 0) + 1; });
+  var noSplit = p20.length > 0;
+  for (var rk in uc) if (uc[rk] !== hc[rk]) noSplit = false;
+  check('T20.2 没有拆同点组', noSplit, typeOf(p20) + ' ranks=' + ranksOf(p20));
+  check('T20.3 用的是蛋子级牌型',
+    ['TRIPLE','BIG_TRIPLE','TRUE_SEVEN','TRUE_EIGHT'].indexOf(typeOf(p20)) >= 0,
+    typeOf(p20) + ' ranks=' + ranksOf(p20));
+}
+
+section('T21. 暗打: 身份未明的人对身份未明的人出蛋子+ -> 其他抓方推定他是次A(用户 21:47)');
+{
+  var hand21 = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',3)];
+  var table21 = [C('S',8), C('H',8), C('D',8), C('C',8)];   // 戊(E) 出的 4 张 8(大蛋子)
+  var st21 = stateWith('D', hand21, table21, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  st21.plays = [{ playerId: 'E', type: 'BIG_TRIPLE', count: 4, beat: 'D' }];
+  var act21 = aiMod.chooseAction(st21, 'D');
+  var p21 = playedOf(st21, 'D', act21);
+  check('T21.1 推定为次方后, 抓方可以出蛋子+ 去压他', typeOf(p21) === 'BIG_TRIPLE',
+    act21.type + ' ' + typeOf(p21) + ' ranks=' + ranksOf(p21));
+  // 对照: 没有这条线索 -> 不推定 -> 阵营不明就不用蛋子+ 去压(过牌)
+  var st21b = stateWith('D', hand21, table21, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  st21b.plays = [];
+  var act21b = aiMod.chooseAction(st21b, 'D');
+  check('T21.2 没有推定线索时, 阵营不明就不用蛋子+ 去压', act21b.type === 'PASS',
+    act21b.type + ' ' + typeOf(playedOf(st21b, 'D', act21b)));
+}
+
+section('T22. 对身份明的(主A持有者)出蛋子+ 不构成推定线索');
+{
+  var st22 = stateWith('D', hand21, table21, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  st22.plays = [{ playerId: 'E', type: 'BIG_TRIPLE', count: 4, beat: 'B' }];  // B 是主A持有者
+  var act22 = aiMod.chooseAction(st22, 'D');
+  check('T22.1 不推定, 仍然不过度用蛋子+', act22.type === 'PASS',
+    act22.type + ' ' + typeOf(playedOf(st22, 'D', act22)));
+}
+
+section('T23. 引擎记录出牌流水(AI 推定次方的数据来源)');
+{
+  var hand23 = [C('S',9), C('H',9), C('D',9), C('S',7)];
+  var table23 = [C('S',8), C('H',8), C('D',8)];
+  var st23 = stateWith('D', hand23, table23, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  var r23 = eng.handlePlay(st23, { playerId: 'D',
+    cardIds: [hand23[0].id, hand23[1].id, hand23[2].id] });
+  check('T23.1 出牌成功', r23.ok === true, r23.ok ? '' : JSON.stringify(r23.error));
+  var pl23 = (r23.state && r23.state.plays) || [];
+  check('T23.2 出牌流水记下了这手', pl23.length === 1, 'plays=' + JSON.stringify(pl23));
+  check('T23.3 流水里有牌型和压的是谁',
+    pl23.length === 1 && pl23[0].type === 'TRIPLE' && pl23[0].beat === 'E',
+    JSON.stringify(pl23[0]));
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }
