@@ -48,7 +48,13 @@ function leadCandidates(hand) {
   const fours = hand.filter(isFour);
   // ≥2 张 4 -> 全部排除出池(留给取牌); 只有 1 张 4 -> 保留(它最没用, 最先出)
   const pool = fours.length >= 2 ? hand.filter(function (c) { return !isFour(c); }) : hand.slice();
-  if (!pool.length) return [];
+  if (!pool.length) {
+    // [2026-11-07 23:22 用户] 「AI 最后剩对4, 有任意出牌权, 却单出了一个 4, 应该一起打出」
+    //   -> 手上只剩 4(>=2 张)时整组出(对子/大蛋子), 别单出一张。
+    const _all = hand.slice();
+    const _ah = identifyHand(_all);
+    return [{ cards: _all, type: _ah ? _ah.type : HAND_TYPES.PAIR }];
+  }
   const groups = {};
   pool.forEach(function (c) { (groups[c.rank] = groups[c.rank] || []).push(c); });
   const groupOf = function (c) { return groups[c.rank] || [c]; };
@@ -87,7 +93,8 @@ function leadCandidates(hand) {
     if (_inBig > 0) return;
     var _inJk = cs.filter(function (c) { return _jokerIds.indexOf(c.id) >= 0; }).length;
     if (_jokerIds.length >= 2 && _inJk > 0 && _inJk < _jokerIds.length) return;
-    chains.push({ cards: cs, type: h.type, minRank: Math.min.apply(null, cs.map(function (c) { return c.rank; })) });
+    chains.push({ cards: cs, type: h.type, splits: splitCount(cs),
+      minRank: Math.min.apply(null, cs.map(function (c) { return c.rank; })) });
   });
   // 逐张牌(由小到大)当锚点
   const sorted = pool.slice().sort(function (a, b) { return sizeAsc(a) - sizeAsc(b); });
@@ -101,7 +108,11 @@ function leadCandidates(hand) {
     let best = null;
     chains.forEach(function (ch) {
       if (ch.cards.indexOf(anchor) < 0) return;                 // 必须含锚点
-      if (!best || ch.cards.length > best.cards.length
+      if (!best) { best = ch; return; }
+      // [2026-11-07 23:22 用户] 「22 在 34 无法组成龙的时候才会拆 22」/「3456 能组成龙, 就不用非得拆 22」
+      //   -> 优先**不拆同点组**的龙; 都不拆时才比长短(拆 1 组的龙只当备选)。
+      if (ch.splits !== best.splits) { if (ch.splits < best.splits) best = ch; return; }
+      if (ch.cards.length > best.cards.length
           || (ch.cards.length === best.cards.length
               && ch.type === HAND_TYPES.DOUBLE_STRAIGHT && best.type !== HAND_TYPES.DOUBLE_STRAIGHT)) {
         best = ch;

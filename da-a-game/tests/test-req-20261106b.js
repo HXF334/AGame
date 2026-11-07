@@ -455,6 +455,134 @@ section('T24. AI 决策日志: 候选集 + 排序键 + 决定键(用户 22:26 �
   check('T24.5 轨迹里有决定键', !!(tr24 && tr24.decidingKey), tr24 ? String(tr24.decidingKey) : '');
   check('T24.6 轨迹里有阵营三态', !!(tr24 && tr24.camp), tr24 ? JSON.stringify(tr24.camp) : '');
 }
+section('T25. 不为凑同牌型拆同点组去拼龙(用户 23:22: QKA 拆了 QQQ/KKKK)');
+{
+  var hand25 = [C('S',12), C('H',12), C('D',12), C('S',13), C('H',13), C('D',13), C('C',13), C('S',14)];
+  var table25 = [C('S',11), C('H',11), C('D',11)];   // 上家出 JQK(龙)
+  var st25 = stateWith('D', hand25, table25, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act25 = aiMod.chooseAction(st25, 'D');
+  var p25 = playedOf(st25, 'D', act25);
+  // 不拆同点组: 出的每个点数, 张数要么 0 要么等于手里该点数全部
+  function noSplitOf(played, handAll) {
+    if (!played.length) return true;
+    var hc = {}, uc = {};
+    handAll.forEach(function (c) { hc[c.rank] = (hc[c.rank] || 0) + 1; });
+    played.forEach(function (c) { uc[c.rank] = (uc[c.rank] || 0) + 1; });
+    for (var rk in uc) if (uc[rk] !== hc[rk]) return false;
+    return true;
+  }
+  check('T25.1 出了牌就没拆同点组去拼牌型', noSplitOf(p25, hand25),
+    act25.type + ' ' + typeOf(p25) + ' ranks=' + ranksOf(p25));
+  // 对照: 桌面是**主A持有者**(身份明的敌人) -> 该出整组, 不该拆 QQQ/KKKK 去拼一条龙
+  var st25b = stateWith('D', hand25, table25, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act25b = aiMod.chooseAction(st25b, 'D');
+  var p25b = playedOf(st25b, 'D', act25b);
+  check('T25.2 对已知敌人: 出的牌能压过桌面',
+    p25b.length > 0 && handTypes.canBeat(handTypes.identifyHand(p25b), handTypes.identifyHand(table25)),
+    act25b.type + ' ' + typeOf(p25b) + ' ranks=' + ranksOf(p25b));
+  check('T25.3 对已知敌人: 也没拆同点组', noSplitOf(p25b, hand25),
+    act25b.type + ' ' + typeOf(p25b) + ' ranks=' + ranksOf(p25b));
+}
+
+section('T26. 起手不拆对子去凑更长的龙(用户 23:22: 22345 出了 2345)');
+{
+  var hand26 = [C('S',2), C('H',2), C('D',3), C('C',4), C('S',5)];
+  var st26 = stateWith('D', hand26, [], {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act26 = aiMod.chooseAction(st26, 'D');
+  var p26 = playedOf(st26, 'D', act26);
+  var hc26 = {}, uc26 = {};
+  hand26.forEach(function (c) { hc26[c.rank] = (hc26[c.rank] || 0) + 1; });
+  p26.forEach(function (c) { uc26[c.rank] = (uc26[c.rank] || 0) + 1; });
+  var noSplit26 = p26.length > 0;
+  for (var rk26 in uc26) if (uc26[rk26] !== hc26[rk26]) noSplit26 = false;
+  check('T26.1 起手没拆同点组', noSplit26, typeOf(p26) + ' ranks=' + ranksOf(p26));
+  check('T26.2 起手出了能连上的牌', typeOf(p26) === 'STRAIGHT' || typeOf(p26) === 'PAIR' || typeOf(p26) === 'SINGLE',
+    typeOf(p26) + ' ranks=' + ranksOf(p26));
+}
+
+section('T27. 手牌只剩一组时整组出(用户 23:22: 只剩对4 却单出一个4)');
+{
+  var hand27 = [C('S',4), C('H',4)];
+  var st27 = stateWith('D', hand27, [], {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act27 = aiMod.chooseAction(st27, 'D');
+  var p27 = playedOf(st27, 'D', act27);
+  check('T27.1 把手上的牌一次出完', p27.length === hand27.length,
+    act27.type + ' ' + typeOf(p27) + ' ranks=' + ranksOf(p27));
+}
+
+section('T28. 取牌: 44 可取同阵营, 三个4及以上不取同阵营(用户 23:22)');
+{
+  var hand28a = [C('S',4), C('H',4), C('S',3)];
+  var table28a = [C('S',9), C('H',9), C('D',9)];   // 同阵营(抓方 E)出的 3 张
+  var st28a = stateWith('D', hand28a, table28a, {
+    mode: '2V3_明打', 次方: 'C', 次方公开: true,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  var act28a = aiMod.chooseAction(st28a, 'D');
+  var p28a = playedOf(st28a, 'D', act28a);
+  check('T28.1 用 44 取同阵营的 3 张目标',
+    p28a.length === 2 && p28a.every(function (c) { return c.rank === 4; }),
+    act28a.type + ' ' + typeOf(p28a) + ' ranks=' + ranksOf(p28a));
+  var hand28b = [C('S',4), C('H',4), C('D',4), C('S',3)];
+  var table28b = [C('S',9), C('H',9), C('D',9), C('C',9)];   // 同阵营出的 4 张
+  var st28b = stateWith('D', hand28b, table28b, {
+    mode: '2V3_明打', 次方: 'C', 次方公开: true,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  var act28b = aiMod.chooseAction(st28b, 'D');
+  var p28b = playedOf(st28b, 'D', act28b);
+  check('T28.2 三个4及以上不取同阵营的牌',
+    !(p28b.length === 3 && p28b.every(function (c) { return c.rank === 4; })),
+    act28b.type + ' ' + typeOf(p28b) + ' ranks=' + ranksOf(p28b));
+}
+
+section('T29. 这手打完就出完 -> 连队友的牌也跟(用户 23:22)');
+{
+  var hand29 = [C('S',9), C('H',9), C('D',9)];
+  var table29 = [C('S',6), C('H',6), C('D',6)];   // 同阵营(抓方 E)出的 3 张
+  var st29 = stateWith('D', hand29, table29, {
+    mode: '2V3_明打', 次方: 'C', 次方公开: true,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  var act29 = aiMod.chooseAction(st29, 'D');
+  var p29 = playedOf(st29, 'D', act29);
+  check('T29.1 出完就走 -> 压了同阵营的牌', act29.type === 'PLAY' && p29.length === hand29.length,
+    act29.type + ' ' + typeOf(p29) + ' ranks=' + ranksOf(p29));
+}
+
+section('T30. 裁定 A: 推定次方后, 其余未知玩家是队友(不取他们的牌)');
+{
+  var hand30 = [C('S',4), C('H',4), C('D',4), C('S',3)];
+  var table30 = [C('S',9), C('H',9), C('D',9), C('C',9)];   // 另一个未知玩家 B 出的 4 张
+  var st30 = stateWith('D', hand30, table30, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  st30.plays = [{ playerId: 'E', type: 'BIG_TRIPLE', count: 4, beat: 'D' }];  // 推定 E 是次方 -> B 是队友
+  var act30 = aiMod.chooseAction(st30, 'D');
+  var p30 = playedOf(st30, 'D', act30);
+  check('T30.1 推定次方后不取队友的牌',
+    !(p30.length === 3 && p30.every(function (c) { return c.rank === 4; })),
+    act30.type + ' ' + typeOf(p30) + ' ranks=' + ranksOf(p30));
+  // 对照: 没有推定线索 -> B 阵营不明 -> 可以取他的牌
+  var st30b = stateWith('D', hand30, table30, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  st30b.plays = [];
+  var act30b = aiMod.chooseAction(st30b, 'D');
+  var p30b = playedOf(st30b, 'D', act30b);
+  check('T30.2 没有推定线索时, 阵营不明就照常取牌',
+    p30b.length === 3 && p30b.every(function (c) { return c.rank === 4; }),
+    act30b.type + ' ' + typeOf(p30b) + ' ranks=' + ranksOf(p30b));
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }

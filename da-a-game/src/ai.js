@@ -19,6 +19,8 @@ const { candidateCombos } = require('./combos.js');
 const leadChoice = require('./lead-choice.js');
 // [2026-11-07 用户 D] 口径配置(排序键 / 「X+」牌型集合)单独一个文件: 改口径只改那里
 const policy = require('./ai-policy.js');
+// [2026-11-07 23:27 用户] 阵营可见性(敌/友/不明)统一走 src/camp.js —— 出牌决策读这个标记
+const camp = require('./camp.js');
 
 // 牌的"保留价值"(越大越该留着)。仅用于 AI 排序, 不参与任何合法性判断。
 function keepValue(c) {
@@ -62,31 +64,9 @@ var EGG_PLUS_TYPES = policy.EGG_PLUS;
 //   「身份未明的人」对「另一个身份未明的人」打出蛋子+ -> 其他抓方默认把他标记为次A(本局有效),
 //   于是对他可以出任何牌压制(蛋子+ 也在内)。
 //   次方本人知道自己的阵营 -> 他可以出任何牌压制其他抓方玩家(见 _campUncertain)。
-function _canInferNext(state, viewerId) {
-  if (!state) return false;
-  if (state['次方公开'] === true) return false;             // 次方已亮明 -> 不需要推定
-  var mode = state.mode || '';
-  if (mode.indexOf('暗打') < 0) return false;               // 只在暗打
-  var next = state['次方'];
-  if (next && next === viewerId) return false;               // 我就是次方 -> 我知道
-  var holder = state['主A'] && state['主A'].establishedBy;
-  if (holder && holder === viewerId) return false;           // 我是主A持有者 -> 我知道
-  return true;
-}
+// [2026-11-07 23:27 用户] 「推定次方」也归 src/camp.js 管(公开信息推导)
 function _inferredNext(state, viewerId) {
-  if (!_canInferNext(state, viewerId)) return null;
-  var holder = state['主A'] && state['主A'].establishedBy;
-  var plays = state.plays || [];
-  for (var i = 0; i < plays.length; i++) {
-    var p = plays[i];
-    if (!p || !p.type || !EGG_PLUS_TYPES[p.type]) continue;   // 必须是蛋子+
-    if (!p.beat) continue;                                     // 必须是压别人(起手不算)
-    if (p.playerId === p.beat) continue;
-    if (p.playerId === viewerId) continue;          // 是我自己打的 -> 我知道自己的阵营
-    if (holder && (p.playerId === holder || p.beat === holder)) continue;   // 主A持有者身份是明的
-    return p.playerId;                          // 第一次推定即锁定(本局有效)
-  }
-  return null;
+  return camp.inferNext(state, viewerId);
 }
 
 // 同阵营判定(§9/§10) —— **只用公开信息**, 不用引擎给的**真阵营表**。
@@ -99,50 +79,17 @@ function _inferredNext(state, viewerId) {
 // [2026-11-07 00:19 用户] 「在次方身份未明时抓方不出大蛋子+牌型压制身份未明的其他成员」
 //   -> 次方未亮明时, 抓方视角下**别人的阵营不明**(可能是队友), 对这种人不能用大蛋子+。
 //   返回 true = 阵营不明(慎用大蛋子+)。
+// [2026-11-07 23:27 用户] 敌/友标记唯一来源 src/camp.js:
+//   a = 桌上那人, b = 观察者(AI)。UNKNOWN = 阵营不明 -> 慎用蛋子+; ENEMY/ALLY = 已知 -> 不受限。
 function _campUncertain(state, a, b) {
   if (!state || !a || !b) return false;
-  if (state['次方公开'] === true) return false;            // 次方已亮明 -> 阵营公开
-  // [2026-11-07 22:26 用户 B] 明打 = 身份公开(与 _isSameCamp 同一口径, 引擎在 2V3_明打 也置次方公开)
-  //   -> 明打里没有「阵营不明」这回事, 不能拿蛋子+ 去压也无所谓。
-  if ((state.mode || '').indexOf('明打') >= 0) return false;
-  var next = state['次方'];
-  if (next && next === b) return false;                   // AI 自己就是次方 -> 他知道全部
-  var holder = state['主A'] && state['主A'].establishedBy;
-  if (holder && (holder === a || holder === b)) return false;   // 主A 持有者知道次方是谁
-  // [2026-11-07 21:47 用户] a 已被**推定为次方**(见 _inferredNext) -> 他的阵营已知(主方/敌人)
-  //   -> 不算阵营不明, 本局可以出任何牌压制他(蛋子+ 也在内)。
-  if (_inferredNext(state, b) === a) return false;
-  return true;                                            // 抓方视角: 桌上那人可能是次方(队友)
+  return camp.campOf(state, b, a) === 'UNKNOWN';
 }
 
+// [2026-11-07 23:27 用户] 同阵营 = 敌友标记里的 ALLY(队友)
 function _isSameCamp(state, a, b) {
   if (!state || !a || !b || a === b) return false;
-  // [2026-11-06 用户] 「丙和甲是同阵营, 甲出666, 丙出222, 现在身份是公开的, 并不应该压制甲」
-  //   -> **明打**(2V3_明打 / 1V4_明打)或次方已亮明时, 阵营是**公开**的:
-  //      直接用引擎的真阵营表(同在主方 或 同在抓方 = 同阵营), 不用王/大A/蛋子去压队友。
-  //      注: 引擎在 2V3_明打 时**不会**把 次方公开 置 true(见 src/transition.js 注释),
-  //      约定上「明打=身份公开」—— 与 src/push-wind.js 的 次方明确、game.js 的 secondOpen 一致。
-  var _mode = state['mode'] || '';
-  var _mainList = state['主方'] || [];
-  var _takerList = state['抓方'] || [];
-  var _campsPublic = (state['次方公开'] === true) || (_mode.indexOf('明打') >= 0);
-  if (_campsPublic && (_mainList.length || _takerList.length)) {
-    var _aM = _mainList.indexOf(a) >= 0, _bM = _mainList.indexOf(b) >= 0;
-    if (_aM && _bM) return true;                       // 都是主方
-    if (_takerList.indexOf(a) >= 0 && _takerList.indexOf(b) >= 0) return true;   // 都是抓方
-    return false;                                       // 不同阵营
-  }
-  var main = [];
-  if (state['主A'] && state['主A'].establishedBy) main.push(state['主A'].establishedBy);
-  var next = state['次方'];
-  // 次方身份是否**已知**: 公开/亮明, 或**自己就是次方**(本人当然知道)
-  var nextKnown = !!(next && (state['次方公开'] || next === b));
-  if (nextKnown) main.push(next);
-  var aMain = main.indexOf(a) >= 0;
-  var bMain = main.indexOf(b) >= 0;
-  if (aMain && bMain) return true;      // 都自认主方 -> 同阵营
-  if (!nextKnown) return false;         // 次方未亮明: 阵营不明 -> 不当同阵营
-  return !aMain && !bMain;              // 次方已知且是别人: 其余都是抓方 -> 同阵营
+  return camp.campOf(state, b, a) === 'ALLY';
 }
 
 
@@ -209,7 +156,10 @@ function chooseAction(state, playerId) {
   //   手牌 33344  + 别人出 222 -> 4 只有 2 张(不是蛋子), 取 2 张=整组 -> 取牌;
   //   手牌 333444 + 别人出 222 -> 4 是 444(蛋子), 取 2 张会拆散它 -> **不取**, 改出 333;
   //   手牌 444    + 别人出 5555 -> 取 3 张=整组 -> 取牌 (§7.1: 取 N 张用 N-1 张 4)。
-  if (!_sameCampTable && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
+  // [2026-11-07 23:22 用户] 「44 可以取同阵营的牌, 三个 4 及以上的 4 不取同阵营的牌」
+  //   -> 同阵营取牌: 只允许用 2 张 4(去取 3 张目标); 需要 3 张及以上 4 时不取同阵营的牌。
+  var _sameCampCapOk = (_need <= 2);
+  if ((!_sameCampTable || _sameCampCapOk) && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
       && fours.length >= _need) {
     var _g4 = fours.length;
     var _wholeGroup = (_g4 === _need);         // 整组用掉 -> 不拆散
@@ -270,15 +220,12 @@ function chooseAction(state, playerId) {
     }
     return n;
   }
-  // [2026-11-07 21:47 用户] 拆「蛋子级」(>=3 张同点)的组去出一个蛋子级组合 -> 罚。
-  //   例: 手里 22222, 桌面是蛋子 -> 该出 22222(整组), 不该拆出 222 去凑「同牌型」。
-  //   只罚「蛋子级组」: 手里 66 出一个 6(拆对子)仍然正常, 不能因此改出 4 张大蛋子去压单张。
-  var _eggLevelTypes = {
-    TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1,
-    STRAIGHT_TRIPLE: 1, BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1
-  };
-  function _splitEggCount(cards, type) {
-    if (!_eggLevelTypes[type]) return 0;
+  // [2026-11-07 23:22 用户] 拆「蛋子级」(>=3 张同点)的组去拼一手 **>=3 张**的牌 -> 罚。
+  //   例1: 手里 22222, 桌面是蛋子 -> 该出 22222(整组), 不该拆出 222 去凑「同牌型」。
+  //   例2: 手里 QQQKKKKA, 上家出 JQK(龙) -> 不该拆 QQQ/KKKK 去拼一条 QKA。
+  //   只罚「>=3 张的组合」: 单张/对子拆组仍正常(出便宜牌), 不会因此改出 4 张大蛋子去压一张单牌。
+  function _splitEggCount(cards) {
+    if (cards.length < 3) return 0;
     var used = {};
     cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
     var n = 0;
@@ -340,7 +287,10 @@ function chooseAction(state, playerId) {
     // [2026-11-07 00:19 用户] 阵营不明(次方未亮明)时, 不用大蛋子+ 去压
     if (_uncertain && policy.EGG_PLUS[h.type]) return;
     // 同阵营: 不用 王/大A/蛋子及以上 去压
-    if (_sameCamp && _isHeavy(comboCards, h.type)) return;
+    //   [2026-11-07 23:22 用户] 「如果本次手牌打出后就全部出完, 则队友的牌也要跟」
+    //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。
+    var _willEmpty = (comboCards.length === hand.length);
+    if (_sameCamp && _isHeavy(comboCards, h.type) && !_willEmpty) return;
     var _pick = {
       cards: comboCards,
       type: h.type,
@@ -350,7 +300,7 @@ function chooseAction(state, playerId) {
       bigGroup: _bigGroupTypes[h.type] ? 1 : 0,                        // 大组牌型当最后手段
       split: _splitCount(comboCards),                                  // 不拆牌优先
       // [2026-11-07 21:47] 不拆蛋子级同点组(手里 22222 不该拆出 222)
-      splitEgg: _splitEggCount(comboCards, h.type),
+      splitEgg: _splitEggCount(comboCards),
       // [2026-11-06 用户] 「4 当作蛋子及以上牌型出的时候, 优先度靠后」
       //   (必须出蛋子时, 手上有 444 和别的蛋子 -> 优先出别的蛋子)
       fourEgg: (comboCards.length >= 3 && comboCards.every(function (c) {

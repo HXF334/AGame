@@ -34,6 +34,7 @@ var EXPECTED_PACK = [
   'ui-render.js',
   'src/ai.js',
   'src/ai-policy.js',
+  'src/camp.js',
   'src/capture.js',
   'src/card.js',
   'src/combos.js',

@@ -47,6 +47,28 @@ section('P2. 「X+」= X 及以上(裁定 B)');
     Object.keys(policy.EGG_PLUS).filter(function (k) { return !policy.BIG_EGG_PLUS[k]; }).join(','));
 }
 
+section('P3. 敌友标记(src/camp.js): 三态判定(用户 23:27)');
+{
+  var camp = require('../src/camp.js');
+  function mk(o) {
+    return Object.assign({ mode: '2V3_暗打', '次方': 'C', '次方公开': false,
+      '主A': { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+      '主方': ['A','C'], '抓方': ['B','D','E'], plays: [] }, o || {});
+  }
+  var st = mk();
+  check('P3.1 抓方视角: 主A持有者=敌', camp.campOf(st, 'D', 'A') === 'ENEMY', camp.campOf(st, 'D', 'A'));
+  check('P3.2 抓方视角: 其他未知玩家=不明(还没推定)', camp.campOf(st, 'D', 'B') === 'UNKNOWN', camp.campOf(st, 'D', 'B'));
+  check('P3.3 次方视角: 主A持有者=友', camp.campOf(st, 'C', 'A') === 'ALLY', camp.campOf(st, 'C', 'A'));
+  check('P3.4 次方视角: 其他抓方=敌', camp.campOf(st, 'C', 'D') === 'ENEMY', camp.campOf(st, 'C', 'D'));
+  check('P3.5 主A持有者视角: 次方=友', camp.campOf(st, 'A', 'C') === 'ALLY', camp.campOf(st, 'A', 'C'));
+  check('P3.6 主A持有者视角: 其他抓方=敌', camp.campOf(st, 'A', 'D') === 'ENEMY', camp.campOf(st, 'A', 'D'));
+  var st2 = mk({ plays: [{ playerId: 'E', type: 'BIG_TRIPLE', count: 4, beat: 'D' }] });
+  check('P3.7 有推定: 推定出来的那个人=敌', camp.campOf(st2, 'D', 'E') === 'ENEMY', camp.campOf(st2, 'D', 'E'));
+  check('P3.8 有推定: 其余未知玩家=友(裁定 A)', camp.campOf(st2, 'D', 'B') === 'ALLY', camp.campOf(st2, 'D', 'B'));
+  var st3 = mk({ mode: '2V3_明打', '次方公开': true });
+  check('P3.9 公开: 同阵营=友', camp.campOf(st3, 'D', 'E') === 'ALLY', camp.campOf(st3, 'D', 'E'));
+  check('P3.10 公开: 不同阵营=敌', camp.campOf(st3, 'D', 'C') === 'ENEMY', camp.campOf(st3, 'D', 'C'));
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }

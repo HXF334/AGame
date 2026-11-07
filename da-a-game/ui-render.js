@@ -20,6 +20,8 @@ var RANKS_DESC = ['3', '2', 'A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '
 // [2026-11-06 用户] 「打出的手牌排序时按龙的顺序排序而不是按单张大小」
 //   -> 链序判定放在 src/sort-cards.js(纯逻辑), 渲染层只负责画
 var sortCards = require('./src/sort-cards.js');
+// [2026-11-07 23:27 用户] 敌友标记的**自动填充**: src/camp.js 算出敌/友/不明
+var camp = require('./src/camp.js');
 
 // ===== 座位环排 =====
 // 逆时针 = ids 顺序 A→B→C→D→E(=轮转顺序)。
@@ -457,7 +459,14 @@ function drawSeats(ctx, st, m) {
     rr(ctx, colX - bw / 2, by, bw, bh, 4); ctx.stroke();
     text(ctx, String(cnt), colX, by + bh / 2, Math.max(9, Math.round(m.vh * 0.030)), '#ffffff', 'center', true);
     // 敌友钮(最上)
-    drawAllyMark(ctx, st, m, colX, mky, mr, myMarks[pid] || null);
+    // [2026-11-07 23:27 用户] 敌友标记: **手动标记优先**; 没手动标就按 src/camp.js 自动算
+    //   (抓方视角: 主方=敌; 推定的次A=敌; 推定后其余未知玩家=友; 还没线索=?)
+    var _mark = myMarks[pid] || null;
+    if (!_mark && st.gameState) {
+      var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
+      _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+    }
+    drawAllyMark(ctx, st, m, colX, mky, mr, _mark);
     markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
     // 「不出」在头像内侧
     // 「不出」/「已出完」: 判据是**本轮**是否出过错牌
@@ -643,17 +652,18 @@ function drawHand(ctx, st, m) {
   // [2026-11-04 用户] 托管时真人手牌处显示**半透明「取消托管」**标识
   //   -> 点这块区域也能取消托管(命中框由 game.js 记录)。
   if (st.autoPlay) {
-    var _cw = Math.max(96, Math.round(m.vw * 0.16));
-    var _ch = Math.round(m.vh * 0.075);
+    // [2026-11-07 23:22 用户] 「取消托管按钮再稍微大一点, 上移一点」
+    var _cw = Math.max(112, Math.round(m.vw * 0.19));
+    var _ch = Math.round(m.vh * 0.088);
     var _cx = m.vw / 2 - _cw / 2;
     // [2026-11-06 用户] 「取消托管」标识放到**手牌下半部、数字下方**
     //   -> 原来画在手牌**上方**(L2.y - _ch/2), 现在压在手牌下半部、点数数字下面。
-    var _cy = Math.round(L2.y + L2.cardH * 0.64 - _ch / 2);
+    var _cy = Math.round(L2.y + L2.cardH * 0.60 - _ch / 2);
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     rr(ctx, _cx, _cy, _cw, _ch, Math.round(_ch * 0.35)); ctx.fill();
     ctx.strokeStyle = 'rgba(255,217,138,0.85)'; ctx.lineWidth = 1.5;
     rr(ctx, _cx, _cy, _cw, _ch, Math.round(_ch * 0.35)); ctx.stroke();
-    text(ctx, '取消托管', _cx + _cw / 2, _cy + _ch / 2, Math.max(11, Math.round(m.vh * 0.036)), '#ffd98a', 'center', true);
+    text(ctx, '取消托管', _cx + _cw / 2, _cy + _ch / 2, Math.max(12, Math.round(m.vh * 0.040)), '#ffd98a', 'center', true);
     boxes.push({ x: _cx, y: _cy, w: _cw, h: _ch, cancelAutoPlay: true });
   }
   return boxes;
