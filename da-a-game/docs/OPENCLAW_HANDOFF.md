@@ -350,6 +350,10 @@ openclaw config set --batch-file .tmp-config-batch.json
 - **取牌**: 拆 4 组只要还剩 >=2 张 4 就允许(4444 拆 44 取牌)。
 - **日志**: 出牌不再打 `[AI决策]`; 只在托管(合并进那一行)与 AI 过牌时打。
 - **次方**: 我就是次方时不推定别人。
+### 7.17 2026-11-08 16:15 批次(敌友标记: 推测 vs 确定)
+
+- `src/camp.js` 新增 `campCertain`: 敌友关系是「确定」还是「推测」。
+- `ui-render.js`: 确定时按真阵营表(次方亮明即刷新), 推测时手动优先; 推测的标记画淡(半透明)。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

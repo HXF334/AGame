@@ -98,4 +98,21 @@ function campOf(state, viewerId, targetId) {
   return 'UNKNOWN';
 }
 
-module.exports = { campOf: campOf, inferNext: inferNext };
+// 该关系是「**确定**」还是「**推测**」:
+//   确定 = 阵营公开(次方亮明/明打/1V4) 或 自己的阵营;
+//   推测 = 靠「推定次方」推出来的(暗打时次方没亮明之前都是推测)。
+// [2026-11-08 16:15 用户] 「暗打时的敌友标记只是推测, 等次A实际打出后需要更新敌友标志」
+function campCertain(state, viewerId, targetId) {
+  if (!state || !viewerId || !targetId) return false;
+  if (viewerId === targetId) return true;
+  var mode = state.mode || '';
+  if ((state['次方公开'] === true) || (mode.indexOf('明打') >= 0) || (mode.indexOf('1V4') >= 0)) return true;
+  var next = state['次方'];
+  var holder = state['主A'] && state['主A'].establishedBy;
+  if (next && next === viewerId) return true;        // 我是次方: 主A持有者是队友, 其余是抓方 -> 确定
+  if (holder && holder === viewerId) return false;   // 我是主A: 暗打时不知道谁是次方 -> 推测
+  if (holder && targetId === holder) return true;    // 主A持有者: 身份明的敌人 -> 确定
+  return false;                                     // 其余靠推定 -> 推测
+}
+
+module.exports = { campOf: campOf, inferNext: inferNext, campCertain: campCertain };

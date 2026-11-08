@@ -359,14 +359,18 @@ function drawMemo(ctx, st, m) {
 
 // ===== 敌友钮 =====
 // [用户 2026-10-25] 每个**别人**头像左上角; 三态 ?/友/敌; 每人一套独立标记
-function drawAllyMark(ctx, st, m, x, y, r, state) {
+// [2026-11-08 16:15 用户] 暗打时的敌友标记只是**推测**: 画淡一点(半透明);
+//   等次A实际亮明(次方公开)后, 标记变成**确定**(实心)并按真阵营表刷新。
+function drawAllyMark(ctx, st, m, x, y, r, state, inferred) {
   var col = state === 'friend' ? '#2f6fb5' : (state === 'enemy' ? '#c8102e' : '#2f8f4f');
   var label = state === 'friend' ? '友' : (state === 'enemy' ? '敌' : '?');
+  ctx.globalAlpha = inferred ? 0.55 : 1;
   ctx.fillStyle = col;
   circle(ctx, x, y, r); ctx.fill();
   ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
   circle(ctx, x, y, r); ctx.stroke();
   text(ctx, label, x, y, Math.max(8, Math.round(m.vh * 0.026)), '#ffffff', 'center', true);
+  ctx.globalAlpha = 1;
 }
 
 // ===== 玩家座位 =====
@@ -461,12 +465,17 @@ function drawSeats(ctx, st, m) {
     // 敌友钮(最上)
     // [2026-11-07 23:27 用户] 敌友标记: **手动标记优先**; 没手动标就按 src/camp.js 自动算
     //   (抓方视角: 主方=敌; 推定的次A=敌; 推定后其余未知玩家=友; 还没线索=?)
-    var _mark = myMarks[pid] || null;
-    if (!_mark && st.gameState) {
+    // [2026-11-08 16:15 用户] 「暗打时的敌友标记只是推测, 等次A实际打出后需要更新敌友标志」
+    //   -> 关系**确定**(次方亮明/明打/1V4)时: 以真阵营表为准(手动标记不再挡住更新);
+    //      关系**推测**时: 手动标记优先, 没有就按 src/camp.js 的推定值; 画淡一点区分。
+    var _mark = null, _infer = false;
+    if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
       _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+      _infer = !camp.campCertain(st.gameState, st.humanPlayer, pid);
+      if (_infer && myMarks[pid]) _mark = myMarks[pid];
     }
-    drawAllyMark(ctx, st, m, colX, mky, mr, _mark);
+    drawAllyMark(ctx, st, m, colX, mky, mr, _mark, _infer);
     markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
     // 「不出」在头像内侧
     // 「不出」/「已出完」: 判据是**本轮**是否出过错牌
