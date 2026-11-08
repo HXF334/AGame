@@ -419,8 +419,30 @@ var canvas = null, ctx = null, W = 0, H = 0;
 if (typeof wx !== 'undefined') {
   canvas = wx.createCanvas();
   ctx = canvas.getContext('2d');
-  W = canvas.width;
-  H = canvas.height;
+  // [2026-11-08 22:33 用户] iPhone17 / 红米K50 **首次加载**画面错乱(头像被拉成椭圆、顶栏重叠、手牌挤成一团),
+  //   再次进入就正常。
+  //   根因: 画布刚建好时 canvas.width/height 未必已经跟真机一致(可能还是默认值),
+  //   而布局直接拿它当屏幕尺寸 -> 「按小尺寸算布局 + 绘制被拉到真机尺寸」= 非等比拉伸。
+  //   改法: 以系统信息里的窗口尺寸为准, 并把画布设成同一尺寸(布局与画布永远一套); 窗口变化时再同步一次。
+  var _info = null;
+  try { _info = wx.getSystemInfoSync(); } catch (e) { _info = null; }
+  var _vw = (_info && _info.windowWidth) || canvas.width;
+  var _vh = (_info && _info.windowHeight) || canvas.height;
+  W = Math.round(_vw);
+  H = Math.round(_vh);
+  try { canvas.width = W; canvas.height = H; } catch (e) { }
+  if (typeof wx.onWindowResize === 'function') {
+    try {
+      wx.onWindowResize(function (r) {
+        var _nw = (r && r.windowWidth) || W;
+        var _nh = (r && r.windowHeight) || H;
+        W = Math.round(_nw);
+        H = Math.round(_nh);
+        try { canvas.width = W; canvas.height = H; } catch (e) { }
+        if (ctx) draw();
+      });
+    } catch (e) { }
+  }
 }
 
 // === 玩家姓名 (内部 ID = A-E, 显示 = 甲乙丙丁戊) ===
@@ -1338,11 +1360,11 @@ var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(
 // 敌友三态循环: ? -> 友 -> 敌 -> ?
 function uiMarkCycle(pid) {
   // [2026-11-08 22:20 用户] 「只有次A身份已经明了的时候不能手动改, 其他时候是可以改的」
-  var _pub = (gameState['次方公开'] === true)
-    || ((gameState.mode || '').indexOf('明打') >= 0)
-    || ((gameState.mode || '').indexOf('1V4') >= 0);
-  if (_pub) {
-    log('次方身份已明了, 敌友标记按真实阵营自动判定, 不能手动改');
+  // [2026-11-08 22:33 用户] 1V4: 只有主A不能改(其余四家可以); 2V3暗打: 只有次A不能改(其余人可以);
+  //   次方亮明后所有人不能改(自动更新)。
+  var campMod = require('./src/camp.js');
+  if (!campMod.canManualMark(gameState, humanPlayer)) {
+    log('你已知道这些玩家的阵营, 敌友标记按真实阵营自动判定, 不能手动改');
     return null;
   }
   var mine = uiMarks[humanPlayer] || (uiMarks[humanPlayer] = {});

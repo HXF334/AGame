@@ -467,10 +467,9 @@ function drawSeats(ctx, st, m) {
     // [2026-11-08 22:20 用户] 「只有次A身份已经明了的时候不能手动改, 其他时候是可以改的」
     //   -> 身份未明: 手动标记优先(点了就生效); 身份明了: 以真阵营表为准, 手动标记不再生效。
     var _mark = null;
-    var _pubM = st.gameState && ((st.gameState['次方公开'] === true)
-      || ((st.gameState.mode || '').indexOf('明打') >= 0)
-      || ((st.gameState.mode || '').indexOf('1V4') >= 0));
-    if (!_pubM && myMarks[pid]) _mark = myMarks[pid];
+    // [2026-11-08 22:33 用户] 能不能手动改按观察者自己的知情程度(camp.canManualMark)
+    var _canM = st.gameState ? camp.canManualMark(st.gameState, st.humanPlayer) : false;
+    if (_canM && myMarks[pid]) _mark = myMarks[pid];
     if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
       if (!_mark) _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);

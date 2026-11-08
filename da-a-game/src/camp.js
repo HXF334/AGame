@@ -115,4 +115,18 @@ function campCertain(state, viewerId, targetId) {
   return false;                                     // 其余靠推定 -> 推测
 }
 
-module.exports = { campOf: campOf, inferNext: inferNext, campCertain: campCertain };
+// [2026-11-08 22:33 用户] 谁能手动改敌友标记(按**观察者自己**的知情程度):
+//   - 1V4 暗打: 主A持有者知道其他四家的身份 -> 不能改; 其余四个抓方 -> 可以改。
+//   - 2V3 暗打且次方未明: 次A(次方)知道所有玩家阵营 -> 不能改; 其余人 -> 可以改。
+//   - 次方身份亮明(次方公开/明打) -> 自动更新敌友标记, 所有人不能改。
+function canManualMark(state, viewerId) {
+  if (!state || !viewerId) return false;
+  var mode = state.mode || '';
+  var holder = state['主A'] && state['主A'].establishedBy;
+  if (mode.indexOf('1V4') >= 0) return !(holder && holder === viewerId);
+  if (state['次方公开'] === true || mode.indexOf('明打') >= 0) return false;
+  var next = state['次方'];
+  return !(next && next === viewerId);
+}
+
+module.exports = { campOf: campOf, inferNext: inferNext, campCertain: campCertain, canManualMark: canManualMark };
