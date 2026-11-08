@@ -583,6 +583,43 @@ section('T30. 裁定 A: 推定次方后, 其余未知玩家是队友(不取他�
     p30b.length === 3 && p30b.every(function (c) { return c.rank === 4; }),
     act30b.type + ' ' + typeOf(p30b) + ' ranks=' + ranksOf(p30b));
 }
+section('T31. 拆组口径: 拆了>=2 组才罚(用户 11-08: QKKKKA 可出 QKA, QQKKKKA 不行)');
+{
+  // 手牌碰了几个同点组(每组 >=2 张才算组), 部分取用才算"拆"
+  function touchedGroups(played, handAll) {
+    var cnt = {};
+    handAll.forEach(function (c) { cnt[c.rank] = (cnt[c.rank] || 0) + 1; });
+    var used = {};
+    played.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+    var n = 0;
+    for (var rk in cnt) {
+      if (cnt[rk] < 2) continue;
+      if (used[rk] && used[rk] < cnt[rk]) n++;
+    }
+    return n;
+  }
+  var table31 = [C('S',11), C('H',11), C('D',11)];   // 上家出 JQK(龙)
+  var hand31 = [C('S',12), C('H',13), C('D',13), C('C',13), C('S',13), C('H',14)];  // Q KKKKK A
+  var st31 = stateWith('D', hand31, table31, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act31 = aiMod.chooseAction(st31, 'D');
+  var p31 = playedOf(st31, 'D', act31);
+  check('T31.1 QKKKKA: 可以出 QKA(只动了一个组)',
+    act31.type === 'PLAY' && touchedGroups(p31, hand31) <= 1,
+    act31.type + ' ' + typeOf(p31) + ' ranks=' + ranksOf(p31));
+  var hand32 = [C('S',12), C('H',12), C('D',13), C('C',13), C('S',13), C('H',14)];  // QQ KKKK A
+  var st32 = stateWith('D', hand32, table31, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act32 = aiMod.chooseAction(st32, 'D');
+  var p32 = playedOf(st32, 'D', act32);
+  check('T32.1 QQKKKKA: 不出 QKA(动了两个组)',
+    act32.type === 'PLAY' && touchedGroups(p32, hand32) <= 1,
+    act32.type + ' ' + typeOf(p32) + ' ranks=' + ranksOf(p32));
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }

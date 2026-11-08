@@ -64,10 +64,15 @@ function campOf(state, viewerId, targetId) {
     if (holder && targetId === holder) return 'ALLY';
     return 'ENEMY';
   }
-  // 我是主A持有者 -> 次方是队友, 其余都是敌人
+  // 我是主A持有者 -> [2026-11-08 用户] 「暗打时主A也不知道谁是次A」
+  //   -> 开局时其他人对他一律**不明**; 推定出次方之后, 那个次方是**友**(主方两口子), 其余是**敌**。
   if (holder && holder === viewerId) {
-    if (next && targetId === next) return 'ALLY';
-    return 'ENEMY';
+    var inferredM = inferNext(state, viewerId);
+    if (inferredM) {
+      if (targetId === inferredM) return 'ALLY';
+      return 'ENEMY';
+    }
+    return 'UNKNOWN';
   }
   // 我是抓方(暗打, 次方未亮明)
   if (holder && targetId === holder) return 'ENEMY';        // 主A持有者: 身份明的敌人

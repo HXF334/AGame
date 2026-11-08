@@ -1183,12 +1183,14 @@ function uiButtons() {
   if (playing) {
     // [2026-11-04 用户] 托管中 -> 真人**不能手动操作**(AI 代打), 按钮全部禁用
     var onTurn = currentPlayer === humanPlayer && !uiAutoPlay;
-    // [2026-11-07 23:22 用户] 「托管时出牌按钮隐藏」-> 托管中 AI 代打, 真人不用手动出牌
-    //   -> 出牌按钮**整个不画**(连命中框都没有); 不出/提示 保留但置灰。
-    if (!uiAutoPlay) out.push({ id: 'play', label: '出牌', enabled: onTurn });
-    out.push({ id: 'pass', label: '不出', enabled: onTurn });
-    // [2026-10-24] 【提示】: 只给**引擎校验过的合法候选**(见 uiHintCandidates)
-    out.push({ id: 'hint', label: '提示', enabled: onTurn });
+    // [2026-11-07 23:22 / 2026-11-08 用户] 「托管中不再显示出牌/不出/提示三个按钮」
+    //   -> 托管中 AI 代打, 真人不用手动操作: 三个按钮**整个不画**(连命中框都没有)。
+    if (!uiAutoPlay) {
+      out.push({ id: 'play', label: '出牌', enabled: onTurn });
+      out.push({ id: 'pass', label: '不出', enabled: onTurn });
+      // [2026-10-24] 【提示】: 只给**引擎校验过的合法候选**(见 uiHintCandidates)
+      out.push({ id: 'hint', label: '提示', enabled: onTurn });
+    }
   }
 
   if (ended) {

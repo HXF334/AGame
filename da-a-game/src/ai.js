@@ -220,18 +220,26 @@ function chooseAction(state, playerId) {
     }
     return n;
   }
-  // [2026-11-07 23:22 用户] 拆「蛋子级」(>=3 张同点)的组去拼一手 **>=3 张**的牌 -> 罚。
-  //   例1: 手里 22222, 桌面是蛋子 -> 该出 22222(整组), 不该拆出 222 去凑「同牌型」。
-  //   例2: 手里 QQQKKKKA, 上家出 JQK(龙) -> 不该拆 QQQ/KKKK 去拼一条 QKA。
-  //   只罚「>=3 张的组合」: 单张/对子拆组仍正常(出便宜牌), 不会因此改出 4 张大蛋子去压一张单牌。
+  // [2026-11-08 用户] 「QKA 拆了 QQQ/KKKK 的问题是因为拆了两组」
+  //   两条罚则:
+  //   (1) 拆了 **>=2 个**同点组(每组 >=2 张) -> 罚。
+  //       例: QQKKKKA 不能出 QKA(拆了 QQ + KKKKK); QKKKKA 可以出 QKA(只动了 KKKKK)。
+  //   (2) 拆 >=3 张的组去拼 >=3 张的牌, 且拆完该组**剩不到 3 张**(蛋子级被拆垮) -> 罚。
+  //       例: 手里 22222 不该拆出 222; QQQKKKKA 不该拆 QQQ 去拼 QKA。
+  //   单张/对子拆组仍然正常(出便宜牌), 不会因此改出 4 张大蛋子去压一张单牌。
   function _splitEggCount(cards) {
-    if (cards.length < 3) return 0;
+    if (cards.length < 3) return 0;              // 单张/对子拆组 -> 不罚
     var used = {};
     cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
-    var n = 0;
+    var n = 0, touched = 0;
     for (var rk in _hgroups) {
-      if (used[rk] && used[rk] < _hgroups[rk].length && _hgroups[rk].length >= 3) n++;
+      var total = _hgroups[rk].length;
+      var u = used[rk] || 0;
+      if (!u || u >= total) continue;             // 没动 / 整组用掉 -> 不是拆
+      touched++;
+      if (total >= 3 && (total - u) < 3) n++;     // 拆垮了蛋子级组
     }
+    if (touched >= 2) n++;                        // 拆了 >=2 组 -> 罚
     return n;
   }
   // 「重手」: 王 / 大A / 蛋子及以上 -> 同阵营时不主动用

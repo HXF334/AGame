@@ -658,7 +658,8 @@ function drawHand(ctx, st, m) {
     var _cx = m.vw / 2 - _cw / 2;
     // [2026-11-06 用户] 「取消托管」标识放到**手牌下半部、数字下方**
     //   -> 原来画在手牌**上方**(L2.y - _ch/2), 现在压在手牌下半部、点数数字下面。
-    var _cy = Math.round(L2.y + L2.cardH * 0.60 - _ch / 2);
+    // [2026-11-08 用户] 「取消托管稍微下移一点, 不要压着数字」-> 0.60 -> 0.67
+    var _cy = Math.round(L2.y + L2.cardH * 0.67 - _ch / 2);
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     rr(ctx, _cx, _cy, _cw, _ch, Math.round(_ch * 0.35)); ctx.fill();
     ctx.strokeStyle = 'rgba(255,217,138,0.85)'; ctx.lineWidth = 1.5;
