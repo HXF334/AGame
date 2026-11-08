@@ -652,8 +652,8 @@ section('T33. 同点数的牌不拆: 手里 333 不出 33(用户 13:59)');
 
 section('T34. 推定次方的信号: 大蛋子+ 或 三个4取牌(用户 13:59)');
 {
-  var hand34 = [C('S',4), C('H',4), C('D',4), C('C',4)];
-  var table34 = [C('S',9), C('H',9), C('D',9)];
+  var hand34 = [C('S',9), C('H',9), C('D',9), C('C',9)];   // 用 9999 当蛋子+(手里不放4, 免得先触发取牌)
+  var table34 = [C('S',8), C('H',8), C('D',8)];
   var st34 = stateWith('D', hand34, table34, {
     mode: '2V3_暗打', 次方: 'C', 次方公开: false,
     主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
@@ -689,6 +689,48 @@ section('T35. 引擎: 取牌记进流水(kind=CAPTURE + useFours)');
   check('T35.2 流水记了 kind=CAPTURE 和 useFours',
     pl35.length === 1 && pl35[0].kind === 'CAPTURE' && pl35[0].useFours === 3,
     JSON.stringify(pl35[0]));
+}
+section('T36. 起手: 能组龙就别拆组(用户 16:01: 555678 出了 5678)');
+{
+  var hand36 = [C('S',5), C('H',5), C('D',5), C('S',6), C('H',7), C('D',8)];
+  var st36 = stateWith('D', hand36, [], {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act36 = aiMod.chooseAction(st36, 'D');
+  var p36 = playedOf(st36, 'D', act36);
+  var hc36 = {}, uc36 = {};
+  hand36.forEach(function (c) { hc36[c.rank] = (hc36[c.rank] || 0) + 1; });
+  p36.forEach(function (c) { uc36[c.rank] = (uc36[c.rank] || 0) + 1; });
+  var noSplit36 = true;
+  for (var rk36 in uc36) if (uc36[rk36] !== hc36[rk36]) noSplit36 = false;
+  check('T36.1 起手没拆 555 去凑更长的龙', noSplit36, typeOf(p36) + ' ranks=' + ranksOf(p36));
+}
+
+section('T38. 取牌: 手里 4444 可以拆成 44 取牌(用户 16:03)');
+{
+  var hand38 = [C('S',4), C('H',4), C('D',4), C('C',4), C('S',6)];
+  var table38 = [C('S',9), C('H',9), C('D',9)];
+  var st38 = stateWith('D', hand38, table38, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act38 = aiMod.chooseAction(st38, 'D');
+  var p38 = playedOf(st38, 'D', act38);
+  check('T38.1 用 44 取牌(4 张 4 拆成 44, 还剩 2 张)',
+    p38.length === 2 && p38.every(function (c) { return c.rank === 4; }),
+    act38.type + ' ' + typeOf(p38) + ' ranks=' + ranksOf(p38));
+}
+
+section('T39. 次方自己不推定别人(用户 16:03)');
+{
+  var st39 = stateWith('D', [C('S',9)], [], {
+    mode: '2V3_暗打', 次方: 'D', 次方公开: false,
+    主方: ['A','D'], 抓方: ['B','C','E'], lastPlayer: 'B' });
+  st39.plays = [{ playerId: 'E', type: 'BIG_TRIPLE', count: 4, beat: 'D', kind: 'PLAY' }];
+  var act39 = aiMod.chooseAction(st39, 'D');
+  var tr39 = aiMod.getLastTrace();
+  check('T39.1 我就是次方 -> 不推定别人',
+    !(tr39 && tr39.camp && tr39.camp.inferred),
+    tr39 && tr39.camp ? String(tr39.camp.inferred) : '(无轨迹)');
 }
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);

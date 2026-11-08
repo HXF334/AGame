@@ -70,6 +70,9 @@ section('P3. 敌友标记(src/camp.js): 三态判定(用户 23:27)');
   check('P3.12 主A持有者视角: 推定后其余玩家=敌', camp.campOf(st2b, 'A', 'B') === 'ENEMY', camp.campOf(st2b, 'A', 'B'));
   check('P3.13 抓方视角: 主A持有者=敌', camp.campOf(st2b, 'D', 'A') === 'ENEMY', camp.campOf(st2b, 'D', 'A'));
   var st3 = mk({ mode: '2V3_明打', '次方公开': true });
+  var st4 = mk({ mode: '1V4_暗打', '主方': ['A'], '抓方': ['B','C','D','E'] });
+  check('P3.14 1V4: 主A持有者看其他四人是敌', camp.campOf(st4, 'A', 'B') === 'ENEMY', camp.campOf(st4, 'A', 'B'));
+  check('P3.15 1V4: 抓方之间是友', camp.campOf(st4, 'B', 'C') === 'ALLY', camp.campOf(st4, 'B', 'C'));
   check('P3.9 公开: 同阵营=友', camp.campOf(st3, 'D', 'E') === 'ALLY', camp.campOf(st3, 'D', 'E'));
   check('P3.10 公开: 不同阵营=敌', camp.campOf(st3, 'D', 'C') === 'ENEMY', camp.campOf(st3, 'D', 'C'));
 }

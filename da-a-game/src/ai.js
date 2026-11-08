@@ -164,7 +164,11 @@ function chooseAction(state, playerId) {
     var _g4 = fours.length;
     var _wholeGroup = (_g4 === _need);         // 整组用掉 -> 不拆散
     var _tinyGroup = (_g4 < 3);                // 4 组不足 3 张 -> 不是蛋子, 用掉不拆牌型
-    if (_wholeGroup || _tinyGroup) {
+    // [2026-11-08 16:03 用户] 「手牌有 4444, 现在为什么也不会拆成 44 取牌了? 拆完 44 还剩两个 4 是可以的」
+    //   -> 拆 4 组只要**还剩 >=2 张 4**就允许(老规矩: 拆 4 后至少留 2 张)。
+    //      4 张 4 取 3 张目标 -> 剩 1 张 -> 不允许; 取 2 张 -> 剩 2 张 -> 允许。
+    var _keepOk = (_g4 - _need >= 2);
+    if (_wholeGroup || _tinyGroup || _keepOk) {
       var _sub = fours.slice(0, _need);
       if (canCapture(_sub, table).canCapture) _capSubset = _sub;
     }

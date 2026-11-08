@@ -118,7 +118,33 @@ function leadCandidates(hand) {
         best = ch;
       }
     });
-    if (best) return [{ cards: best.cards, type: best.type }];
+    if (best) {
+      // [2026-11-08 16:01 用户] 「手牌 555678 出了 5678, 正常 678 能组成龙的时候就不用拆 555」
+      //   -> 锚点那条龙要**拆组**时, 先看有没有**不拆组**的龙(不要求含锚点): 有就不拆。
+      //      例: 555678 -> 678(不拆 555); 55567 -> 没有不拆组的龙 -> 仍出 567(拆 555)。
+      //   只在「拆的是**蛋子级**(>=3 张)的组」时才换(拆对子不算: 99 + 10,11,12 仍出 9,10,11,12)。
+      var _bigSplit = 0;
+      (function () {
+        var _used = {};
+        best.cards.forEach(function (c) { _used[c.rank] = (_used[c.rank] || 0) + 1; });
+        for (var _rk in groups) {
+          var _tot = groups[_rk].length;
+          var _u = _used[_rk] || 0;
+          if (_u && _u < _tot && _tot >= 3) _bigSplit++;
+        }
+      })();
+      if (_bigSplit > 0) {
+        var _alt = null;
+        chains.forEach(function (ch) {
+          if (ch.splits !== 0) return;
+          if (!_alt || ch.cards.length > _alt.cards.length
+              || (ch.cards.length === _alt.cards.length
+                  && ch.type === HAND_TYPES.DOUBLE_STRAIGHT && _alt.type !== HAND_TYPES.DOUBLE_STRAIGHT)) _alt = ch;
+        });
+        if (_alt) best = _alt;
+      }
+      return [{ cards: best.cards, type: best.type }];
+    }
     // 该点数是 3 张以上(蛋子及以上) -> 留着整组, 跳过(留到最后兜底)
     if (grp.length >= 3) {
       if (!_fallback && !_isDoubleBigA(grp)) _fallback = grp;

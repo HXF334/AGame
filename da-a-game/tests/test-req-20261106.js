@@ -466,9 +466,14 @@ section('B6. 提示: 同牌型优先(上家出JJ, 我有22777 -> 应选 22)(用�
     var first = await waitUntil(function () { return humanHandLen() < h1; }, 4000);
     var h2 = humanHandLen();
     check('C3.2 托管中 AI 替真人出了牌', first, 'hand ' + h1 + ' -> ' + h2);
-    var second = await waitUntil(function () { return humanHandLen() < h2; }, 4000);
+    // [2026-11-08] 「托管**持续**」= 托管一直生效(AI 一直在接管真人回合)。
+    //   断言改成「接管次数变多」: 那一局真人可能**合法地只能过牌**(桌面是连珠蛋, 手里没有大蛋子+能压),
+    //   这时手牌不会变少, 但托管确实一直在替真人行动。
+    var tk0 = g.__autoPlayTakeovers();
+    var second = await waitUntil(function () { return g.__autoPlayTakeovers() > tk0; }, 4000);
     var h3 = humanHandLen();
-    check('C3.3 托管**持续**(本局连续代打, 不用手动再点)', second, 'hand ' + h2 + ' -> ' + h3);
+    check('C3.3 托管**持续**(本局连续代打, 不用手动再点)', second,
+      'takeovers ' + tk0 + ' -> ' + g.__autoPlayTakeovers() + ' hand ' + h2 + ' -> ' + h3);
     g.toggleAutoPlay();                       // 收尾: 关掉托管
     check('C3.4 收尾已关闭托管', g.uiAutoPlay() === false, String(g.uiAutoPlay()));
   }

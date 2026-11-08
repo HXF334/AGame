@@ -284,6 +284,7 @@ function _dealLiangA(suit) {
 // 托管时真人手牌区显示**半透明「取消托管」**标识, 点该区域或顶栏机器人都能取消。
 // **不跨局保留**: 每局开始重置为关闭(见 newGame)。
 var uiAutoPlay = false;        // 托管开关
+var uiAutoPlayTakeovers = 0;   // [2026-11-08] 托管接管次数(测试用: 托管是否**持续**生效)
 var uiAutoPlayTimer = 0;       // 托管排队中的动作(取消托管时必须清掉)
 
 // [2026-11-06 用户] 托管: 开启后**本局持续**由 AI 代打, 直到用户取消;
@@ -350,6 +351,7 @@ function _autoPlayTakeover() {
   if (currentPlayer !== humanPlayer) return false;
   var act = chooseAction(gameState, humanPlayer);
   if (!act) return false;
+  uiAutoPlayTakeovers++;
   if (act.type === 'PLAY') {
     var ids = act.cardIds || [];
     if (!ids.length) return false;
@@ -358,14 +360,17 @@ function _autoPlayTakeover() {
     var _hmap = {};
     ((_hp && _hp.hand) ? _hp.hand : []).forEach(function (c) { _hmap[c.id] = c; });
     var _desc = ids.map(function (id) { return _hmap[id] ? cardDesc(_hmap[id]) : ''; }).filter(Boolean).join(' ');
-    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张' + (_desc ? ' ' + _desc : ''));
-    log(_aiTraceLine(getAiTrace(), pn(humanPlayer)));
+    // [2026-11-08 16:03 用户] 「托管出牌几张和托管出什么牌合并一下」-> 合成一行
+    var _tr = _aiTraceLine(getAiTrace(), pn(humanPlayer));
+    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张' + (_desc ? ' ' + _desc : '') + (_tr ? ' | ' + _tr : ''));
     _autoPlayDoPlay(ids);
     return true;
   }
   if (act.type === 'PASS') {
-    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 不出');
-    log(_aiTraceLine(getAiTrace(), pn(humanPlayer)));
+    // [2026-11-08 16:03 用户] 「托管时过牌的不出文字也看不到了」-> 记上「不出」标记
+    uiPassed[humanPlayer] = true;
+    var _trp = _aiTraceLine(getAiTrace(), pn(humanPlayer));
+    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 不出' + (_trp ? ' | ' + _trp : ''));
     _autoPlayDoPass();
     return true;
   }
@@ -1994,7 +1999,10 @@ function runAI() {
         if (r0 && r0.ok) {
           gameState = r0.state;
           var _re0 = _hadT0 && (gameState.table || []).length === 0;
-          log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
+          // [2026-11-08 16:03 用户] 「托管时部分玩家过牌的不出文字也看不到了」-> AI 过牌也要记「不出」
+          uiPassed[currentPlayer] = true;
+          var _trA = _aiTraceLine(getAiTrace(), pn(currentPlayer));
+          log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS' + (_trA ? ' | ' + _trA : ''));
           advanceCurrentPlayer();
           var endR = checkGameEnd(gameState);
           if (endR.ended) {
@@ -2056,8 +2064,9 @@ function runAI() {
         var _hadT1 = (gameState.table || []).length > 0;
         gameState = r1.state;
         var _re1 = _hadT1 && (gameState.table || []).length === 0;
+        // [2026-11-08 16:03 用户] 「AI决策的log太多了, 不用每次出牌都出」-> 出牌不再打决策轨迹
+        //   (决策轨迹只在: 托管代打时 + AI 过牌时 打)
         log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' ' + action.type + (action.cardIds ? ' (' + action.cardIds.length + '张)' + aiCardsDesc : ''));
-        log(_aiTraceLine(getAiTrace(), pn(currentPlayer)));
         if (wasEmpty) {
           lastEmptiedPlayer = currentPlayer;
           log('  → ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' AI 出完牌 (待轮次结束触发推风)');
@@ -2077,6 +2086,7 @@ function runAI() {
         var fp = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: currentPlayer } });
         if (fp && fp.ok) {
           gameState = fp.state;
+          uiPassed[currentPlayer] = true;
           log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS (强制)');
           advanceCurrentPlayer();
         } else {
@@ -2323,6 +2333,8 @@ if (typeof module !== 'undefined' && module.exports) {
     uiPassed: function () { return uiPassed; },
     uiMemoOpen: function () { return uiMemoOpen; },   // [2026-10-27] 记牌器默认展开 -> 给测试读
     uiAutoPlay: function () { return uiAutoPlay; },
+  // [2026-11-08] 托管接管次数(测试用)
+  __autoPlayTakeovers: function () { return uiAutoPlayTakeovers; },
     toggleAutoPlay: _uiToggleAutoPlay,
     uiTrickId: function () { return uiTrickId; },
     uiPlaysTrick: function () { return uiPlaysTrick; },

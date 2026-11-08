@@ -29,6 +29,10 @@ var BIG_EGG_PLUS_TYPES = require('./ai-policy.js').BIG_EGG_PLUS;
 // 公开信息推出的次方(第一次推定即锁定); excludeId = 观察者自己(自己打的牌不算线索)
 function inferNext(state, excludeId) {
   if (!state) return null;
+  // [2026-11-08 16:03 用户] 「戊自己出牌时的 AI 决策说丙(抓方)是次方」
+  //   -> 我就是次方的话, 我知道自己的阵营, **不推定**别人(别把我自己推成别人)。
+  var _selfNext = state['次方'];
+  if (_selfNext && _selfNext === excludeId) return null;
   if (state['次方公开'] === true) return null;             // 次方已亮明 -> 不需要推定
   var mode = state.mode || '';
   if (mode.indexOf('暗打') < 0) return null;               // 只在暗打
@@ -57,7 +61,10 @@ function campOf(state, viewerId, targetId) {
   var mode = state.mode || '';
   var next = state['次方'];
   var holder = state['主A'] && state['主A'].establishedBy;
-  var publicCamps = (state['次方公开'] === true) || (mode.indexOf('明打') >= 0);
+  // [2026-11-08 16:01 用户] 「1V4 的时候主A 默认设定其他 4 名玩家都是敌方, 现在什么也没设定」
+  //   -> 1V4 **没有次方**: 主方就主A持有者一个, 其余 4 个全是抓方 -> 阵营是**确定的**, 当公开处理。
+  var publicCamps = (state['次方公开'] === true) || (mode.indexOf('明打') >= 0)
+    || (mode.indexOf('1V4') >= 0);
   if (publicCamps) {
     var main = state['主方'] || [];
     var taker = state['抓方'] || [];

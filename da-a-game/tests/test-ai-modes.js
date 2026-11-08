@@ -183,16 +183,23 @@ test('C.4.2 无 4 时出绝对最小', function () {
   assert.strictEqual(a.cardIds[0], C('H', 5).id, '无 4, 应出最小 5');
 });
 
-// [2026-11-06 用户裁定] 取牌只能用**整组**的 4: 4 组 >= 3 张(蛋子/四张组)不许拆散去取牌;
-//   旧断言「capture 时 4s 数量从小到大尝试(2 个即可)」按新裁定作废。
-test('C.4.3 capture: 4 组 >= 3 张时不拆组取牌', function () {
+// [2026-11-06 用户裁定] 取牌拆 4 组后**至少要留 2 张 4**;
+//   [2026-11-08 16:03 用户裁定更新] 「手牌有 4444, 拆完 44 还剩两个 4 是可以的」-> 4 张 4 拆 2 张去取;
+//   但 3 张 4 拆 2 张只剩 1 张 -> 仍不拆。
+test('C.4.3 capture: 4 张 4 可拆 44 取牌; 3 张 4 不拆', function () {
   const s = mk1V4('1V4_暗打');
-  // 目标是 3 张同点数, B 有 4 个 4(四张组) -> 不拆组去取牌
+  // 目标是 3 张同点数, B 有 4 个 4 -> 拆 2 张去取, 还剩 2 张 4
   s.table = [C('H', 9), C('D', 9), C('S', 9)];
   s.lastPlayer = 'A';
   s.players[1].hand = [C('H', 4), C('D', 4), C('C', 4), C('S', 4)];
   const a = chooseAction(s, 'B');
-  assert.ok(!(a.type === 'PLAY' && a.cardIds.length === 2), '不该拆四张组用 2 个 4 去取牌');
+  assert.ok(a.type === 'PLAY' && a.cardIds.length === 2, '4 张 4 拆 2 张去取 3 张目标(剩 2 张)');
+  const s2 = mk1V4('1V4_暗打');
+  s2.table = [C('H', 9), C('D', 9), C('S', 9)];
+  s2.lastPlayer = 'A';
+  s2.players[1].hand = [C('H', 4), C('D', 4), C('C', 4)];
+  const a2 = chooseAction(s2, 'B');
+  assert.ok(!(a2.type === 'PLAY' && a2.cardIds.length === 2), '3 张 4 拆 2 张只剩 1 张 -> 不拆');
 });
 
 test('C.4.3b capture: 4 只有 2 张时整组取', function () {
