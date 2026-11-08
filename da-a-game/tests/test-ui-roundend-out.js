@@ -74,8 +74,10 @@ check('甲 的两张牌先显示在桌面上', !!(playBy('A') && playBy('A').len
 check('轮末: 甲(已出完)的桌面牌已清干净', !playBy('A'),
   'uiPlays=' + JSON.stringify(Object.keys(g.uiPlays() || {})));
 var ts = texts();
-check('轮末: 甲 显示「已出完」', countTxt(ts, '已出完') >= 1,
-  '已出完=' + countTxt(ts, '已出完') + ' 不出=' + countTxt(ts, '不出'));
+// [2026-11-08 22:40 用户] 出完的人现在按顺序显示 大贡/二贡/三贡/四贡(不再统一写「已出完」)
+var _gongN = countTxt(ts, '大贡') + countTxt(ts, '二贡') + countTxt(ts, '三贡') + countTxt(ts, '四贡');
+check('轮末: 甲 显示「大贡」(出完顺序标签)', _gongN >= 1,
+  '贡=' + _gongN + ' 已出完=' + countTxt(ts, '已出完') + ' 不出=' + countTxt(ts, '不出'));
 check('轮末: 「不出」文字保留(乙丙丁戊仍显示)', countTxt(ts, '不出') >= 1,
   '不出=' + countTxt(ts, '不出'));
 

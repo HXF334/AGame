@@ -199,11 +199,11 @@ for (var i5 = 0; i5 < 4; i5++) {
   var lg = g.logHistory();
   labels.push(lg[lg.length - 1] || '');
 }
-check('5.1 第 1 次提示 = 对7', seq[0] === '7,7', JSON.stringify(seq));
-check('5.2 第 2 次提示 = 三张6', seq[1] === '6,6,6', JSON.stringify(seq));
-check('5.3 第 3 次提示 = 四张5', seq[2] === '5,5,5,5', JSON.stringify(seq));
-check('5.4 第 4 次提示循环回到对7', seq[3] === '7,7', JSON.stringify(seq));
-check('5.5 没有 55 / 555 这种拆开的重复提示',
+// [2026-11-08 22:40 用户] 提示的候选/顺序 ≡ 托管(AI 忽略阵营) -> 这里只锁性质:
+//   有候选 / 轮换能循环回第一个 / 不出现拆开的重复提示。
+check('5.1 第 1 次提示有候选', !!seq[0], JSON.stringify(seq));
+check('5.2 提示按候选顺序轮换(第 4 次回到第 1 次)', seq[3] === seq[0], JSON.stringify(seq));
+check('5.3 没有 55 / 555 这种拆开的重复提示',
   seq.every(function (s) { return s !== '5,5' && s !== '5,5,5'; }), JSON.stringify(seq));
 check('5.6 提示走的是引擎认可的合法牌型',
   labels.join(' | ').indexOf('2张7') >= 0 || labels.join(' | ').indexOf('7') >= 0, JSON.stringify(labels));

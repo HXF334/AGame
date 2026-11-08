@@ -50,31 +50,20 @@ st.lastPlayer = 'A';
 st.passedPlayers = [];
 g.__setState(st, { currentPlayer: 'D', human: 'D', clearLog: true });
 
-// ===== 1) 【提示】要能找到能压 567 的连张 =====
+// ===== 1) 【提示】的连张候选 =====
+// [2026-11-08 22:05/22:40 用户] AI/托管**不拆同点组**去拼龙:
+//   手里全是对子时, 连张要拆对子 -> 提示不给(与托管一致);
+//   但**手牌是单张**时(9/10/J), 连张不拆任何组 -> 提示照样要能找到(用户 2026-10-27 的原话)。
 var okFirst = g.uiHint();
-check('【提示】有候选(不再是「当前没有可用牌」)', okFirst === true,
+check('1a 手里全是对子: 提示不给拆组的连张(与托管一致)', okFirst === false,
   'log=' + JSON.stringify(g.logHistory().slice(-2)));
 
-var seen = [];
-for (var i = 0; i < 60; i++) {
-  if (!g.uiHint()) break;
-  var sel = g.selectedCards().slice();
-  seen.push(sel);
-}
 function ranksOf(ids2) {
   return ids2.map(function (id) {
     var c = myHand.filter(function (x) { return x.id === id; })[0];
     return c ? c.rank : '?';
   }).sort(function (a, b) { return a - b; }).join(',');
 }
-var threeCardStraights = seen.filter(function (s) { return s.length === 3 && ranksOf(s) !== '9,9,9' && ranksOf(s).indexOf(',') > 0; });
-check('候选里有能压 567 的连张(3 张, 点数连续)',
-  seen.some(function (s) {
-    if (s.length !== 3) return false;
-    var r = ranksOf(s).split(',').map(Number);
-    return r[1] === r[0] + 1 && r[2] === r[1] + 1;
-  }),
-  '候选: ' + JSON.stringify(seen.map(ranksOf)));
 
 // ===== 2) 选中一张 9 -> 自动补成**最小可用牌型**(8 9 10) =====
 // 注: 上面的提示循环**留下了选中状态**(提示会选中候选), 不清掉的话
@@ -91,6 +80,20 @@ if (nineBox) {
     'sel=' + JSON.stringify(sel2) + ' ranks=' + ranksOf(sel2));
   check('自动补的牌里含刚点的那张 9', sel2.indexOf(nineA.id) >= 0,
     'sel=' + JSON.stringify(sel2));
+}
+
+// ===== 3) 手牌是单张(9/10/J)时: 提示要能找到能压 567 的连张(用户 2026-10-27 原话) =====
+{
+  var st3 = g.gameState();
+  st3.phase = 'PLAY';
+  st3.players.forEach(function (p, i) { p.id = ids[i]; });
+  st3.players[3].hand = [C('S', 9, 's9'), C('H', 10, 's10'), C('D', 11, 'sJ'), C('C', 8, 's8')];
+  st3.table = [C('C', 5, 'tt0'), C('D', 6, 'tt1'), C('H', 7, 'tt2')];
+  st3.lastPlayer = 'A';
+  g.__setState(st3, { currentPlayer: 'D', human: 'D', clearLog: true });
+  var ok3 = g.uiHint();
+  check('3a 手牌是单张: 提示能找到能压 567 的连张', ok3 === true,
+    'log=' + JSON.stringify(g.logHistory().slice(-2)));
 }
 
 console.log('test-ui-hint-straight: ' + pass + ' passed, ' + fail + ' failed');

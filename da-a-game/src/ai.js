@@ -54,6 +54,7 @@ function isFour(c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; }
 
 // [2026-11-07 用户 C] 最近一次 AI 决策轨迹(候选集 + 排序键), 供 game.js 打日志
 var _lastTrace = null;
+var _lastCandidates = [];   // [2026-11-08] 最近一次 chooseAction 排好序的候选
 
 // [2026-11-07 21:47 用户] 「蛋子+」牌型集合(用户把原来的「大蛋子+」改名为「蛋子+」):
 //   蛋子级别的大组: 大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙, 外加双大A。
@@ -98,7 +99,10 @@ function _isSameCamp(state, a, b) {
 
 
 // AI 选择行动: { type: 'PLAY' | 'PASS' | 'CHOOSE_IDENTITY', playerId, cardIds? / choice? }
-function chooseAction(state, playerId) {
+// opts.ignoreCamp: [2026-11-08 22:40 用户] 「点提示时...只看手中符合条件的牌」->
+//   提示用同一套选牌逻辑, 但**不考虑阵营**(不做同阵营/蛋子+ 的过滤)。
+function chooseAction(state, playerId, opts) {
+  opts = opts || {};
   // [2026-11-07 用户 C] AI 决策日志: 记下候选集 + 排序键, 目视报障时直接看「为什么选这手」
   var _trace = { playerId: playerId, action: null, tableType: null, tableCount: 0,
                  camp: null, candidates: [], chosen: null, note: '' };
@@ -163,7 +167,7 @@ function chooseAction(state, playerId) {
   // [2026-11-07 23:22 用户] 「44 可以取同阵营的牌, 三个 4 及以上的 4 不取同阵营的牌」
   //   -> 同阵营取牌: 只允许用 2 张 4(去取 3 张目标); 需要 3 张及以上 4 时不取同阵营的牌。
   var _sameCampCapOk = (_need <= 2);
-  if ((!_sameCampTable || _sameCampCapOk) && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
+  if ((opts.ignoreCamp || !_sameCampTable || _sameCampCapOk) && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
       && fours.length >= _need) {
     var _g4 = fours.length;
     var _wholeGroup = (_g4 === _need);         // 整组用掉 -> 不拆散
@@ -324,7 +328,7 @@ function chooseAction(state, playerId) {
     if ((h.type === HAND_TYPES.STRAIGHT || h.type === HAND_TYPES.DOUBLE_STRAIGHT) &&
         comboCards.some(function (c) { return !!c.is主方大A; })) return;
     // [2026-11-07 00:19 用户] 阵营不明(次方未亮明)时, 不用大蛋子+ 去压
-    if (_uncertain && policy.EGG_PLUS[h.type]) return;
+    if (!opts.ignoreCamp && _uncertain && policy.EGG_PLUS[h.type]) return;
     // [2026-11-08 13:59 用户] 同点数的牌不拆: 拆了同点组的对子/蛋子/大蛋子/真七/真八 不进候选
     if (_splitsSameRankGroup(comboCards, h.type)) return;
     // [2026-11-08 16:20 用户] 「上出 5678, 手牌有 67888899, 为什么会出 6789」-> 组合牌型拆组也不进候选:
@@ -336,7 +340,7 @@ function chooseAction(state, playerId) {
     //   [2026-11-07 23:22 用户] 「如果本次手牌打出后就全部出完, 则队友的牌也要跟」
     //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。
     var _willEmpty = (comboCards.length === hand.length);
-    if (_sameCamp && _isHeavy(comboCards, h.type) && !_willEmpty) return;
+    if (!opts.ignoreCamp && _sameCamp && _isHeavy(comboCards, h.type) && !_willEmpty) return;
     var _pick = {
       cards: comboCards,
       type: h.type,
@@ -365,6 +369,8 @@ function chooseAction(state, playerId) {
   // [2026-11-07 22:26 用户 D] 排序键顺序外置到 src/ai-policy.js 的 SORT_KEYS
   //   (顺序即优先级; 不拆组 > 同类型优先, 见裁定 E)。改口径只改那个文件。
   _picks.sort(policy.comparePicks);
+  // [2026-11-08 22:40] 把排好序的候选暴露出去(提示按同一顺序列候选)
+  _lastCandidates = _picks.slice();
   // [2026-11-07 用户 C] 决定键: 选中的这手和「第二名」在哪个键上分出胜负
   if (_picks.length >= 2) {
     for (var _di = 0; _di < policy.SORT_KEYS.length; _di++) {
@@ -395,5 +401,7 @@ function chooseAction(state, playerId) {
 module.exports = {
   chooseAction: chooseAction,
   // [2026-11-07 用户 C] 最近一次决策轨迹(候选集 + 排序键 + 阵营三态)
-  getLastTrace: function () { return _lastTrace; }
+  getLastTrace: function () { return _lastTrace; },
+  // [2026-11-08] 排好序的候选(提示用同一套顺序)
+  getLastCandidates: function () { return _lastCandidates; }
 };

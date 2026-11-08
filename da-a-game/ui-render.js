@@ -357,6 +357,15 @@ function drawMemo(ctx, st, m) {
   }
 }
 
+// [2026-11-08 22:40 用户] 出完牌的顺序 -> 大贡/二贡/三贡/四贡
+var GONG_NAMES = ['大贡', '二贡', '三贡', '四贡'];
+function gongLabelOf(state, pid) {
+  var ord = (state && state['出完顺序']) || [];
+  var idx = ord.indexOf(pid);
+  if (idx < 0) return null;
+  return GONG_NAMES[idx] || null;
+}
+
 // ===== 敌友钮 =====
 // [用户 2026-10-25] 每个**别人**头像左上角; 三态 ?/友/敌; 每人一套独立标记
 // [2026-11-08 16:24 用户] 「不要推测变淡的处理」-> 一律实心, 不再区分推测/确定。
@@ -482,7 +491,8 @@ function drawSeats(ctx, st, m) {
     var playedThisTrick = (st.uiPlaysTrick || {})[pid] === st.uiTrickId;
     var plays = st.uiPlays || {};
     if (!playedThisTrick) {
-      var s2 = isOut ? '已出完' : (isPassed ? '不出' : '');
+      // [2026-11-08 22:40 用户] 出完的按顺序显示 大贡/二贡/三贡/四贡(不再统一写「已出完」)
+      var s2 = isOut ? (gongLabelOf(st.gameState, pid) || '已出完') : (isPassed ? '不出' : '');
       if (s2) {
         // [2026-11-04 用户] 「AI玩家打出的手牌或者不出离头像再远一点」
         var ix = cx + inw * (rr_ + 20);
@@ -731,6 +741,13 @@ function drawCard(ctx, card, x, y, w, h, isSel, st, visibleW) {
   var suitY = y + h / 2 + suitFs * 0.46;   // 跟着上移
   text(ctx, st.rankDesc(card), cx, numY, numFs, col, 'center', true);
   text(ctx, SUIT_CHAR[card.suit] || '', cx, suitY, suitFs, col, 'center', true);
+  // [2026-11-08 22:40 用户] 「被4取走的蛋子+加点标志」-> 用**绿色描边**标记;
+  //   牌面保持干净(2026-10-25 基线), 但一眼能看出这手是被4取走的。
+  if (card.取自) {
+    ctx.strokeStyle = '#2f8f4f';
+    ctx.lineWidth = Math.max(2, Math.round(w * 0.06));
+    rr(ctx, x, y, w, h, 4); ctx.stroke();
+  }
 }
 
 // 底牌牌背: 深色底 + 简单图案
@@ -843,7 +860,7 @@ function drawMeSeat(ctx, st, m) {
   var _isOut = (g.phase === 'PLAY' || g.phase === 'GAME_END') && me && me.hand && me.hand.length === 0;
   var _isPassed = (g.phase === 'PLAY') && !!((st.uiPassed || {})[st.humanPlayer]);
   if (!_playedThisTrick) {
-    var _s2 = _isOut ? '已出完' : (_isPassed ? '不出' : '');
+    var _s2 = _isOut ? (gongLabelOf(st.gameState, st.humanPlayer) || '已出完') : (_isPassed ? '不出' : '');
     if (_s2) {
       // [2026-11-03 用户] 「真人玩家的不出文字和打出的手牌在同一个位置, 而不是玩家头像上方」
       //   -> 画在 layout().humanPlay(原来按钮的位置), 和打出的手牌**完全同一个点**。
@@ -1059,8 +1076,11 @@ function drawSettlement(ctx, st, m) {
     rr(ctx, px + 12, y - rowH * 0.46, pw - 24, rowH * 0.92, 3); ctx.fill();
     text(ctx, st.names[i] + (pid === st.humanPlayer ? '(你)' : ''), px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), '#ffffff', 'left', true);
     text(ctx, camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0), px + 92, y, Math.max(9, Math.round(m.vh * 0.028)), '#aaaaaa', 'left', false);
-    if (_head && pid === _head) {
-      text(ctx, '头名', px + pw - 68, y, Math.max(9, Math.round(m.vh * 0.026)), '#ffd98a', 'right', true);
+    // [2026-11-08 22:40 用户] 结算画面不再显示「头名」, 改成按出完顺序显示 大贡/二贡/三贡/四贡;
+    //   标签放在**分数左边**(别压着分数)。
+    var _gl2 = gongLabelOf(st.gameState, pid);
+    if (_gl2) {
+      text(ctx, _gl2, px + pw - 108, y, Math.max(9, Math.round(m.vh * 0.026)), '#ffd98a', 'right', true);
     }
     // **全部**剩余手牌, 顺序与手牌区一致(大A > 大王 > 小王 > 3 > 2 > A > K ...)
     var hand = (p && p.hand) ? p.hand : [];

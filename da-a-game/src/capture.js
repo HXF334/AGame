@@ -75,7 +75,9 @@ function executeCapture(state, playerId, fours) {
     return { ok: false, error: { type: 'CANNOT_PASS', message: 'table empty, nothing to capture' }, state: state };
   }
   var captured = state.table.map(function (c) {
-    var copy = Object.assign({}, c, { location: { type: 'hand', playerId: playerId } });
+    // [2026-11-08 22:40 用户] 「桌面上被4取牌的蛋子+加点标志」-> 被取走的牌打上标记,
+    //   之后在手牌区/再次上桌时都带着, 一眼看出「这手是被4取走的」。
+    var copy = Object.assign({}, c, { location: { type: 'hand', playerId: playerId }, 取自: playerId });
     if (copy.is主方大A) {
       return Object.assign({}, copy, { is主方大A: false });
     }

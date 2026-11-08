@@ -90,6 +90,7 @@ var STATE_DEFAULTS = {
   deck: [], dealOrder: [],
   主A: null, 反A: null, 次方: null, mode: null,
   主方: [], 抓方: [], 头名: null, 推风触发者: null,
+  出完顺序: [],                   // [2026-11-08] 出完牌的顺序(大贡/二贡/三贡/四贡)
   底牌公开: false, 次方公开: false,
   table: [], discarded: [], passedPlayers: [], passCount: 0, lastPlayer: null,
   plays: [],                       // [2026-11-07] 出牌流水(公开): [{playerId, type, count, beat}]
@@ -103,6 +104,7 @@ function ensureState(state) {
   if (!Array.isArray(out.discarded)) out.discarded = [];
   if (!Array.isArray(out.passedPlayers)) out.passedPlayers = [];
   if (!Array.isArray(out.plays)) out.plays = [];
+  if (!Array.isArray(out['出完顺序'])) out['出完顺序'] = [];
   if (!Array.isArray(out.players)) out.players = [];
   return out;
 }
@@ -796,8 +798,15 @@ function handlePlayAction(state, payload) {
 
   // [C-4 v4] 追踪头名 (第一个出完手牌的玩家, SKILL §10.1)
   var _player = result.state.players.find(function (p) { return p.id === payload.playerId; });
-  if (_player && _player.hand.length === 0 && !result.state.头名) {
-    result.state.头名 = payload.playerId;
+  if (_player && _player.hand.length === 0) {
+    // [2026-11-08 22:40 用户] 追踪**出完顺序**: 第一个出完=大贡, 第二个=二贡, 第三个=三贡, 第四个=四贡
+    var _ord = result.state['出完顺序'] || [];
+    if (_ord.indexOf(payload.playerId) < 0) {
+      result.state['出完顺序'] = _ord.concat([payload.playerId]);
+    }
+    if (!result.state.头名) {
+      result.state.头名 = payload.playerId;
+    }
   }
 
   // [C-4 v4] SKILL §7.3: 次方身份公开

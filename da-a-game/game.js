@@ -13,6 +13,8 @@ var checkGameEnd = engine.checkGameEnd;
 var chooseAction = require('./src/ai.js').chooseAction;
 // [2026-11-07 用户 C] AI 决策轨迹(候选集 + 排序键 + 阵营三态) -> 打日志
 var getAiTrace = require('./src/ai.js').getLastTrace;
+// [2026-11-08 22:40] 提示用 AI 的**同一套**选牌逻辑(排序一致), 只是不考虑阵营
+var getAiCandidates = require('./src/ai.js').getLastCandidates;
 var candidateCombos = require('./src/combos.js').candidateCombos;
 // [2026-11-06 用户] 起手选牌: AI 起手与【提示】**共用同一来源**(避免两处算法漂移)
 var leadChoice = require('./src/lead-choice.js');
@@ -867,7 +869,10 @@ function showToast(txt, ms) {
 // 候选: 全部单张 + 引擎给的组合, 每个都用**引擎 transition** 校验(与 doPlay 同一路径)
 // [2026-10-25 用户] 按**有效牌从小到大**排序(小王 < 小牌 < ... < 大A),
 //   多次点【提示】时依次推荐下一个
-function uiHintCandidates() {
+// mode: 'ai'(默认, 提示按钮) = 只用 AI(忽略阵营)的候选; 'engine'(真人点选) = 引擎的全部组合/单张
+//   (真人出牌没有拆组限制, 真人点选时能拼出 6789 这种组合)
+function uiHintCandidates(mode) {
+  var _hintPoolMode = (mode === 'engine') ? 'engine' : 'ai';
   var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
   if (!me || !me.hand || !me.hand.length) return [];
   var out = [], seen = {};
@@ -879,6 +884,9 @@ function uiHintCandidates() {
   //     2) 同点数的组合只保留**最大**的一组(4 张 5 -> 只提示 5555, 不提示 55/555);
   //     3) 排序: **张数少的先**(2 张 -> 3 张 -> 4 张), 同张数再比牌力(小的先)。
   function add(ids, key, isFirst) {
+    // [2026-11-08 22:40 用户] 「点提示...顺序逻辑应该和托管一致, 只不过不考虑阵营」->
+    //   提示**只**用 AI(忽略阵营)算出来的候选, 不再补引擎的全部组合/单张(那些会包含拆组的牌)。
+    if (_hintPoolMode === 'ai' && String(key).indexOf('AI') !== 0) return false;
     if (!ids || !ids.length) return false;
     if (seen[key]) return false;
     // 同一组牌(换个 key 再来一次)只留一个候选 -> 起手推荐不会与后面的组合重复
@@ -905,9 +913,18 @@ function uiHintCandidates() {
   //      起手时 = 起手选牌(src/lead-choice.js), 跟牌时 = AI 的压制选择。
   //   其余候选照旧轮换, 只是第一个跟着 AI 走。
   try {
-    var _aiAct = chooseAction(gameState, humanPlayer);
+    // [2026-11-08 22:40 用户] 「点提示时有优先出牌权和跟牌的出牌大小顺序逻辑应该和托管一致,
+    //   只不过不考虑阵营, 只看手中符合条件的牌」-> 用 ignoreCamp 跑同一套逻辑
+    var _aiAct = chooseAction(gameState, humanPlayer, { ignoreCamp: true });
     if (_aiAct && _aiAct.type === 'PLAY' && _aiAct.cardIds && _aiAct.cardIds.length) {
       add(_aiAct.cardIds.slice(), 'AIFIRST', true);
+    }
+    // 紧接着按 AI 的排序把其余合法候选列出来(与托管同一顺序)
+    var _aiCands = getAiCandidates ? getAiCandidates() : [];
+    for (var _ai = 0; _ai < _aiCands.length; _ai++) {
+      var _c = _aiCands[_ai];
+      if (!_c || !_c.cards || !_c.cards.length) continue;
+      add(_c.cards.map(function (x) { return x.id; }), 'AI' + _ai, false);
     }
   } catch (e) { }
   var singleSeen = {};
@@ -984,7 +1001,8 @@ function _uiExpandSelection(cardId) {
   //   自己回合才做自动扩展(「选一张9, 自动补成8 9 10」的老行为)。
   if (currentPlayer !== humanPlayer) return;
   var cands;
-  try { cands = uiHintCandidates(); } catch (e) { return; }
+  // [2026-11-08 22:40] 真人点选用**引擎池**(真人没有拆组限制, 要能拼出 6789 这种组合)
+  try { cands = uiHintCandidates('engine'); } catch (e) { return; }
   var best = null, bestLen = 1e9, bestPow = 1e9;
   // [2026-11-03 用户] 「先判断手里的牌能不能组成有效牌型, 能的话不自动落下牌」
   //   -> 先找**同时含「点之前已选中的牌」和「刚点的这张」**的候选:

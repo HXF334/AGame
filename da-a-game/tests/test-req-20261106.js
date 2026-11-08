@@ -423,16 +423,22 @@ section('B4. 提示: 第一个候选 = AI(托管)会出的那一手(用户 23:33
     !!(first && first.cards.length === 2 && first.cards.every(function (c) { return c.rank === 7; })),
     first ? first.cards.map(function (c) { return c.rank; }).join(',') + ' n=' + first.cards.length : '(无)');
 }
-section('B5. 结算画面标出谁是头名(用户 23:54)');
+section('B5. 结算画面按出完顺序标大贡/二贡(用户 2026-11-08 22:40; 原 23:54 的「头名」已取消)');
 {
   var st = baseState();
   st.phase = 'GAME_END';
-  st.settlement = { res: { winner: '甲', reason: '' }, scores: { A: 3, B: -3, C: 0, D: 0, E: 0 }, '头名': 'C' };
+  st.settlement = { res: { winner: '甲', reason: '' }, scores: { A: 3, B: -3, C: 0, D: 0, E: 0 } };
   st.gameState['头名'] = 'C';
+  st.gameState['出完顺序'] = ['C', 'B'];
   var ctx = mockCtx();
   uiRender.render(ctx, st);
-  var marks = ctx.items.filter(function (i) { return i.t === '头名'; });
-  check('B5.1 结算画面画出了「头名」标', marks.length === 1, 'n=' + marks.length);
+  var marks = ctx.items.filter(function (i) { return i.t === '大贡' || i.t === '二贡'; });
+  // 头像旁(出完的人)+结算画面都会画, 所以只要求「大贡」「二贡」都出现
+  var hasGong = marks.some(function (i) { return i.t === '大贡'; });
+  var hasEr = marks.some(function (i) { return i.t === '二贡'; });
+  check('B5.1 画面画出了大贡/二贡', hasGong && hasEr, 'n=' + marks.length);
+  check('B5.2 结算画面不再画「头名」',
+    ctx.items.filter(function (i) { return i.t === '头名'; }).length === 0);
 }
 section('B6. 提示: 同牌型优先(上家出JJ, 我有22777 -> 应选 22)(用户 00:19)');
 {
