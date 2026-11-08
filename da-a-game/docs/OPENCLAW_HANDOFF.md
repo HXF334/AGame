@@ -354,6 +354,9 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 - `src/camp.js` 新增 `campCertain`: 敌友关系是「确定」还是「推测」。
 - `ui-render.js`: 确定时按真阵营表(次方亮明即刷新), 推测时手动优先; 推测的标记画淡(半透明)。
+### 7.18 2026-11-08 16:20 批次(组合牌型拆组也硬过滤)
+
+- `src/ai.js`: 组合牌型拆组(拆>=2组 / 把组拆到剩不到3张)也**不进候选**; 双大A 豁免; 单张拆组不罚。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

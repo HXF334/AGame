@@ -732,6 +732,24 @@ section('T39. 次方自己不推定别人(用户 16:03)');
     !(tr39 && tr39.camp && tr39.camp.inferred),
     tr39 && tr39.camp ? String(tr39.camp.inferred) : '(无轨迹)');
 }
+section('T40. 别拆垮同点组去拼龙(用户 16:20: 67888899 出了 6789)');
+{
+  var hand40 = [C('S',6), C('H',7), C('D',8), C('C',8), C('S',8), C('H',8), C('D',9), C('C',9)];
+  var table40 = [C('S',5), C('H',6), C('D',7), C('C',8)];   // 上家出 5678
+  var st40 = stateWith('D', hand40, table40, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act40 = aiMod.chooseAction(st40, 'D');
+  var p40 = playedOf(st40, 'D', act40);
+  var hc40 = {}, uc40 = {};
+  hand40.forEach(function (c) { hc40[c.rank] = (hc40[c.rank] || 0) + 1; });
+  p40.forEach(function (c) { uc40[c.rank] = (uc40[c.rank] || 0) + 1; });
+  var noSplit40 = true;
+  for (var rk40 in uc40) if (uc40[rk40] !== hc40[rk40]) noSplit40 = false;
+  check('T40.1 没拆同点组去拼龙(没出 6789)', noSplit40,
+    act40.type + ' ' + typeOf(p40) + ' ranks=' + ranksOf(p40));
+}
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }

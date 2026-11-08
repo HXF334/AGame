@@ -248,18 +248,26 @@ function chooseAction(state, playerId) {
     }
     return false;
   }
-  // (2) 组合牌型拆了 >=2 个同点组 -> 罚(排序降权)
+  // (2) 组合牌型(龙/双龙/连珠蛋/假八...)拆组 -> 罚(排序降权)
+  //   [2026-11-08 16:20 用户] 「上出 5678, 手牌有 67888899, 为什么会出 6789」-> 两条:
+  //     a. 拆了 >=2 个同点组 -> 罚(QKKKKA 可以出 QKA, 只动一组; QQKKKKA 不行, 动了两组)
+  //     b. 把某个同点组**拆到剩不到 3 张**(对子被拆成单张 / 大蛋子被拆成对子) -> 罚
+  //        (6789 拿走 99 里的一张 -> 那个对子没了; 8888 拿走一张 -> 剩 888 仍是蛋子, 不罚)
+  //   单张拆组仍然不罚(手里 66 出 6 正常, 否则会出现没牌可出)。
   function _splitEggCount(cards) {
+    if (cards.length < 2) return 0;               // 单张拆组 -> 不罚
     var used = {};
     cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
-    var touched = 0;
+    var n = 0, touched = 0;
     for (var rk in _hgroups) {
       var total = _hgroups[rk].length;
       var u = used[rk] || 0;
       if (!u || u >= total) continue;             // 没动 / 整组用掉 -> 不是拆
       touched++;
+      if (total - u < 3) n++;                    // 该组被拆垮(剩不到 3 张) -> 罚
     }
-    return touched >= 2 ? 1 : 0;
+    if (touched >= 2) n++;                        // 拆了 >=2 组 -> 罚
+    return n;
   }
   // 「重手」: 王 / 大A / 蛋子及以上 -> 同阵营时不主动用
   function _isHeavy(cards, type) {
@@ -315,6 +323,11 @@ function chooseAction(state, playerId) {
     if (_uncertain && policy.EGG_PLUS[h.type]) return;
     // [2026-11-08 13:59 用户] 同点数的牌不拆: 拆了同点组的对子/蛋子/大蛋子/真七/真八 不进候选
     if (_splitsSameRankGroup(comboCards, h.type)) return;
+    // [2026-11-08 16:20 用户] 「上出 5678, 手牌有 67888899, 为什么会出 6789」-> 组合牌型拆组也不进候选:
+    //   6789 拿走 99 里的一张 -> 那个对子被拆垮; 而整组的 8888 被「阵营不明不用蛋子+」挡住
+    //   -> 两条规则叠起来的结果就是**过牌**(而不是拆组去拼一条龙)。
+    //   双大A(两张同花色主A)是**特殊无敌牌型**, 不按拆组论(手里 3 张 A 时出双大A 是正常的)。
+    if (_splitEggCount(comboCards) > 0 && h.type !== HAND_TYPES.DOUBLE_BIG_A) return;
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     //   [2026-11-07 23:22 用户] 「如果本次手牌打出后就全部出完, 则队友的牌也要跟」
     //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。
