@@ -101,6 +101,7 @@ function _isSameCamp(state, a, b) {
 // AI 选择行动: { type: 'PLAY' | 'PASS' | 'CHOOSE_IDENTITY', playerId, cardIds? / choice? }
 // opts.ignoreCamp: [2026-11-08 22:40 用户] 「点提示时...只看手中符合条件的牌」->
 //   提示用同一套选牌逻辑, 但**不考虑阵营**(不做同阵营/蛋子+ 的过滤)。
+// opts.ignoreSplit: [2026-11-08 23:36 用户] 「提示也放开拆组」-> 提示用同一套排序, 但不罚拆组
 function chooseAction(state, playerId, opts) {
   opts = opts || {};
   // [2026-11-07 用户 C] AI 决策日志: 记下候选集 + 排序键, 目视报障时直接看「为什么选这手」
@@ -330,12 +331,12 @@ function chooseAction(state, playerId, opts) {
     // [2026-11-07 00:19 用户] 阵营不明(次方未亮明)时, 不用大蛋子+ 去压
     if (!opts.ignoreCamp && _uncertain && policy.EGG_PLUS[h.type]) return;
     // [2026-11-08 13:59 用户] 同点数的牌不拆: 拆了同点组的对子/蛋子/大蛋子/真七/真八 不进候选
-    if (_splitsSameRankGroup(comboCards, h.type)) return;
+    if (!opts.ignoreSplit && _splitsSameRankGroup(comboCards, h.type)) return;
     // [2026-11-08 16:20 用户] 「上出 5678, 手牌有 67888899, 为什么会出 6789」-> 组合牌型拆组也不进候选:
     //   6789 拿走 99 里的一张 -> 那个对子被拆垮; 而整组的 8888 被「阵营不明不用蛋子+」挡住
     //   -> 两条规则叠起来的结果就是**过牌**(而不是拆组去拼一条龙)。
     //   双大A(两张同花色主A)是**特殊无敌牌型**, 不按拆组论(手里 3 张 A 时出双大A 是正常的)。
-    if (_splitEggCount(comboCards) > 0 && h.type !== HAND_TYPES.DOUBLE_BIG_A) return;
+    if (!opts.ignoreSplit && _splitEggCount(comboCards) > 0 && h.type !== HAND_TYPES.DOUBLE_BIG_A) return;
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     //   [2026-11-07 23:22 用户] 「如果本次手牌打出后就全部出完, 则队友的牌也要跟」
     //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。
@@ -350,7 +351,7 @@ function chooseAction(state, playerId, opts) {
       bigGroup: _bigGroupTypes[h.type] ? 1 : 0,                        // 大组牌型当最后手段
       split: _splitCount(comboCards),                                  // 不拆牌优先
       // [2026-11-07 21:47] 不拆蛋子级同点组(手里 22222 不该拆出 222)
-      splitEgg: _splitEggCount(comboCards),
+      splitEgg: opts.ignoreSplit ? 0 : _splitEggCount(comboCards),
       // [2026-11-06 用户] 「4 当作蛋子及以上牌型出的时候, 优先度靠后」
       //   (必须出蛋子时, 手上有 444 和别的蛋子 -> 优先出别的蛋子)
       fourEgg: (comboCards.length >= 3 && comboCards.every(function (c) {

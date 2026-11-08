@@ -58,6 +58,9 @@ function inferNext(state, excludeId) {
 function campOf(state, viewerId, targetId) {
   if (!state || !viewerId || !targetId) return 'UNKNOWN';
   if (viewerId === targetId) return 'SELF';
+  // [2026-11-08 23:36 用户] 真人**手动标的**敌友最优先(他标了敌 -> AI 就当他是敌人, 可以用蛋子压)
+  var _manual = _manualCamp(state, viewerId, targetId);
+  if (_manual) return _manual;
   var mode = state.mode || '';
   var next = state['次方'];
   var holder = state['主A'] && state['主A'].establishedBy;
@@ -96,6 +99,21 @@ function campOf(state, viewerId, targetId) {
     return 'ALLY';                                          // 裁定 A: 其余未知玩家 = 队友
   }
   return 'UNKNOWN';
+}
+
+// 真人手动标的敌友(state.uiMarks, 由 game.js 注入): 'friend'/'enemy'/null
+function _manualCamp(state, viewerId, targetId) {
+  // [2026-11-08 23:59] 手动标记只在「**该观察者本来就能手改**」时生效:
+  //   阵营公开(次方亮明/明打)或观察者已知全部阵营 -> 一律按真实阵营, 手动标记作废。
+  if (!canManualMark(state, viewerId)) return null;
+  var marks = state && state.uiMarks;
+  if (!marks) return null;
+  var row = marks[viewerId];
+  if (!row) return null;
+  var m = row[targetId];
+  if (m === 'friend') return 'ALLY';
+  if (m === 'enemy') return 'ENEMY';
+  return null;
 }
 
 // 该关系是「**确定**」还是「**推测**」:

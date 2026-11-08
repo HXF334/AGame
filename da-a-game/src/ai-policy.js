@@ -65,6 +65,14 @@ function comparePicks(a, b) {
   return 0;
 }
 
+// [2026-11-08 23:59 用户] 【提示】排序用的**牌型顺序(从小到大)**
+//   (不能直接用 POWER: 双龙 POWER=0 是「只能被大蛋子+压」的特殊标记, 不是强弱)
+var HINT_TYPE_RANK = {
+  SINGLE: 1, PAIR: 2, STRAIGHT: 3, TRIPLE: 4, BIG_TRIPLE: 5, DOUBLE_STRAIGHT: 6,
+  DOUBLE_JOKER: 7, STRAIGHT_TRIPLE: 8, FAKE_EIGHT: 9, TRUE_SEVEN: 10, TRUE_EIGHT: 11,
+  TRIPLE_JOKER: 12, BIG_STRAIGHT_TRIPLE: 13, BIG_FAKE_EIGHT: 14,
+  FOUR_JOKER: 15, DOUBLE_BIG_A: 16
+};
 module.exports = {
   EGG_PLUS: EGG_PLUS,
   BIG_EGG_PLUS: BIG_EGG_PLUS,
@@ -72,5 +80,6 @@ module.exports = {
   BIG_EGG_PLUS_TYPES: BIG_EGG_PLUS_TYPES,
   SORT_KEYS: SORT_KEYS,
   SORT_KEY_LABELS: SORT_KEY_LABELS,
-  comparePicks: comparePicks
+  comparePicks: comparePicks,
+  HINT_TYPE_RANK: HINT_TYPE_RANK
 };

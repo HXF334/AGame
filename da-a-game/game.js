@@ -16,6 +16,10 @@ var getAiTrace = require('./src/ai.js').getLastTrace;
 // [2026-11-08 22:40] 提示用 AI 的**同一套**选牌逻辑(排序一致), 只是不考虑阵营
 var getAiCandidates = require('./src/ai.js').getLastCandidates;
 var candidateCombos = require('./src/combos.js').candidateCombos;
+// [2026-11-08 23:59] 提示排序要用牌型识别 + 牌型强度表
+var handTypes = require('./src/hand-types.js');
+// [2026-11-08 23:59] 提示排序的牌型顺序
+var aiPolicy = require('./src/ai-policy.js');
 // [2026-11-06 用户] 起手选牌: AI 起手与【提示】**共用同一来源**(避免两处算法漂移)
 var leadChoice = require('./src/lead-choice.js');
 // 资格判定**由引擎提供**(判据与 transition 的 handler 同一套), UI 不自行判断
@@ -352,6 +356,8 @@ function _autoPlayTakeover() {
   if (!uiAutoPlay) return false;
   if (!gameState || gameState.phase !== PHASES.PLAY) return false;
   if (currentPlayer !== humanPlayer) return false;
+  // [2026-11-08 23:36 用户] 手动标的敌友要影响托管的出牌 -> 把标记带给 AI
+  if (gameState) gameState.uiMarks = uiMarks;   // 每次刷新(新对局时 uiMarks 被整体替换过)
   var act = chooseAction(gameState, humanPlayer);
   if (!act) return false;
   uiAutoPlayTakeovers++;
@@ -871,121 +877,104 @@ function showToast(txt, ms) {
 //   多次点【提示】时依次推荐下一个
 // mode: 'ai'(默认, 提示按钮) = 只用 AI(忽略阵营)的候选; 'engine'(真人点选) = 引擎的全部组合/单张
 //   (真人出牌没有拆组限制, 真人点选时能拼出 6789 这种组合)
+// [2026-11-08 23:59 用户] 「点提示现在乱拆组, 排序也乱七八糟的, 一会儿龙一会儿蛋子的, 和AI托管完全不一样」
+//   -> 重写【提示】候选池(真人手动点选用 'engine' 模式, 仍要全量合法组合):
+//      1) **放开拆组**: 手里**所有**引擎认可的合法出牌都进池(含拆同点组的组合)。
+//      2) **去重按牌型形状**(类型+点数), **不按 card id** -> 三个 3 只算一个候选(之前会连出三遍)。
+//      3) **排序**: 同牌型优先 -> 牌型从小到大(POWER) -> 同型内张数少/牌力小。
+//      4) **第一个 = 托管那一手**(chooseAction 同参数, 只忽略阵营) -> 与托管一致。
+// [2026-11-08 23:59 用户] 「点提示现在乱拆组, 排序也乱七八糟的, 一会儿龙一会儿蛋子的, 和AI托管完全不一样」
+//   -> 重写【提示】候选池:
+//      1) **放开拆组**: 手里**所有**引擎认可的合法出牌都进池(含拆同点组的)。
+//      2) **去重按牌型形状**(类型+点数), **不按 card id** -> 三个 3 只算一个候选
+//         (之前按 card id 去重 -> 3a/3b/3c 各成一候选 -> 点提示会连着选三个 3)。
+//      3) **全局排序**: 托管那一手最前 -> 同牌型(与桌面同型) -> 牌型从小到大 -> 张数少 -> 牌力小。
+//      4) **第一个候选 = 托管会出的那一手**(与 _autoPlayTakeover 同一个 chooseAction 调用)。
+// [2026-11-08 23:59 用户] 「点提示现在乱拆组, 排序也乱七八糟的, 一会儿龙一会儿蛋子的, 和AI托管完全不一样」
+//   -> 重写【提示】候选池:
+//      1) **第一个 = 托管那一手**(与 _autoPlayTakeover 同一个 chooseAction 调用, 含阵营/拆组口径)。
+//      2) 其余候选 = 手里**所有**引擎认可的合法出牌(放开拆组, 23:36 用户裁定)。
+//      3) **去重按牌型形状**(类型+点数), 不按 card id -> 三个 3 只算一个候选
+//         (按 card id 去重 -> 3a/3b/3c 各成一候选 -> 点提示会连着选三个 3)。
+//      4) **排序**: 托管那手 -> 同牌型(与桌面同型) -> 牌型从小到大 -> 张数少 -> 牌力小
+//         (之前是三段**拼接** AI 候选 + 引擎组合 + 单张 -> 顺序乱, 一会儿龙一会儿蛋子)。
 function uiHintCandidates(mode) {
-  var _hintPoolMode = (mode === 'engine') ? 'engine' : 'ai';
+  var _isEnginePool = (mode === 'engine');   // 真人手动点选用: 全量合法组合, 按实体牌去重
   var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
   if (!me || !me.hand || !me.hand.length) return [];
   var out = [], seen = {};
-  // [2026-11-03 用户] 「提示的时候相同的牌不要一直提示, 循环回来的话可以再次提示」
-  //   例: 上家出 44, 我有 5555/666/77 -> 应该 77 -> 666 -> 5555,
-  //       而不是一堆 55 / 55 / 55 / 555 / 555 / 5555。
-  //   做法:
-  //     1) 候选按**牌型形状**去重(不是按牌的 id): 同点数的 4 张 5 只算一个候选;
-  //     2) 同点数的组合只保留**最大**的一组(4 张 5 -> 只提示 5555, 不提示 55/555);
-  //     3) 排序: **张数少的先**(2 张 -> 3 张 -> 4 张), 同张数再比牌力(小的先)。
-  function add(ids, key, isFirst) {
-    // [2026-11-08 22:40 用户] 「点提示...顺序逻辑应该和托管一致, 只不过不考虑阵营」->
-    //   提示**只**用 AI(忽略阵营)算出来的候选, 不再补引擎的全部组合/单张(那些会包含拆组的牌)。
-    if (_hintPoolMode === 'ai' && String(key).indexOf('AI') !== 0) return false;
+  var table = gameState.table || [];
+  var tableType = null;
+  try {
+    var _th = handTypes.identifyHand(table);
+    if (_th && _th.type && _th.type !== handTypes.HAND_TYPES.INVALID) tableType = _th.type;
+  } catch (e) { }
+  function shapeOf(cards) {
+    var toks = cards.map(function (c) {
+      if (c['is主方大A']) return 'BA';
+      if (c.isBigJoker) return 'BJ';
+      if (c.isSmallJoker) return 'SJ';
+      return 'R' + c.rank;
+    }).sort();
+    var t = 'SINGLE';
+    try { var _h2 = handTypes.identifyHand(cards); if (_h2 && _h2.type) t = _h2.type; } catch (e) { }
+    return t + '|' + toks.join(',');
+  }
+  function add(ids, isFirst) {
     if (!ids || !ids.length) return false;
+    var cards = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
+    if (cards.length !== ids.length) return false;
+    var key = _isEnginePool ? ('E|' + ids.slice().sort().join(',')) : shapeOf(cards);
     if (seen[key]) return false;
-    // 同一组牌(换个 key 再来一次)只留一个候选 -> 起手推荐不会与后面的组合重复
-    var sig = ids.slice().sort().join(',');
-    for (var i = 0; i < out.length; i++) { if (out[i].sig === sig) return false; }
     var r = transition(gameState, { type: ACTIONS.PLAY,
       payload: { playerId: humanPlayer, cardIds: ids.slice() } });
-    // 引擎不认 -> 不进候选; **seen 也不置位**(同形状的别的变体还有机会)
-    if (!r || !r.ok) return false;
+    if (!r || !r.ok) return false;              // 引擎不认 -> 不进候选
     seen[key] = 1;
-    var cards = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
-    out.push({ ids: ids.slice(), cards: cards, label: _uiComboLabel(cards), aiFirst: !!isFirst, sig: sig });
+    var h = null;
+    try { h = handTypes.identifyHand(cards); } catch (e) { }
+    var pwr = (h && aiPolicy.HINT_TYPE_RANK[h.type] !== undefined) ? aiPolicy.HINT_TYPE_RANK[h.type] : 0;
+    out.push({
+      ids: ids.slice(), cards: cards, label: _uiComboLabel(cards),
+      type: h ? h.type : 'INVALID',
+      sameType: (tableType && h && h.type === tableType) ? 0 : 1,   // 同牌型优先
+      typeRank: pwr,                                               // 牌型从小到大
+      len: cards.length, value: _uiComboPower(cards),
+      isFirst: !!isFirst
+    });
     return true;
   }
-  // 单张的「点数标识」: 同点数的 4 张 5 只提示一次; 大A/王 与普通 A 区分开
-  function pointKey(c) {
-    if (_uiIsMainAce(c)) return 'BIGA';
-    if (c.isBigJoker) return 'BJ';
-    if (c.isSmallJoker) return 'SJ';
-    return 'R' + c.rank;
+  // (1) 托管那一手 -> 第一个候选(与托管**同一个** chooseAction 调用)
+  if (!_isEnginePool) {
+    try {
+      if (gameState) gameState.uiMarks = uiMarks;   // 手动敌友标记要进 AI 决策
+      var _aiAct = chooseAction(gameState, humanPlayer);
+      if (_aiAct && _aiAct.type === 'PLAY' && _aiAct.cardIds && _aiAct.cardIds.length) {
+        add(_aiAct.cardIds.slice(), true);
+      }
+    } catch (e) { }
   }
-  // [2026-11-06 23:33 用户] 「点提示应该和托管是类似的逻辑」
-  //   -> 第一个候选 = **AI(托管)对同一手牌会出的那一手**(同一个 chooseAction):
-  //      起手时 = 起手选牌(src/lead-choice.js), 跟牌时 = AI 的压制选择。
-  //   其余候选照旧轮换, 只是第一个跟着 AI 走。
+  // (2) 全量合法出牌(放开拆组): 组合枚举 + 单张
   try {
-    // [2026-11-08 22:40 用户] 「点提示时有优先出牌权和跟牌的出牌大小顺序逻辑应该和托管一致,
-    //   只不过不考虑阵营, 只看手中符合条件的牌」-> 用 ignoreCamp 跑同一套逻辑
-    var _aiAct = chooseAction(gameState, humanPlayer, { ignoreCamp: true });
-    if (_aiAct && _aiAct.type === 'PLAY' && _aiAct.cardIds && _aiAct.cardIds.length) {
-      add(_aiAct.cardIds.slice(), 'AIFIRST', true);
-    }
-    // 紧接着按 AI 的排序把其余合法候选列出来(与托管同一顺序)
-    var _aiCands = getAiCandidates ? getAiCandidates() : [];
-    for (var _ai = 0; _ai < _aiCands.length; _ai++) {
-      var _c = _aiCands[_ai];
-      if (!_c || !_c.cards || !_c.cards.length) continue;
-      add(_c.cards.map(function (x) { return x.id; }), 'AI' + _ai, false);
-    }
+    (candidateCombos(me.hand) || []).forEach(function (ids) { add(ids, false); });
   } catch (e) { }
-  var singleSeen = {};
-  me.hand.forEach(function (c) {
-    var k = '1|' + pointKey(c);
-    if (singleSeen[k]) return;
-    singleSeen[k] = 1;
-    add([c.id], k);
-  });
-  // [2026-10-25 用户] 「双大A」候选: 上家出了 3333 时, 双大A 能压住
-  //   (引擎的 candidateCombos 不含这种**主A花色的两张A**组合)
+  me.hand.forEach(function (c) { add([c.id], false); });
+  // 双大A / 双王(枚举层不产出的两种特殊组合)
   try {
     var _zhuSuit = gameState['主A'] && gameState['主A'].suit;
     if (_zhuSuit) {
       var _aces = me.hand.filter(function (c) { return c.rank === 14 && c.suit === _zhuSuit; });
-      if (_aces.length === 2) {
-        var _ids2 = [_aces[0].id, _aces[1].id];
-        var _key2 = _ids2.slice().sort().join(',');
-        if (!seen[_key2]) {
-          var _r2 = transition(gameState, { type: ACTIONS.PLAY,
-            payload: { playerId: humanPlayer, cardIds: _ids2.slice() } });
-          if (_r2 && _r2.ok) {
-            seen[_key2] = 1;
-            out.push({ ids: _ids2.slice(), cards: _aces.slice(), label: '双大A' });
-          }
-        }
-      }
+      if (_aces.length === 2) add([_aces[0].id, _aces[1].id], false);
     }
+    var _jks = me.hand.filter(function (c) { return c.isBigJoker || c.isSmallJoker; });
+    if (_jks.length === 2) add([_jks[0].id, _jks[1].id], false);
   } catch (e) { }
-  // 组合: 同点数分组(只留最大的一组) + 其他形状(同形状只留一个)
-  var sameRank = {}, others = [];
-  try {
-    (candidateCombos(me.hand) || []).forEach(function (ids) {
-      if (!ids || ids.length < 2) return;
-      var cs = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
-      if (cs.length !== ids.length) return;
-      var same = cs.every(function (c) { return c.rank === cs[0].rank; });
-      if (same) {
-        var k = 'S|' + cs[0].rank;
-        (sameRank[k] = sameRank[k] || []).push(ids);
-      } else {
-        others.push({ ids: ids, cards: cs });
-      }
-    });
-  } catch (e) { }
-  Object.keys(sameRank).forEach(function (k) {
-    var list = sameRank[k].slice().sort(function (a, b) { return b.length - a.length; });
-    for (var i = 0; i < list.length; i++) {
-      if (add(list[i], k)) break;      // 取引擎认可的最大那组
-    }
-  });
-  others.forEach(function (o) {
-    var ranks = o.cards.map(function (c) { return c.rank; }).slice().sort(function (a, b) { return a - b; });
-    add(o.ids, 'C|' + o.cards.length + '|' + ranks.join('-'));
-  });
-  // 排序: 张数少的先(2 张 -> 3 张 -> 4 张) -> 同张数比牌力(小的先)
+  // (3) 全局排序: 托管那一手 -> 同牌型 -> 牌型小->大 -> 张数少 -> 牌力小
   out.sort(function (a, b) {
-    if (!!a.aiFirst !== !!b.aiFirst) return a.aiFirst ? -1 : 1;   // AI(托管)会出的那一手排第一
-    if (a.cards.length !== b.cards.length) return a.cards.length - b.cards.length;
-    var pa = _uiComboPower(a.cards), pb = _uiComboPower(b.cards);
-    if (pa !== pb) return pa - pb;
+    if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
+    if (a.sameType !== b.sameType) return a.sameType - b.sameType;
+    if (a.typeRank !== b.typeRank) return a.typeRank - b.typeRank;
+    if (a.len !== b.len) return a.len - b.len;
+    if (a.value !== b.value) return a.value - b.value;
     return a.label < b.label ? -1 : (a.label > b.label ? 1 : 0);
   });
   return out;
@@ -1983,7 +1972,7 @@ function doPushWind() {
     // [2026-11-04 用户] 推风把回合交给谁 -> 谁就清掉上一轮留下的出牌显示 /「不出」标记
     //   (推风不走 advanceCurrentPlayer -> 真人自己的「不出」留着 -> 按钮被藏起来, 只剩闹钟)
     if (currentPlayer) {
-      _uiClearTurnDisplay(currentPlayer);
+      _uiClearTurnDisplay(currentPlayer, { clearPassed: true });
       uiTurnTick();
     }
     // [2026-11-08 用户] 「托管中同阵营推风过来有出牌权时不出牌」
@@ -2156,10 +2145,14 @@ function runAI() {
 //   推风**不走** advanceCurrentPlayer, 所以单独抽出来给两条路径共用:
 //   真人自己的「不出」标记留着的话, 渲染层的「按钮让位」逻辑会把
 //   【出牌/不出/提示】藏起来(画面上只剩闹钟) —— 用户 2026-11-04 实测报障。
-function _uiClearTurnDisplay(pid) {
+function _uiClearTurnDisplay(pid, opts) {
   delete uiPlays[pid];
   delete uiPlaysTrick[pid];
-  delete uiPassed[pid];
+  // [2026-11-08 23:59 用户] 「上家显示着不出, 下家出完牌后上家的不出文字没了」
+  //   -> 「不出」标记要留到**该玩家自己出牌**为止(出牌时手牌变少 -> 手牌长度比较处清)。
+  //   例外: 轮到真人且**没有托管**时必须清 —— 否则「不出」占着按钮位,
+  //   【出牌/不出/提示】三个按钮被藏起来只剩闹钟(2026-11-04 用户报障)。
+  if ((opts && opts.clearPassed) || (pid === humanPlayer && !uiAutoPlay)) delete uiPassed[pid];
   if (pid === humanPlayer) {
     uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
     uiAiWaitPlan = 0;      // 真人回合 -> 清掉上一轮 AI 的等待时长
@@ -2195,6 +2188,7 @@ function advanceCurrentPlayer() {
       //      真人回合 -> 按钮位让出来(旧行为); AI 回合 -> 座位前方的闹钟不跟旧牌/「不出」打架。
       _uiClearTurnDisplay(next);
       // [2026-11-06 用户] 托管: 轮到真人 -> 排一个 AI 代打动作(本局持续, 直到取消)
+      if (next === humanPlayer) uiHintIdx = 0;   // [2026-11-08 23:59] 新一轮提示从第一个候选开始
       if (next === humanPlayer && uiAutoPlay) _autoPlaySchedule(700);
       // [2026-11-03 用户] 别人出牌时真人**可以提前选牌**(只是不能打出)
       //   -> 换手时**不能**无条件清空选中: 只有「刚才是真人在行动」才清

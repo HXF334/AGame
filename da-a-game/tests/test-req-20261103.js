@@ -192,8 +192,11 @@ function ranksNow() {
     return c ? c.rank : '?';
   }).sort(function (a, b) { return a - b; }).join(',');
 }
+// [2026-11-08 23:59 用户] 提示候选池改了(放开拆组 + 全量合法牌) -> 候选个数不再是固定的 3,
+//   轮换一圈的长度 = 当前候选数 -> 按候选数按几次, 第 N+1 次回到第 1 次。
+var NCAND = g.uiHintCandidates().length;
 var seq = [], labels = [];
-for (var i5 = 0; i5 < 4; i5++) {
+for (var i5 = 0; i5 <= NCAND; i5++) {
   g.uiHint();
   seq.push(ranksNow());
   var lg = g.logHistory();
@@ -202,9 +205,15 @@ for (var i5 = 0; i5 < 4; i5++) {
 // [2026-11-08 22:40 用户] 提示的候选/顺序 ≡ 托管(AI 忽略阵营) -> 这里只锁性质:
 //   有候选 / 轮换能循环回第一个 / 不出现拆开的重复提示。
 check('5.1 第 1 次提示有候选', !!seq[0], JSON.stringify(seq));
-check('5.2 提示按候选顺序轮换(第 4 次回到第 1 次)', seq[3] === seq[0], JSON.stringify(seq));
-check('5.3 没有 55 / 555 这种拆开的重复提示',
-  seq.every(function (s) { return s !== '5,5' && s !== '5,5,5'; }), JSON.stringify(seq));
+check('5.2 提示按候选顺序轮换(第 N+1 次回到第 1 次)', seq[NCAND] === seq[0], 'N=' + NCAND + ' ' + JSON.stringify(seq));
+// [2026-11-08 23:59 用户] 拆组**放开**了 -> 55 / 555 这类拆开的手**可以**被提示到,
+//   但**同一个形状不能重复出现**(用户: 连点提示会连着选三个 3)。
+check('5.3 一圈之内不出现重复的同一手',
+  (function () {
+    var seen = {}, dup = [];
+    seq.slice(0, NCAND).forEach(function (s) { if (seen[s]) dup.push(s); seen[s] = 1; });
+    return dup.length === 0;
+  })(), JSON.stringify(seq));
 check('5.6 提示走的是引擎认可的合法牌型',
   labels.join(' | ').indexOf('2张7') >= 0 || labels.join(' | ').indexOf('7') >= 0, JSON.stringify(labels));
 

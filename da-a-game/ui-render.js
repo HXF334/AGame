@@ -497,7 +497,8 @@ function drawSeats(ctx, st, m) {
         // [2026-11-04 用户] 「AI玩家打出的手牌或者不出离头像再远一点」
         var ix = cx + inw * (rr_ + 20);
         var ia = pos.side === 'L' ? 'left' : 'right';
-        text(ctx, s2, ix, cy, Math.max(12, Math.round(m.vh * 0.044)), isOut ? '#9a9a9a' : '#ffd700', ia, true);
+        // [2026-11-08 23:36 用户] 「桌面上的大贡二贡等文字颜色和结算画面一致」-> 贡字用结算的金色
+    text(ctx, s2, ix, cy, Math.max(12, Math.round(m.vh * 0.044)), (isOut && gongLabelOf(st.gameState, pid)) ? '#f0a500' : (isOut ? '#9a9a9a' : '#ffd700'), ia, true);
       }
     }
     drawScore(ctx, st, pid, scores[pid], cx, cy + rr_ + Math.round(m.vh * 0.036));
@@ -858,6 +859,9 @@ function drawMeSeat(ctx, st, m) {
   var _playedThisTrick = (st.uiPlaysTrick || {})[st.humanPlayer] === st.uiTrickId;
   // [2026-11-04 用户] 「开局前每个人前面都显示已出完」-> 同上: 发牌阶段不算出完
   var _isOut = (g.phase === 'PLAY' || g.phase === 'GAME_END') && me && me.hand && me.hand.length === 0;
+  // [2026-11-08 23:36 用户] 「托管后 AI 替我过牌还是看不到不出文字」-> 除了 UI 标记, 也读引擎的 passedPlayers
+  // [2026-11-08 23:59] 只看 UI 层标记 st.uiPassed: 引擎的 passedPlayers 语义是「有人出牌就清全员」,
+  //   别人一出手就会把真人的「不出」也带走(用户报障: 下家出完牌后上家的不出文字没了)。
   var _isPassed = (g.phase === 'PLAY') && !!((st.uiPassed || {})[st.humanPlayer]);
   if (!_playedThisTrick) {
     var _s2 = _isOut ? (gongLabelOf(st.gameState, st.humanPlayer) || '已出完') : (_isPassed ? '不出' : '');
@@ -1080,7 +1084,8 @@ function drawSettlement(ctx, st, m) {
     //   标签放在**分数左边**(别压着分数)。
     var _gl2 = gongLabelOf(st.gameState, pid);
     if (_gl2) {
-      text(ctx, _gl2, px + pw - 108, y, Math.max(9, Math.round(m.vh * 0.026)), '#ffd98a', 'right', true);
+      // [2026-11-08 23:36 用户] 「结算画面的大贡二贡等标签往右移」-> 从 -108 挪到 -90
+      text(ctx, _gl2, px + pw - 62, y, Math.max(9, Math.round(m.vh * 0.026)), '#ffd98a', 'right', true);
     }
     // **全部**剩余手牌, 顺序与手牌区一致(大A > 大王 > 小王 > 3 > 2 > A > K ...)
     var hand = (p && p.hand) ? p.hand : [];

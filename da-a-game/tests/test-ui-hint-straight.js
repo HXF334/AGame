@@ -54,8 +54,14 @@ g.__setState(st, { currentPlayer: 'D', human: 'D', clearLog: true });
 // [2026-11-08 22:05/22:40 用户] AI/托管**不拆同点组**去拼龙:
 //   手里全是对子时, 连张要拆对子 -> 提示不给(与托管一致);
 //   但**手牌是单张**时(9/10/J), 连张不拆任何组 -> 提示照样要能找到(用户 2026-10-27 的原话)。
+// [2026-11-08 23:36/23:59 用户] 提示**放开拆组**: 手里全是对子时, 提示**给**拆出来的连张;
+//   但**托管(AI)不拆组** -> AI 自己不会出这手(两条线口径不同, 分别锁)。
+var aiModH = require('../src/ai.js');
+var aiAct1 = aiModH.chooseAction(g.gameState(), 'D', {});
 var okFirst = g.uiHint();
-check('1a 手里全是对子: 提示不给拆组的连张(与托管一致)', okFirst === false,
+check('1a 托管不拆同点组 -> AI 不出这手拆组连张',
+  !aiAct1 || aiAct1.type === 'PASS', 'act=' + (aiAct1 ? aiAct1.type : 'null'));
+check('1b 提示放开拆组 -> 给拆出来的连张', okFirst === true,
   'log=' + JSON.stringify(g.logHistory().slice(-2)));
 
 function ranksOf(ids2) {
