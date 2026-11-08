@@ -1337,11 +1337,14 @@ var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(
 
 // 敌友三态循环: ? -> 友 -> 敌 -> ?
 function uiMarkCycle(pid) {
-  // [2026-11-08 22:05 用户] 「不能手动修改敌友标记」-> 只提示, 不再改标记。
-  log('敌友标记由系统自动判定(次方亮明后自动更新), 不能手动修改');
-  return null;
-}
-function _uiMarkCycleOld(pid) {
+  // [2026-11-08 22:20 用户] 「只有次A身份已经明了的时候不能手动改, 其他时候是可以改的」
+  var _pub = (gameState['次方公开'] === true)
+    || ((gameState.mode || '').indexOf('明打') >= 0)
+    || ((gameState.mode || '').indexOf('1V4') >= 0);
+  if (_pub) {
+    log('次方身份已明了, 敌友标记按真实阵营自动判定, 不能手动改');
+    return null;
+  }
   var mine = uiMarks[humanPlayer] || (uiMarks[humanPlayer] = {});
   var cur = mine[pid] || null;
   mine[pid] = (cur === null) ? 'friend' : (cur === 'friend' ? 'enemy' : null);

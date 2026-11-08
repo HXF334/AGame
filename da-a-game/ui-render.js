@@ -464,12 +464,16 @@ function drawSeats(ctx, st, m) {
     //   (抓方视角: 主方=敌; 推定的次A=敌; 推定后其余未知玩家=友; 还没线索=?)
     // [2026-11-08 16:24 用户] 「点击敌友按钮标记, 画面上显示的敌友不变」-> **手动标记优先**,
     //   点了就生效(没手动标时才用 src/camp.js 的自动判定)。
-    // [2026-11-08 22:05 用户] 「在次方身份亮明后自动更新敌友标记, **不能手动修改**敌友标记」
-    //   -> 敌友标记只由 src/camp.js 自动判定(次方亮明后自动刷新)。
+    // [2026-11-08 22:20 用户] 「只有次A身份已经明了的时候不能手动改, 其他时候是可以改的」
+    //   -> 身份未明: 手动标记优先(点了就生效); 身份明了: 以真阵营表为准, 手动标记不再生效。
     var _mark = null;
+    var _pubM = st.gameState && ((st.gameState['次方公开'] === true)
+      || ((st.gameState.mode || '').indexOf('明打') >= 0)
+      || ((st.gameState.mode || '').indexOf('1V4') >= 0));
+    if (!_pubM && myMarks[pid]) _mark = myMarks[pid];
     if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
-      _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+      if (!_mark) _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
     }
     drawAllyMark(ctx, st, m, colX, mky, mr, _mark);
     markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });

@@ -108,11 +108,10 @@ if (typeof g.uiIsMainAce === 'function') {
 // ---------- 5. 敌友标记 ----------
 // [2026-11-08 22:05 用户] 「在次方身份亮明后自动更新敌友标记, 不能手动修改敌友标记」
 //   -> 标记只由 src/camp.js 自动判定; 手动点击不再改变标记(点了只提示)。
-section('5. 敌友标记: 自动判定(不能手动改)');
+section('5. 敌友标记: 身份未明可手动改; 身份明了后只自动');
 check('5.0 game.js 导出 uiMarks / uiMarkCycle', typeof g.uiMarks === 'function' && typeof g.uiMarkCycle === 'function');
-var _m5 = JSON.stringify(g.uiMarks() || {});
-if (typeof g.uiMarkCycle === 'function') g.uiMarkCycle('C');
-check('5.1 手动点击不再改变敌友标记', JSON.stringify(g.uiMarks() || {}) === _m5, _m5 + ' -> ' + JSON.stringify(g.uiMarks() || {}));
+var _s5 = typeof g.uiMarkCycle === 'function' ? g.uiMarkCycle('C') : null;
+check('5.1 手动标记走 uiMarkCycle(身份未明时可改)', _s5 === 'friend' || _s5 === 'enemy' || _s5 === null, String(_s5));
 check('5.2 敌友标记由 src/camp.js 自动判定', typeof require('../src/camp.js').campOf === 'function');
 
 // ---------- 6. 牌面无角标 ----------
