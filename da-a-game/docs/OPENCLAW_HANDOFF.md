@@ -335,6 +335,13 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 - `game.js _uiExpandSelection`: 兜底前先找「尽量保住已选牌」的合法组合(已选 678 + 点 9 -> 6789, 不再被 999 顶掉)。
 - 真人点选的候选池 = 全量引擎合法组合, **不受 AI 的拆组口径限制**(两条线)。
+### 7.15 2026-11-08 13:59 批次(日志 + 推定信号 + 拆组口径 + 推风托管)
+
+- **日志**: `[AI决策]` 的「推定次方」打玩家名(丙/丁/戊)而不是 id; 托管出牌日志补上出的牌。
+- **推定次方的信号收窄**(`src/camp.js`): 只认「大蛋子+压制身份不明的人」或「用三个 4 及以上的 4 取身份不明的人的牌」; 普通蛋子不再是信号。
+  - `src/play.js`: 取牌在流水里记 `kind:'CAPTURE'` + `useFours:n`。
+- **拆组口径重写**(`src/ai.js`): 同点数家族拆同点组 -> **不进候选**(硬过滤); 组合牌型拆 >=2 组 -> 排序降权。
+- **推风后托管接管**: 推风不走 advanceCurrentPlayer -> `doPushWind()` 里补 `_autoPlaySchedule`。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

@@ -47,7 +47,21 @@ function handlePlay(state, payload) {
   const allFours = playCards.every(c => c.rank === 4 && !c.isBigJoker && !c.isSmallJoker);
   if (allFours) {
     const captureResult = executeCapture(state, playerId, playCards);
-    if (captureResult.ok) return captureResult;
+    if (captureResult.ok) {
+      // [2026-11-08 13:59 用户] 取牌也要记进出牌流水:
+      //   推定次方的信号之一 = 用**三个 4 及以上的 4**取身份不明玩家的牌(普通蛋子不算信号)。
+      const _cs = Object.assign({}, captureResult.state, {
+        plays: (captureResult.state.plays || []).concat([{
+          playerId: playerId,
+          type: identifyHand(playCards).type,
+          count: playCards.length,
+          beat: (state.table && state.table.length > 0) ? (state.lastPlayer || null) : null,
+          kind: 'CAPTURE',
+          useFours: playCards.length
+        }])
+      });
+      return Object.assign({}, captureResult, { state: _cs });
+    }
     // capture 不可用 (桌上无可取目标 / 4s 数量不足), 回退到普通出牌路径
   }
 
@@ -90,7 +104,8 @@ function handlePlay(state, payload) {
         playerId: playerId,
         type: hand.type,
         count: playCards.length,
-        beat: (state.table && state.table.length > 0) ? (state.lastPlayer || null) : null
+        beat: (state.table && state.table.length > 0) ? (state.lastPlayer || null) : null,
+        kind: 'PLAY'
       }])
     })
   };

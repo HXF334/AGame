@@ -220,27 +220,42 @@ function chooseAction(state, playerId) {
     }
     return n;
   }
-  // [2026-11-08 用户] 「QKA 拆了 QQQ/KKKK 的问题是因为拆了两组」
+  // [2026-11-08 13:59 用户] 「正常拆组只针对组合牌型(龙/双龙/连珠蛋/假八等),
+  //   同点数的牌尽量不拆(对子/蛋子/大蛋子/真七/真八等)」
   //   两条罚则:
-  //   (1) 拆了 **>=2 个**同点组(每组 >=2 张) -> 罚。
-  //       例: QQKKKKA 不能出 QKA(拆了 QQ + KKKKK); QKKKKA 可以出 QKA(只动了 KKKKK)。
-  //   (2) 拆 >=3 张的组去拼 >=3 张的牌, 且拆完该组**剩不到 3 张**(蛋子级被拆垮) -> 罚。
-  //       例: 手里 22222 不该拆出 222; QQQKKKKA 不该拆 QQQ 去拼 QKA。
-  //   单张/对子拆组仍然正常(出便宜牌), 不会因此改出 4 张大蛋子去压一张单牌。
-  function _splitEggCount(cards) {
-    if (cards.length < 3) return 0;              // 单张/对子拆组 -> 不罚
+  //   (1) **同点数家族**的候选(对子/蛋子/大蛋子/真七/真八)部分用了手里的同点组 -> 罚。
+  //       例: 手里 333 出了 33 -> 罚(用户 13:59 报障); 手里 22222 出了 222 -> 罚; 4444 出 44 -> 罚。
+  //       单张拆组**不罚**(手里 66 出 6 仍然正常, 否则会出现没牌可出)。
+  //   (2) **组合牌型**(龙/双龙/连珠蛋/假八...)拆了 >=2 个同点组 -> 罚。
+  //       例: QQKKKKA 不能出 QKA(动了 QQ + KKKKK); QKKKKA 可以出 QKA(只动了 KKKKK)。
+  var _sameRankFamily = { PAIR: 1, TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1 };
+  // [2026-11-08 13:59 用户] 「同点数的牌尽量不拆(对子/蛋子/大蛋子/真七/真八)」
+  //   -> 同点数家族的候选只要**拆了**手里的同点组, 就**不进候选**(硬过滤):
+  //      例: 手里 333, 桌面 22 -> 不许出 33(拆蛋子), 只能出 333 整组或者过牌。
+  //      单张拆组不罚(手里 66 出 6 正常, 否则会出现没牌可出)。
+  function _splitsSameRankGroup(cards, type) {
+    if (!_sameRankFamily[type]) return false;
     var used = {};
     cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
-    var n = 0, touched = 0;
+    for (var rk in _hgroups) {
+      var total = _hgroups[rk].length;
+      var u = used[rk] || 0;
+      if (u && u < total) return true;             // 拿了组里的一部分 = 拆了同点组
+    }
+    return false;
+  }
+  // (2) 组合牌型拆了 >=2 个同点组 -> 罚(排序降权)
+  function _splitEggCount(cards) {
+    var used = {};
+    cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+    var touched = 0;
     for (var rk in _hgroups) {
       var total = _hgroups[rk].length;
       var u = used[rk] || 0;
       if (!u || u >= total) continue;             // 没动 / 整组用掉 -> 不是拆
       touched++;
-      if (total >= 3 && (total - u) < 3) n++;     // 拆垮了蛋子级组
     }
-    if (touched >= 2) n++;                        // 拆了 >=2 组 -> 罚
-    return n;
+    return touched >= 2 ? 1 : 0;
   }
   // 「重手」: 王 / 大A / 蛋子及以上 -> 同阵营时不主动用
   function _isHeavy(cards, type) {
@@ -294,6 +309,8 @@ function chooseAction(state, playerId) {
         comboCards.some(function (c) { return !!c.is主方大A; })) return;
     // [2026-11-07 00:19 用户] 阵营不明(次方未亮明)时, 不用大蛋子+ 去压
     if (_uncertain && policy.EGG_PLUS[h.type]) return;
+    // [2026-11-08 13:59 用户] 同点数的牌不拆: 拆了同点组的对子/蛋子/大蛋子/真七/真八 不进候选
+    if (_splitsSameRankGroup(comboCards, h.type)) return;
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     //   [2026-11-07 23:22 用户] 「如果本次手牌打出后就全部出完, 则队友的牌也要跟」
     //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。

@@ -21,7 +21,10 @@
 // 「推定次方」(公开信息推导): 暗打时, 「身份未明的人」对「另一个身份未明的人」打出蛋子+
 //   -> 其他抓方默认把他标记为次方(本局有效, 第一次推定即锁定)。
 
-var EGG_PLUS_TYPES = require('./ai-policy.js').EGG_PLUS;
+// [2026-11-08 13:59 用户] 推定次方的**信号**改了:
+//   用**大蛋子+**(大蛋子及以上)压身份不明的人, 或者用**三个 4 及以上的 4**取身份不明的人的牌。
+//   (普通蛋子不再算信号了 —— 那太常见, 推定会乱套。)
+var BIG_EGG_PLUS_TYPES = require('./ai-policy.js').BIG_EGG_PLUS;
 
 // 公开信息推出的次方(第一次推定即锁定); excludeId = 观察者自己(自己打的牌不算线索)
 function inferNext(state, excludeId) {
@@ -33,8 +36,12 @@ function inferNext(state, excludeId) {
   var plays = state.plays || [];
   for (var i = 0; i < plays.length; i++) {
     var p = plays[i];
-    if (!p || !p.type || !EGG_PLUS_TYPES[p.type]) continue;   // 必须是蛋子+
-    if (!p.beat) continue;                                     // 必须是压别人(起手不算)
+    if (!p || !p.type) continue;
+    // 信号1: 用大蛋子+(大蛋子及以上)压制; 信号2: 用三个4及以上的4取牌
+    var _isSignal = (BIG_EGG_PLUS_TYPES[p.type] === 1)
+      || (p.kind === 'CAPTURE' && p.useFours >= 3);
+    if (!_isSignal) continue;
+    if (!p.beat) continue;                                     // 必须是压/取别人(起手不算)
     if (p.playerId === p.beat) continue;
     if (excludeId && p.playerId === excludeId) continue;       // 是我自己打的 -> 我知道自己的阵营
     if (holder && (p.playerId === holder || p.beat === holder)) continue;  // 主A持有者身份是明的

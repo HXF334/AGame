@@ -324,7 +324,8 @@ function _aiTraceLine(tr, who) {
     var cs = [];
     if (tr.camp.uncertain) cs.push('阵营不明');
     if (tr.camp.sameCamp) cs.push('同阵营');
-    if (tr.camp.inferred) cs.push('推定次方=' + tr.camp.inferred);
+    // [2026-11-08 用户] 「log 里推定次方=C, 实际应该是丙」-> 打玩家名, 不打 id
+    if (tr.camp.inferred) cs.push('推定次方=' + pn(tr.camp.inferred));
     if (cs.length) out += ' | ' + cs.join(',');
   }
   if (tr.chosen) {
@@ -352,7 +353,12 @@ function _autoPlayTakeover() {
   if (act.type === 'PLAY') {
     var ids = act.cardIds || [];
     if (!ids.length) return false;
-    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张');
+    // [2026-11-08 用户] 「托管时只提示托管出牌: 2 张, 没说出了什么牌」-> 把牌也打出来
+    var _hp = gameState.players.find(function (p) { return p.id === humanPlayer; });
+    var _hmap = {};
+    ((_hp && _hp.hand) ? _hp.hand : []).forEach(function (c) { _hmap[c.id] = c; });
+    var _desc = ids.map(function (id) { return _hmap[id] ? cardDesc(_hmap[id]) : ''; }).filter(Boolean).join(' ');
+    log('  托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张' + (_desc ? ' ' + _desc : ''));
     log(_aiTraceLine(getAiTrace(), pn(humanPlayer)));
     _autoPlayDoPlay(ids);
     return true;
@@ -1926,6 +1932,10 @@ function doPushWind() {
       _uiClearTurnDisplay(currentPlayer);
       uiTurnTick();
     }
+    // [2026-11-08 用户] 「托管中同阵营推风过来有出牌权时不出牌」
+    //   -> 推风**不走** advanceCurrentPlayer(那里的 _autoPlaySchedule 才排托管接管),
+    //      于是回合到了真人手里却没人替他出牌。推风后必须补一次调度。
+    if (currentPlayer === humanPlayer && uiAutoPlay) _autoPlaySchedule(700);
     // [P1 修复] 推风成功后必须清空 lastEmptiedPlayer。
     //   引擎已把 推风触发者 置为 null, 但本模块的 lastEmptiedPlayer 会一直留着旧值,
     //   导致三处错误:

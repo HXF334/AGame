@@ -439,8 +439,8 @@ section('T23. 引擎记录出牌流水(AI 推定次方的数据来源)');
 }
 section('T24. AI 决策日志: 候选集 + 排序键 + 决定键(用户 22:26 裁定 C)');
 {
-  var hand24 = [C('S',2), C('H',2), C('D',2), C('C',2), C('S',9)];
-  var table24 = [C('S',8), C('H',8), C('D',8)];
+  var hand24 = [C('S',2), C('H',2), C('D',2), C('C',2), C('S',9), C('S',5)];
+  var table24 = [C('S',4)];    // 桌面是一张单牌 -> 候选多个且前两名可区分(决定键才有意义)
   var st24 = stateWith('D', hand24, table24, {
     mode: '2V3_暗打', 次方: 'C', 次方公开: false,
     主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
@@ -619,6 +619,76 @@ section('T31. 拆组口径: 拆了>=2 组才罚(用户 11-08: QKKKKA 可出 QKA,
   check('T32.1 QQKKKKA: 不出 QKA(动了两个组)',
     act32.type === 'PLAY' && touchedGroups(p32, hand32) <= 1,
     act32.type + ' ' + typeOf(p32) + ' ranks=' + ranksOf(p32));
+}
+section('T33. 同点数的牌不拆: 手里 333 不出 33(用户 13:59)');
+{
+  var hand33 = [C('S',3), C('H',3), C('D',3)];
+  var table33 = [C('S',2), C('H',2)];
+  // (a) 桌面是**身份未明**的人出的 22 -> 只能出 333 整组或过牌, 不能拆成 33
+  var st33 = stateWith('D', hand33, table33, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act33 = aiMod.chooseAction(st33, 'D');
+  var p33 = playedOf(st33, 'D', act33);
+  var noSplit33 = true;
+  if (p33.length) {
+    var uc33 = {};
+    p33.forEach(function (c) { uc33[c.rank] = (uc33[c.rank] || 0) + 1; });
+    for (var rk33 in uc33) if (uc33[rk33] !== 3) noSplit33 = false;
+  }
+  check('T33.1 没出 33(没拆同点组)', noSplit33,
+    act33.type + ' ' + typeOf(p33) + ' ranks=' + ranksOf(p33));
+  // (b) 桌面是**已知敌人**(主A持有者) -> 出 333 整组
+  var st33b = stateWith('D', hand33, table33, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var act33b = aiMod.chooseAction(st33b, 'D');
+  var p33b = playedOf(st33b, 'D', act33b);
+  check('T33.2 对已知敌人: 出 333 整组', p33b.length === 3 && typeOf(p33b) === 'TRIPLE',
+    act33b.type + ' ' + typeOf(p33b) + ' ranks=' + ranksOf(p33b));
+}
+
+section('T34. 推定次方的信号: 大蛋子+ 或 三个4取牌(用户 13:59)');
+{
+  var hand34 = [C('S',4), C('H',4), C('D',4), C('C',4)];
+  var table34 = [C('S',9), C('H',9), C('D',9)];
+  var st34 = stateWith('D', hand34, table34, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  st34.plays = [{ playerId: 'E', type: 'TRIPLE', count: 3, beat: 'D', kind: 'PLAY' }];  // 普通蛋子 -> 不是信号
+  var act34 = aiMod.chooseAction(st34, 'D');
+  var p34 = playedOf(st34, 'D', act34);
+  check('T34.1 普通蛋子不算推定信号(仍不用蛋子+ 去压不明的人)',
+    act34.type === 'PASS', act34.type + ' ' + typeOf(p34) + ' ranks=' + ranksOf(p34));
+  var st34b = stateWith('D', hand34, table34, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
+  st34b.plays = [{ playerId: 'E', type: 'TRIPLE', count: 3, beat: 'D', kind: 'CAPTURE', useFours: 3 }];
+  var act34b = aiMod.chooseAction(st34b, 'D');
+  var p34b = playedOf(st34b, 'D', act34b);
+  check('T34.2 用三个4取牌 = 推定信号 -> 可以出蛋子+ 去压他',
+    act34b.type === 'PLAY' && typeOf(p34b) === 'BIG_TRIPLE',
+    act34b.type + ' ' + typeOf(p34b) + ' ranks=' + ranksOf(p34b));
+}
+
+section('T35. 引擎: 取牌记进流水(kind=CAPTURE + useFours)');
+{
+  var hand35 = [C('S',4), C('H',4), C('D',4), C('S',6)];
+  var table35 = [C('S',9), C('H',9), C('D',9), C('C',9)];
+  var st35 = stateWith('D', hand35, table35, {
+    mode: '2V3_暗打', 次方: 'C', 次方公开: false,
+    主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'B' });
+  var r35 = eng.handlePlay(st35, { playerId: 'D',
+    cardIds: [hand35[0].id, hand35[1].id, hand35[2].id] });
+  check('T35.1 取牌成功', r35.ok === true, r35.ok ? '' : JSON.stringify(r35.error));
+  var pl35 = (r35.state && r35.state.plays) || [];
+  check('T35.2 流水记了 kind=CAPTURE 和 useFours',
+    pl35.length === 1 && pl35[0].kind === 'CAPTURE' && pl35[0].useFours === 3,
+    JSON.stringify(pl35[0]));
 }
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
