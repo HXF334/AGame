@@ -79,6 +79,7 @@ function _aiWaitMs(base) {
 //   "Cannot set properties of undefined (setting 'A')"(且只在某些发牌下出现 -> flaky)。
 var uiPlays = {};
 var uiMarks = {};
+var _uiMarksWerePublic = false;   // [2026-11-08 16:24] 上次渲染时阵营是否已确定(次方亮明/明打/1V4)
 var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
 
 // === 工具 ===
@@ -1601,7 +1602,16 @@ function draw() {
     //   (上一轮出的牌**仍然显示**在桌上, 但不能因此抑制他的「不出」)
     uiPlaysTrick: uiPlaysTrick,
     uiTrickId: uiTrickId,
-    marks: uiMarks,
+    marks: (function () {
+      // [2026-11-08 16:24 用户] 「等次A实际打出后需要更新敌友标志」-> 阵营刚变确定时,
+      //   之前**手动标的**敌友只是猜测 -> 清掉, 让真阵营表接管(敌友标志随之刷新)。
+      var _pubNow = (gameState['次方公开'] === true)
+        || ((gameState.mode || '').indexOf('明打') >= 0)
+        || ((gameState.mode || '').indexOf('1V4') >= 0);
+      if (_pubNow && !_uiMarksWerePublic && uiMarks && Object.keys(uiMarks).length) uiMarks = {};
+      _uiMarksWerePublic = _pubNow;
+      return uiMarks;
+    })(),
     // [2026-11-04 用户] 「发牌阶段记牌器收起来, 等出牌阶段再判断要不要展开」
     //   -> 发牌阶段强制收起(牌还没发齐, 记出来的数没意义);
     //      进入出牌阶段后按用户设置(默认展开)恢复。
