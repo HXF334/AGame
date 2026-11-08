@@ -957,6 +957,9 @@ function _uiExpandSelection(cardId) {
   //      能整组出就整组选上(例: 已选 6666, 再点 7 -> 66667777 假八, 不把 6666 落下);
   //      找不到就退回老行为(按点中的那张补最小牌型)。
   var keep = null, keepLen = 1e9, keepPow = 1e9;
+  // [2026-11-08 用户] 「想选 6789, 一点 9 就把 999 选中, 678 放下去了」
+  //   -> 兜底之前先找「**尽量保住已选牌**」的合法组合(例: 已选 678, 再点 9 -> 6789, 而不是 999 把 678 顶掉)。
+  var near = null, nearKeep = -1, nearLen = 1e9, nearPow = 1e9;
   var before = selectedCards.filter(function (id) { return id !== cardId; });
   for (var i = 0; i < cands.length; i++) {
     var c = cands[i];
@@ -965,11 +968,21 @@ function _uiExpandSelection(cardId) {
     var pw = _uiComboPower(c.cards);
     if (len < bestLen || (len === bestLen && pw < bestPow)) { best = c; bestLen = len; bestPow = pw; }
     var all = before.length > 0;
-    for (var k = 0; k < before.length; k++) { if (c.ids.indexOf(before[k]) < 0) { all = false; break; } }
+    var hit = 0;
+    for (var k = 0; k < before.length; k++) {
+      if (c.ids.indexOf(before[k]) >= 0) hit++;
+      else all = false;
+    }
     if (all && (len < keepLen || (len === keepLen && pw < keepPow))) { keep = c; keepLen = len; keepPow = pw; }
+    // 保住的已选张数多的优先; 张数少的次之; 牌力低的再次之
+    if (hit > nearKeep || (hit === nearKeep && (len < nearLen || (len === nearLen && pw < nearPow)))) {
+      near = c; nearKeep = hit; nearLen = len; nearPow = pw;
+    }
   }
   // (1) 能跟已选的牌整组出 -> 整组选上(不落下)
   if (keep && keep.ids.length > 1) { selectedCards = keep.ids.slice(); return; }
+  // (1.5) 没有能整组出的, 但有能**尽量保住已选**的 -> 用它(别用最短组合把已选的顶掉)
+  if (near && nearKeep > 0 && near.ids.length > 1) { selectedCards = near.ids.slice(); return; }
   // (2) 点中的这张自己就能出 -> 不动(老行为: 继续累加选中)
   if (_uiSinglePlayable(cardId)) return;
   // (3) 退回老行为: 按点中的那张补最小牌型
@@ -2312,6 +2325,10 @@ if (typeof module !== 'undefined' && module.exports) {
     uiScores: function () { return _uiScores(); },
     uiLayoutSnapshot: function () { return uiRender.layout(W || 844, H || 390); },
     selectedCards: function () { return selectedCards; },
+  // [2026-11-08] 供测试: 点选后自动补牌型(真人点选的「保住已选」逻辑)
+  __uiExpandSelection: function (cardId) { return _uiExpandSelection(cardId); },
+  // [2026-11-08] 供测试: 设定当前预选(模拟真人已经点了哪些牌)
+  __setSelected: function (ids) { selectedCards = (ids || []).slice(); return selectedCards.slice(); },
     handCardHitboxes: function () { return handCardHitboxes; },
     setHumanPlayer: function (p) { humanPlayer = p; },
     // [测试注入] 直接设置当前**闸门决策**(亮A/反A/身份), 用于精确复现指定场景。

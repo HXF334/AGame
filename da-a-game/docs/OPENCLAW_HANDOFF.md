@@ -331,6 +331,10 @@ openclaw config set --batch-file .tmp-config-batch.json
 - **src/ai.js**: `splitEgg` 两条罚则 —— 拆 >=2 组 -> 罚; 拆 >=3 张组且拆完剩不到 3 张 -> 罚(单张/对子拆组不罚)。
 - **game.js**: 托管中出牌/不出/提示三个按钮全部不显示。
 - **ui-render.js**: 取消托管标识下移(cardH*0.67), 不再压数字。
+### 7.14 2026-11-08 11:46 批次(真人点选: 保住已选的牌)
+
+- `game.js _uiExpandSelection`: 兜底前先找「尽量保住已选牌」的合法组合(已选 678 + 点 9 -> 6789, 不再被 999 顶掉)。
+- 真人点选的候选池 = 全量引擎合法组合, **不受 AI 的拆组口径限制**(两条线)。
 ## 8. 旧工作区（只读）
 
 `C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：

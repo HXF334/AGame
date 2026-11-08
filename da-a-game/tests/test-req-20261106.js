@@ -473,6 +473,60 @@ section('B6. 提示: 同牌型优先(上家出JJ, 我有22777 -> 应选 22)(用�
     check('C3.4 收尾已关闭托管', g.uiAutoPlay() === false, String(g.uiAutoPlay()));
   }
 
+  section('B7. 点选: 尽量保住已选的牌(用户 11-08: 想选 6789, 一点 9 就变成 999 把 678 顶掉)');
+  {
+    var handTypes = require('../src/hand-types.js');
+    var hand = [createNormalCard('S',6,'b76'), createNormalCard('H',7,'b77'), createNormalCard('D',8,'b78'),
+                createNormalCard('C',8,'b78b'), createNormalCard('S',9,'b79'), createNormalCard('H',9,'b79b'),
+                createNormalCard('D',9,'b79c'), createNormalCard('C',5,'b75'), createNormalCard('S',4,'b74')];
+    var table = [createNormalCard('S',3,'bt3'), createNormalCard('H',4,'bt4'),
+                 createNormalCard('D',5,'bt5'), createNormalCard('C',6,'bt6')];
+    function mkSelState() {
+      var st = SB.build({ handMap: { A: hand }, table: table, lastPlayer: 'B',
+        '主A': { suit: 'H', establishedBy: 'B', viaMethod: 'FORCED_CHECK' },
+        '次方': 'C', '次方公开': true,
+        '主方': ['B','C'], '抓方': ['A','D','E'], mode: '2V3_暗打' });
+      var me = st.players.filter(function (p) { return p.id === 'A'; })[0];
+      st.discarded = st.discarded.concat(me.hand.slice(hand.length));
+      me.hand = hand;
+      g.__setState(st, { human: 'A', currentPlayer: 'A' });
+      return st;
+    }
+    function ranksOfSel(ids) {
+      var out = [];
+      ids.forEach(function (id) {
+        var c = hand.filter(function (x) { return x.id === id; })[0];
+        if (c) out.push(c.rank);
+      });
+      return out;
+    }
+    function cntOf(list) {
+      var o = {};
+      list.forEach(function (r) { o[r] = (o[r] || 0) + 1; });
+      return o;
+    }
+    // (a) 已选 678 -> 再点一个 9
+    mkSelState();
+    g.__setSelected([hand[0].id, hand[1].id, hand[2].id]);
+    g.__uiExpandSelection(hand[4].id);
+    var selA = g.selectedCards();
+    var raA = ranksOfSel(selA), caA = cntOf(raA);
+    check('B7.1 点 9 后已选的 6/7/8 都还在',
+      caA[6] === 1 && caA[7] === 1 && caA[8] === 1, 'ranks=' + raA.join(','));
+    check('B7.2 没有变成整组 999', caA[9] === 1, 'ranks=' + raA.join(','));
+    var cardsA = selA.map(function (id) { return hand.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
+    check('B7.3 选中的牌是一手能压过桌面的牌',
+      cardsA.length > 0 && handTypes.canBeat(handTypes.identifyHand(cardsA), handTypes.identifyHand(table)),
+      'ranks=' + raA.join(','));
+    // (b) 已选 678 + 多点了一张 8 -> 再点 9(截图那样): 仍要保住 678, 只带一张 9
+    mkSelState();
+    g.__setSelected([hand[0].id, hand[1].id, hand[2].id, hand[3].id]);
+    g.__uiExpandSelection(hand[4].id);
+    var selB = g.selectedCards();
+    var raB = ranksOfSel(selB), caB = cntOf(raB);
+    check('B7.4 多选了一张 8 时, 仍保住 678 且只带一张 9',
+      caB[6] === 1 && caB[7] === 1 && caB[8] === 1 && caB[9] === 1, 'ranks=' + raB.join(','));
+  }
   console.log('\ntest-req-20261106: ' + pass + ' passed, ' + fail + ' failed');
   if (fail) process.exit(1);
   process.exit(0);
