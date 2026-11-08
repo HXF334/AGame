@@ -464,8 +464,10 @@ function drawSeats(ctx, st, m) {
     //   (抓方视角: 主方=敌; 推定的次A=敌; 推定后其余未知玩家=友; 还没线索=?)
     // [2026-11-08 16:24 用户] 「点击敌友按钮标记, 画面上显示的敌友不变」-> **手动标记优先**,
     //   点了就生效(没手动标时才用 src/camp.js 的自动判定)。
-    var _mark = myMarks[pid] || null;
-    if (!_mark && st.gameState) {
+    // [2026-11-08 22:05 用户] 「在次方身份亮明后自动更新敌友标记, **不能手动修改**敌友标记」
+    //   -> 敌友标记只由 src/camp.js 自动判定(次方亮明后自动刷新)。
+    var _mark = null;
+    if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
       _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
     }

@@ -106,31 +106,14 @@ if (typeof g.uiIsMainAce === 'function') {
 }
 
 // ---------- 5. 敌友标记 ----------
-section('5. 敌友标记: 三态循环, 每人一套, 新对局重置');
+// [2026-11-08 22:05 用户] 「在次方身份亮明后自动更新敌友标记, 不能手动修改敌友标记」
+//   -> 标记只由 src/camp.js 自动判定; 手动点击不再改变标记(点了只提示)。
+section('5. 敌友标记: 自动判定(不能手动改)');
 check('5.0 game.js 导出 uiMarks / uiMarkCycle', typeof g.uiMarks === 'function' && typeof g.uiMarkCycle === 'function');
-if (typeof g.uiMarkCycle === 'function') {
-  g.setHumanPlayer('B');
-  var s1 = g.uiMarkCycle('C');
-  var s2 = g.uiMarkCycle('C');
-  var s3 = g.uiMarkCycle('C');
-  check('5.1 三态循环 ? -> 友 -> 敌 -> ?',
-    s1 === 'friend' && s2 === 'enemy' && (s3 === null || s3 === undefined),
-    [s1, s2, s3].join('/'));
-  // 重新标一次(B 标 C = 友), 再让 D 标 C = 敌 -> 两边不同
-  g.setHumanPlayer('B');
-  g.uiMarkCycle('C');
-  g.setHumanPlayer('D');
-  g.uiMarkCycle('C');
-  g.uiMarkCycle('C');
-  var mineB = g.uiMarks()['B'] || {};
-  var mineD = g.uiMarks()['D'] || {};
-  check('5.2 每人一套互不影响(B 标友 / D 标敌)',
-    mineB['C'] === 'friend' && mineD['C'] === 'enemy',
-    'B->C=' + mineB['C'] + ' D->C=' + mineD['C']);
-  check('5.3 圆钮不含自己(不给自己标)', !mineB['B'], JSON.stringify(mineB));
-  g.newGame();
-  check('5.4 新对局重置标记', Object.keys(g.uiMarks() || {}).length === 0, JSON.stringify(g.uiMarks()));
-}
+var _m5 = JSON.stringify(g.uiMarks() || {});
+if (typeof g.uiMarkCycle === 'function') g.uiMarkCycle('C');
+check('5.1 手动点击不再改变敌友标记', JSON.stringify(g.uiMarks() || {}) === _m5, _m5 + ' -> ' + JSON.stringify(g.uiMarks() || {}));
+check('5.2 敌友标记由 src/camp.js 自动判定', typeof require('../src/camp.js').campOf === 'function');
 
 // ---------- 6. 牌面无角标 ----------
 section('6. 牌面: 无左上角小角标 / JOKER 竖排');

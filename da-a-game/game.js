@@ -1337,6 +1337,11 @@ var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(
 
 // 敌友三态循环: ? -> 友 -> 敌 -> ?
 function uiMarkCycle(pid) {
+  // [2026-11-08 22:05 用户] 「不能手动修改敌友标记」-> 只提示, 不再改标记。
+  log('敌友标记由系统自动判定(次方亮明后自动更新), 不能手动修改');
+  return null;
+}
+function _uiMarkCycleOld(pid) {
   var mine = uiMarks[humanPlayer] || (uiMarks[humanPlayer] = {});
   var cur = mine[pid] || null;
   mine[pid] = (cur === null) ? 'friend' : (cur === 'friend' ? 'enemy' : null);
@@ -1602,16 +1607,7 @@ function draw() {
     //   (上一轮出的牌**仍然显示**在桌上, 但不能因此抑制他的「不出」)
     uiPlaysTrick: uiPlaysTrick,
     uiTrickId: uiTrickId,
-    marks: (function () {
-      // [2026-11-08 16:24 用户] 「等次A实际打出后需要更新敌友标志」-> 阵营刚变确定时,
-      //   之前**手动标的**敌友只是猜测 -> 清掉, 让真阵营表接管(敌友标志随之刷新)。
-      var _pubNow = (gameState['次方公开'] === true)
-        || ((gameState.mode || '').indexOf('明打') >= 0)
-        || ((gameState.mode || '').indexOf('1V4') >= 0);
-      if (_pubNow && !_uiMarksWerePublic && uiMarks && Object.keys(uiMarks).length) uiMarks = {};
-      _uiMarksWerePublic = _pubNow;
-      return uiMarks;
-    })(),
+    marks: uiMarks,
     // [2026-11-04 用户] 「发牌阶段记牌器收起来, 等出牌阶段再判断要不要展开」
     //   -> 发牌阶段强制收起(牌还没发齐, 记出来的数没意义);
     //      进入出牌阶段后按用户设置(默认展开)恢复。

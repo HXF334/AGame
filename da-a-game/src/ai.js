@@ -83,6 +83,10 @@ function _inferredNext(state, viewerId) {
 //   a = 桌上那人, b = 观察者(AI)。UNKNOWN = 阵营不明 -> 慎用蛋子+; ENEMY/ALLY = 已知 -> 不受限。
 function _campUncertain(state, a, b) {
   if (!state || !a || !b) return false;
+  // [2026-11-08 22:05 用户] 「主A在次方身份未明时可以出任意牌压任何人, 没有限制,
+  //   只有抓方才考虑是否同阵营」-> 主A持有者不受「阵营不明」的蛋子+限制。
+  var _holderV = state['主A'] && state['主A'].establishedBy;
+  if (_holderV && _holderV === b) return false;
   return camp.campOf(state, b, a) === 'UNKNOWN';
 }
 
