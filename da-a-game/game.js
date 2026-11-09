@@ -1421,7 +1421,9 @@ function uiMarkCycle(pid) {
   }
   var mine = uiMarks[humanPlayer] || (uiMarks[humanPlayer] = {});
   var cur = mine[pid] || null;
-  mine[pid] = (cur === null) ? 'friend' : (cur === 'friend' ? 'enemy' : null);
+  // [2026-11-10 用户] 三态用 'unknown' 而不是 null: null 表示「没标过」,
+  //   会被渲染层当成没标 -> 又被自动填上(切不到问号)。
+  mine[pid] = (cur === null || cur === 'unknown') ? 'friend' : (cur === 'friend' ? 'enemy' : 'unknown');
   log('标记 ' + pn(pid) + ' -> ' + (mine[pid] === 'friend' ? '友' : (mine[pid] === 'enemy' ? '敌' : '?')));
   return mine[pid];
 }

@@ -32,6 +32,29 @@ var BIG_EGG_PLUS_TYPES = require('./ai-policy.js').BIG_EGG_PLUS;
 var EGG_COUNT_TYPES = {
   TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1
 };
+// [2026-11-10 用户] 推定「抓方」: 身份未明的人用**大蛋子+**压了**主A**
+//   -> 他是抓方(主方不会压自己人) -> 按阵营表给他敌友标记(对抓方=队友, 对主方=敌)。
+function inferCatcher(state, excludeId) {
+  if (!state) return null;
+  if (state['次方公开'] === true) return null;            // 次方已亮明 -> 用实际阵营
+  var mode = state.mode || '';
+  if (mode.indexOf('明打') >= 0) return null;             // 明打 -> 用实际阵营
+  var holder = state['主A'] && state['主A'].establishedBy;
+  if (!holder) return null;
+  var plays = state.plays || [];
+  for (var i = 0; i < plays.length; i++) {
+    var p = plays[i];
+    if (!p || !p.type) continue;
+    if (BIG_EGG_PLUS_TYPES[p.type] !== 1) continue;       // 必须是大蛋子+
+    if (p.kind === 'CAPTURE') continue;                  // 取牌不算压制
+    if (!p.beat || p.beat !== holder) continue;           // 必须是**压主A**
+    if (p.playerId === holder) continue;
+    if (excludeId && p.playerId === excludeId) continue;  // 我自己打的
+    return p.playerId;
+  }
+  return null;
+}
+
 function inferNext(state, excludeId) {
   if (!state) return null;
   // [2026-11-08 16:03 用户] 「戊自己出牌时的 AI 决策说丙(抓方)是次方」
@@ -82,8 +105,16 @@ function campOf(state, viewerId, targetId) {
   var holder = state['主A'] && state['主A'].establishedBy;
   // [2026-11-08 16:01 用户] 「1V4 的时候主A 默认设定其他 4 名玩家都是敌方, 现在什么也没设定」
   //   -> 1V4 **没有次方**: 主方就主A持有者一个, 其余 4 个全是抓方 -> 阵营是**确定的**, 当公开处理。
-  var publicCamps = (state['次方公开'] === true) || (mode.indexOf('明打') >= 0)
-    || (mode.indexOf('1V4') >= 0);
+  // [2026-11-10 用户] 「1V4暗打开局给所有人标了身份(次方身份还没露呢)」
+  //   -> 1V4 **不**当公开处理: 只有「对主A」的关系确定(主A 必是敌人);
+  //      抓方之间(次方身份还没露) -> **不明**, 不自动标, 只能手动标。
+  var publicCamps = (state['次方公开'] === true) || (mode.indexOf('明打') >= 0);
+  if (mode.indexOf('1V4') >= 0) {
+    var _h14 = state['主A'] && state['主A'].establishedBy;
+    if (_h14 && viewerId === _h14) return 'ENEMY';      // 我是主A: 其他都是抓方 -> 敌
+    if (_h14 && targetId === _h14) return 'ENEMY';      // 主A 是身份明的敌人
+    return 'UNKNOWN';                                   // 抓方之间 -> 不明(不自动标)
+  }
   if (publicCamps) {
     var main = state['主方'] || [];
     var taker = state['抓方'] || [];
@@ -104,6 +135,8 @@ function campOf(state, viewerId, targetId) {
     if (inferredM) {
       if (targetId === inferredM) return 'ALLY';
       return 'ENEMY';
+    var inferredC2 = inferCatcher(state, viewerId);
+    if (inferredC2 && targetId === inferredC2) return 'ENEMY';   // 推定为抓方 -> 敌
     }
     return 'UNKNOWN';
   }
@@ -113,6 +146,10 @@ function campOf(state, viewerId, targetId) {
   if (inferred) {
     if (targetId === inferred) return 'ENEMY';              // 推定的次方: 敌人
     return 'ALLY';                                          // 裁定 A: 其余未知玩家 = 队友
+  // [2026-11-10 用户] 「用大蛋子+压了主A -> 推测该玩家为抓方, 根据阵营设置他的敌友标记」
+  var inferredC = inferCatcher(state, viewerId);
+  if (inferredC && targetId === inferredC) return 'ALLY';   // 推定为抓方 -> 对抓方观察者是队友
+  if (inferredC) return 'UNKNOWN';                          // 其他人仍不明
   }
   return 'UNKNOWN';
 }
@@ -129,6 +166,9 @@ function _manualCamp(state, viewerId, targetId) {
   var m = row[targetId];
   if (m === 'friend') return 'ALLY';
   if (m === 'enemy') return 'ENEMY';
+  // [2026-11-10 用户] 「手动切到问号后, UI 上还是显示敌/友」-> 手动标过问号 = 明确表示「不明」,
+  //   不再按引擎的推定/真实关系来显示。
+  if (v === 'unknown') return 'UNKNOWN';
   return null;
 }
 

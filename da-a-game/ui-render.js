@@ -478,7 +478,11 @@ function drawSeats(ctx, st, m) {
     var _mark = null;
     // [2026-11-08 22:33 用户] 能不能手动改按观察者自己的知情程度(camp.canManualMark)
     var _canM = st.gameState ? camp.canManualMark(st.gameState, st.humanPlayer, pid) : false;
-    if (_canM && myMarks[pid]) _mark = myMarks[pid];
+    // [2026-11-10 用户] 「切到问号后 UI 还显示敌/友」-> 手动标过(哪怕标的是问号)就用手动的,
+    //   不再被自动判定覆盖。
+    if (_canM && Object.prototype.hasOwnProperty.call(myMarks, pid)) {
+      _mark = (myMarks[pid] === 'unknown') ? null : myMarks[pid];
+    }
     if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
       // [2026-11-09 21:44 用户] 「AI 根据逻辑推测出阵营后为什么没有主动标敌友标记?」

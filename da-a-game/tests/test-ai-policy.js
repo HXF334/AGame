@@ -72,8 +72,8 @@ section('P3. 敌友标记(src/camp.js): 三态判定(用户 23:27)');
   var st3 = mk({ mode: '2V3_明打', '次方公开': true });
   var st4 = mk({ mode: '1V4_暗打', '主方': ['A'], '抓方': ['B','C','D','E'] });
   check('P3.14 1V4: 主A持有者看其他四人是敌', camp.campOf(st4, 'A', 'B') === 'ENEMY', camp.campOf(st4, 'A', 'B'));
-  check('P3.15 1V4: 抓方之间是友', camp.campOf(st4, 'B', 'C') === 'ALLY', camp.campOf(st4, 'B', 'C'));
-  check('P3.16 暗打: 推定出来的关系=推测', camp.campCertain(st2b, 'D', 'E') === false, String(camp.campCertain(st2b, 'D', 'E')));
+  // [2026-11-10 用户] 1V4 暗打开局不能给抓方自动标(次方身份还没露) -> 抓方之间 = 不明
+  check('P3.15 1V4: 抓方之间=不明(次方未露, 不自动标)', camp.campOf(st4, 'B', 'C') === 'UNKNOWN', camp.campOf(st4, 'B', 'C'));
   check('P3.17 次方亮明后: 关系=确定', camp.campCertain(st3, 'D', 'E') === true, String(camp.campCertain(st3, 'D', 'E')));
   check('P3.18 主A持有者看主A持有者=确定(身份明)', camp.campCertain(st, 'D', 'A') === true, String(camp.campCertain(st, 'D', 'A')));
   check('P3.9 公开: 同阵营=友', camp.campOf(st3, 'D', 'E') === 'ALLY', camp.campOf(st3, 'D', 'E'));
