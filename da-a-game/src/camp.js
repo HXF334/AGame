@@ -137,13 +137,17 @@ function campCertain(state, viewerId, targetId) {
 //   - 1V4 暗打: 主A持有者知道其他四家的身份 -> 不能改; 其余四个抓方 -> 可以改。
 //   - 2V3 暗打且次方未明: 次A(次方)知道所有玩家阵营 -> 不能改; 其余人 -> 可以改。
 //   - 次方身份亮明(次方公开/明打) -> 自动更新敌友标记, 所有人不能改。
-function canManualMark(state, viewerId) {
+function canManualMark(state, viewerId, targetId) {
   if (!state || !viewerId) return false;
   var mode = state.mode || '';
   var holder = state['主A'] && state['主A'].establishedBy;
   if (mode.indexOf('1V4') >= 0) return !(holder && holder === viewerId);
   if (state['次方公开'] === true || mode.indexOf('明打') >= 0) return false;
   var next = state['次方'];
+  // [2026-11-09 用户] 「我是抓方, 还能修改主A的敌友标记」
+  //   -> 抓方对**主A**的关系是确定的(主A 必是主方 = 自己的敌) -> 必须用真实关系, 不能手改。
+  //      抓方之间(谁可能是次方)才需要手改。
+  if (targetId && holder && targetId === holder && viewerId !== holder) return false;
   return !(next && next === viewerId);
 }
 

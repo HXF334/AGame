@@ -477,7 +477,7 @@ function drawSeats(ctx, st, m) {
     //   -> 身份未明: 手动标记优先(点了就生效); 身份明了: 以真阵营表为准, 手动标记不再生效。
     var _mark = null;
     // [2026-11-08 22:33 用户] 能不能手动改按观察者自己的知情程度(camp.canManualMark)
-    var _canM = st.gameState ? camp.canManualMark(st.gameState, st.humanPlayer) : false;
+    var _canM = st.gameState ? camp.canManualMark(st.gameState, st.humanPlayer, pid) : false;
     if (_canM && myMarks[pid]) _mark = myMarks[pid];
     if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
@@ -1126,6 +1126,8 @@ function drawSettlement(ctx, st, m) {
     if (_gl2) {
       // [2026-11-08 23:36 用户] 「结算画面的大贡二贡等标签往右移」-> 从 -108 挪到 -90
       // [2026-11-09 用户] 「结算画面的大贡二贡等标签稍微往左移一点点」-> -62 挪到 -72
+      // [2026-11-09 用户] 上一批把画标签那一行**替换成了注释** -> 结算画面根本不画标签(报障「没有几贡标志」)
+      text(ctx, _gl2, px + pw - 72, y, Math.max(9, Math.round(m.vh * 0.026)), '#ffd98a', 'right', true);
     }
     // **全部**剩余手牌, 顺序与手牌区一致(大A > 大王 > 小王 > 3 > 2 > A > K ...)
     var hand = (p && p.hand) ? p.hand : [];

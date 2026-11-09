@@ -399,6 +399,8 @@ function _autoPlayTakeover() {
 
 // 托管出牌: 走和真人一样的引擎动作, 但绕过「是不是真人回合」守卫
 function _autoPlayDoPlay(ids) {
+  // [2026-11-09 用户] 托管出牌也要能触发**推风**(真人托管时出完牌)
+  var _hadT0 = (gameState.table || []).length > 0;
   var r = transition(gameState, { type: ACTIONS.PLAY,
     payload: { playerId: humanPlayer, cardIds: ids } });
   if (r && r.ok) {
@@ -406,10 +408,14 @@ function _autoPlayDoPlay(ids) {
     var cards = (gameState.table || []).slice(-ids.length);
     _uiRecordPlay(humanPlayer, cards);
     log('  托管出牌: ' + ids.length + ' 张');
+    var _hadT1 = (gameState.table || []).length > 0;
+    var _roundJustEnded = _hadT0 && !_hadT1;
+    var _meAfter = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    if (_meAfter && _meAfter.hand && _meAfter.hand.length === 0) lastEmptiedPlayer = humanPlayer;
     lastEmptiedPlayer = null;
     advanceCurrentPlayer();
     checkRoundEnd();
-    doPushWindIfPending(false);
+    doPushWindIfPending(_roundJustEnded);
     enterPlayIfNeeded();
   } else {
     log('  托管出牌失败: ' + _errOf(r));
@@ -1392,7 +1398,7 @@ function uiMarkCycle(pid) {
   // [2026-11-08 22:33 用户] 1V4: 只有主A不能改(其余四家可以); 2V3暗打: 只有次A不能改(其余人可以);
   //   次方亮明后所有人不能改(自动更新)。
   var campMod = require('./src/camp.js');
-  if (!campMod.canManualMark(gameState, humanPlayer)) {
+  if (!campMod.canManualMark(gameState, humanPlayer, pid)) {
     log('你已知道这些玩家的阵营, 敌友标记按真实阵营自动判定, 不能手动改');
     return null;
   }

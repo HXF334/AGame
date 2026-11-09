@@ -231,6 +231,27 @@ section('⑩ 同一轮多个人都出完牌');
     JSON.stringify(t10.slice(0, 24)));
 }
 
+section('⑪ 结算画面: 大贡/二贡标签要画出来');
+{
+  var _fs2 = require('fs'), _path2 = require('path');
+  var _ur = _fs2.readFileSync(_path2.join(__dirname, '..', 'ui-render.js'), 'utf8');
+  // [2026-11-09 用户] 「结算画面没有几贡标志了」-> 上一批把画标签那行替换成了注释(标签根本不画)
+  check('⑪ 结算画面确实画出了贡字(不是被注释掉的那行)',
+    _ur.indexOf('text(ctx, _gl2, px + pw - 72, y,') >= 0, '');
+}
+
+section('⑫ 抓方不能手改主A的敌友标记');
+{
+  var camp = require('../src/camp.js');
+  var stC = { mode: '2V3_暗打', '主A': { suit: 'H', establishedBy: 'B' }, '次方': null,
+              '次方公开': false, '主方': ['B','D'], '抓方': ['A','C','E'] };
+  check('⑫ 抓方对主A关系确定 -> 不能手改', camp.canManualMark(stC, 'A', 'B') === false, '');
+  check('⑫ 抓方之间(谁可能是次方)仍可手改', camp.canManualMark(stC, 'A', 'C') === true, '');
+  var stOpen = { mode: '2V3_明打', '主A': { suit: 'H', establishedBy: 'B' }, '次方': 'D',
+                 '次方公开': true, '主方': ['B','D'], '抓方': ['A','C','E'] };
+  check('⑫ 次方亮明 -> 所有人不能手改', camp.canManualMark(stOpen, 'A', 'C') === false, '');
+}
+
 console.log('');
 console.log('test-req-20261109: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
