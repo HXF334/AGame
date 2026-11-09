@@ -26,14 +26,12 @@
 //   (普通蛋子不再算信号了 —— 那太常见, 推定会乱套。)
 var BIG_EGG_PLUS_TYPES = require('./ai-policy.js').BIG_EGG_PLUS;
 
-// [2026-11-09 21:32 用户] 推定次方的**新信号**: 身份未明的人对**另一个身份未明**的人,
-//   出了「**2 个及以上**的蛋子」(连珠蛋/大连珠蛋/假八/大假八/双龙这类多组同点组合)。
-//   次方身份亮明(次方公开)或明打 -> 一律按实际阵营, 不推定(见 inferNext 开头)。
-var MULTI_EGG_TYPES = {
-  STRAIGHT_TRIPLE: 1, BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1, DOUBLE_STRAIGHT: 1
+// [2026-11-09 21:44 用户] 推定次方的**新信号**: 某个人**累计打出过 2 次及以上「蛋子」**
+//   (蛋子 = 3 张同点及以上: 蛋子/大蛋子/真七/真八) -> 推测他是次方。
+//   注意: 不是「一手牌里有 2 组以上同点」(连珠蛋/假八/大假八/双龙 属于大蛋子+, 已由信号1覆盖)。
+var EGG_COUNT_TYPES = {
+  TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1
 };
-
-// 公开信息推出的次方(第一次推定即锁定); excludeId = 观察者自己(自己打的牌不算线索)
 function inferNext(state, excludeId) {
   if (!state) return null;
   // [2026-11-08 16:03 用户] 「戊自己出牌时的 AI 决策说丙(抓方)是次方」
@@ -45,12 +43,22 @@ function inferNext(state, excludeId) {
   if (mode.indexOf('暗打') < 0) return null;               // 只在暗打
   var holder = state['主A'] && state['主A'].establishedBy;
   var plays = state.plays || [];
+  // [2026-11-09 21:44 用户] 信号3: 累计打出过 2 次及以上「蛋子」的未知玩家 -> 推测他是次方
+  var _eggCnt = {};
+  plays.forEach(function (p3) {
+    if (!p3 || !p3.type || !EGG_COUNT_TYPES[p3.type]) return;
+    if (excludeId && p3.playerId === excludeId) return;        // 我自己打的 -> 我知道自己的阵营
+    if (holder && p3.playerId === holder) return;             // 主A持有者身份是明的
+    _eggCnt[p3.playerId] = (_eggCnt[p3.playerId] || 0) + 1;
+  });
+  for (var _pid in _eggCnt) {
+    if (_eggCnt[_pid] >= 2) return _pid;
+  }
   for (var i = 0; i < plays.length; i++) {
     var p = plays[i];
     if (!p || !p.type) continue;
     // 信号1: 用大蛋子+(大蛋子及以上)压制; 信号2: 用三个4及以上的4取牌
     var _isSignal = (BIG_EGG_PLUS_TYPES[p.type] === 1)
-      || (MULTI_EGG_TYPES[p.type] === 1)   // [2026-11-09] 2 个及以上的蛋子(多组同点组合)
       || (p.kind === 'CAPTURE' && p.useFours >= 3);
     if (!_isSignal) continue;
     if (!p.beat) continue;                                     // 必须是压/取别人(起手不算)
