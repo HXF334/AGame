@@ -481,7 +481,8 @@ function drawSeats(ctx, st, m) {
     if (_canM && myMarks[pid]) _mark = myMarks[pid];
     if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
-      if (!_mark) _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+      // [2026-11-09 用户] 「不要给真人玩家自动标记敌友」-> 真人只显示**自己手动标的**;
+      //   没手动标就显示「?」, 不用 camp.campOf 自动填(自动填=系统替真人下判断)。
     }
     drawAllyMark(ctx, st, m, colX, mky, mr, _mark);
     markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
@@ -624,14 +625,6 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     var y = slot.y - cardH / 2;
     // [2026-11-06 用户] 「禁止 +N 截断」-> 全部画出, 不再有 "+N" 标记
     // [2026-11-09 用户] 被 4 取走的牌 -> 桌面右下角标「取」(不再整手半透明)
-    var _takenIds = {};
-    var _pls2 = (st.gameState && st.gameState.players) || [];
-    for (var _i2 = 0; _i2 < _pls2.length; _i2++) {
-      var _h2 = _pls2[_i2].hand || [];
-      for (var _j3 = 0; _j3 < _h2.length; _j3++) {
-        if (_h2[_j3] && _h2[_j3]['取自']) _takenIds[_h2[_j3].id] = 1;
-      }
-    }
     for (var j = 0; j < n; j++) {
       // 内容一律按 step 宽居中 -> 和其他手牌位置一致
       var _cd = cards[j];
@@ -639,11 +632,19 @@ function drawSeatPlays(ctx, st, m, seatMap) {
       // [2026-11-09 用户] 「透明度不要了, 只在桌面上被取的牌的右下角标一个半透明的取字」
       //   -> 「被取走」从**引擎状态**反推: 被取走的牌会以副本进取牌者手牌(带「取自」标记),
       //      副本 id 与原牌一致 -> 只有真被取走的那手牌会被标上, 不会被误伤。
-      if (_takenIds[_cd.id]) {
-        var _fs2 = Math.max(9, Math.round(m.vh * 0.030));
+      // [2026-11-09 用户] 「标记黄色不明显, 看不出来」+「同一个玩家第二个没被取的蛋子也有取标志」
+      //   -> 只认**牌对象自己**的「被取走」标记(capture 时打在原牌上, 副本会去掉这个标记,
+      //      所以取牌者以后再打出这手牌不会被误标); 画成**红底黄字**小牌子, 一眼能看见。
+      if (_cd && _cd['被取走']) {
+        var _fs2 = Math.max(10, Math.round(m.vh * 0.032));
+        var _bw = _fs2 * 1.5, _bh = _fs2 * 1.25;
+        var _bx = x0 + j * step + cardW - _bw - 1;
+        var _by = y + cardH - _bh - 1;
         ctx.save();
-        ctx.globalAlpha = 0.8;
-        text(ctx, '取', x0 + j * step + cardW - _fs2 * 0.35, y + cardH - _fs2 * 0.35, _fs2, '#ffd98a', 'right', true);
+        ctx.fillStyle = 'rgba(190,30,30,0.92)';
+        rr(ctx, _bx, _by, _bw, _bh, 3); ctx.fill();
+        ctx.fillStyle = '#ffe9a8';
+        text(ctx, '取', _bx + _bw / 2, _by + _bh / 2, _fs2, '#ffe9a8', 'center', true);
         ctx.restore();
       }
     }
@@ -712,7 +713,7 @@ function drawHand(ctx, st, m) {
     // [2026-11-07 23:22 用户] 「取消托管按钮再稍微大一点, 上移一点」
     var _cw = Math.max(112, Math.round(m.vw * 0.19));
     var _ch = Math.round(m.vh * 0.088);
-    var _cx = m.vw / 2 - _cw / 2;
+    var _cx = m.vw / 2 - _cw / 2 + 12;   // [2026-11-09 用户] 「取消托管按钮稍微往右移一点」
     // [2026-11-06 用户] 「取消托管」标识放到**手牌下半部、数字下方**
     //   -> 原来画在手牌**上方**(L2.y - _ch/2), 现在压在手牌下半部、点数数字下面。
     // [2026-11-08 用户] 「取消托管稍微下移一点, 不要压着数字」-> 0.60 -> 0.67
@@ -1118,7 +1119,7 @@ function drawSettlement(ctx, st, m) {
     var dtxt = (delta === undefined) ? '0分' : ((delta > 0 ? '+' : '') + delta + '分');
     ctx.fillStyle = (i % 2 === 0) ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
     rr(ctx, px + 12, y - rowH * 0.46, pw - 24, rowH * 0.92, 3); ctx.fill();
-    text(ctx, st.names[i] + (pid === st.humanPlayer ? '(你)' : ''), px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), '#ffffff', 'left', true);
+    text(ctx, st.names[i], px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), '#ffd700', 'left', true);
     text(ctx, camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0), px + 92, y, Math.max(9, Math.round(m.vh * 0.028)), '#aaaaaa', 'left', false);
     // [2026-11-08 22:40 用户] 结算画面不再显示「头名」, 改成按出完顺序显示 大贡/二贡/三贡/四贡;
     //   标签放在**分数左边**(别压着分数)。

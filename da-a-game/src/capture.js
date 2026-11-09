@@ -82,7 +82,11 @@ function executeCapture(state, playerId, fours) {
     //      「哪些牌被取走」改成由 UI 从引擎状态反推(副本进了取牌者手牌, 带「取自」标记)。
     // [2026-11-08 22:40 用户] 「桌面上被4取牌的蛋子+加点标志」-> 被取走的牌打上标记,
     //   之后在手牌区/再次上桌时都带着, 一眼看出「这手是被4取走的」。
+    // [2026-11-09 用户] 「同一个玩家第二个没被取的蛋子也有取标志」-> 标记只打在**原牌**上,
+    //   副本(进取牌者手牌)必须去掉这个标记, 否则取牌者以后打出这手牌也会被标上。
+    c['被取走'] = playerId;
     var copy = Object.assign({}, c, { location: { type: 'hand', playerId: playerId }, 取自: playerId });
+    delete copy['被取走'];
     if (copy.is主方大A) {
       return Object.assign({}, copy, { is主方大A: false });
     }

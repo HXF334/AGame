@@ -80,8 +80,8 @@ section('2. 拆组: 提示与托管同口径(不拆同点组)');
   var badOnes = cands2.filter(function (c) { return aiMod.splitsRejected(c.cards, c.type, me2.hand); });
   check('2.2 提示候选全部符合托管拆组口径(不拆同点组)', badOnes.length === 0,
     '违规=' + JSON.stringify(badOnes.map(function (c) { return c.type; })));
-  check('2.3 提示不含拆同点组的连张',
-    !cands2.some(function (c) { return c.type === 'STRAIGHT'; }),
+  check('2.3 提示允许拆组的连张(只罚不禁)',
+    cands2.some(function (c) { return c.type === 'STRAIGHT'; }),
     'types=' + JSON.stringify(cands2.map(function (c) { return c.type; })));
   check('2.4 提示候选按牌型形状去重(同形状只留一个)',
     (function () {

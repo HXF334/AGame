@@ -72,7 +72,12 @@ section('② 4取牌: 牌对象不打标记, UI 自己反推');
     // [2026-11-09 用户] 牌对象**不再**打标记: 牌对象是共享引用, 原地打标记会流到
     //   UI 的出牌缓存 -> 把没被取的牌也标上(用户报障: 「没被取的牌也透明了」)。
     var marked = t3.filter(function (c) { return c['被取走']; });
-    check('② 桌面原牌不再被打「被取走」标记(共享引用会误伤)', marked.length === 0, 'marked=' + marked.length);
+    // [2026-11-09 晚] 改回「原牌带标记 + **副本去掉标记**」: 只有真被取走的那手牌显示「取」;
+    //   副本(进取牌者手牌)不带标记 -> 取牌者以后打出这手牌不会被误标。
+    check('② 被取走的原牌带「被取走」标记', marked.length === 3, 'marked=' + marked.length);
+    var copied = taker.hand.filter(function (c) { return c['取自']; });
+    check('② 副本(取牌者手牌)不带「被取走」标记(否则他以后打出这手牌会被误标)',
+      copied.filter(function (c) { return c['被取走']; }).length === 0, '');
   }
 }
 

@@ -149,8 +149,15 @@ function splitEggCount(cards, hand) {
 // 这手牌按「托管」的拆组口径是否被禁掉
 function splitsRejected(cards, type, hand) {
   if (splitsSameRankGroup(cards, type, hand)) return true;
-  if (type !== HAND_TYPES.DOUBLE_BIG_A && splitEggCount(cards, hand) > 0) return true;
+  // [2026-11-09 用户] 「上家出456, 我有5677, 点提示为什么不出567」/「556677 vs JJQQQQKK 点不到JJQQKK」
+
+  //   -> 组合牌型拆组只是**罚**(排序靠后), 不是禁止 -> 这里只禁「同点数家族牌型拆组」。
   return false;
+  return false;
+}
+// 组合牌型拆组的罚分(拆 >=2 组, 或把某组拆到剩不到 3 张): 越大越靠后, 但**不禁用**
+function splitPenalty(cards, hand) {
+  return splitEggCount(cards, hand);
 }
 
 function chooseAction(state, playerId, opts) {
@@ -441,6 +448,7 @@ function chooseAction(state, playerId, opts) {
 module.exports = {
   // [2026-11-09 用户] 提示与托管共用的拆组判定
   splitsRejected: splitsRejected,
+  splitPenalty: splitPenalty,
   chooseAction: chooseAction,
   // [2026-11-07 用户 C] 最近一次决策轨迹(候选集 + 排序键 + 阵营三态)
   getLastTrace: function () { return _lastTrace; },

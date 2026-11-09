@@ -13,6 +13,7 @@ var checkGameEnd = engine.checkGameEnd;
 var chooseAction = require('./src/ai.js').chooseAction;
 // [2026-11-09 用户] 提示池复用托管的拆组判定(同点数牌型不许拆组)
 var _aiSplitsRejected = require('./src/ai.js').splitsRejected;
+var _aiSplitPenalty = require('./src/ai.js').splitPenalty;
 // [2026-11-07 用户 C] AI 决策轨迹(候选集 + 排序键 + 阵营三态) -> 打日志
 var getAiTrace = require('./src/ai.js').getLastTrace;
 // [2026-11-08 22:40] 提示用 AI 的**同一套**选牌逻辑(排序一致), 只是不考虑阵营
@@ -997,8 +998,22 @@ function uiHintCandidates(mode) {
     if (_jks.length === 2) add([_jks[0].id, _jks[1].id], false, false);
   } catch (e) { }
   // (3) 全局排序: 托管那一手 -> 同牌型 -> 牌型小->大 -> 张数少 -> 牌力小
+  function _hintCardsOf(cand) {
+    var ids = cand.ids || [];
+    var out2 = [];
+    ids.forEach(function (id) {
+      var c = me.hand.filter(function (x) { return x.id === id; })[0];
+      if (c) out2.push(c);
+    });
+    return out2;
+  }
   out.sort(function (a, b) {
     if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
+    // [2026-11-09 用户] 「上家出456, 我有5677, 点提示为什么不出567」-> 组合牌型拆组只是**罚**, 不禁选:
+    //   拆组罚分小的排前(与托管的 splitEgg 同口径)。
+    var _spa = _aiSplitPenalty(_hintCardsOf(a), me.hand);
+    var _spb = _aiSplitPenalty(_hintCardsOf(b), me.hand);
+    if (_spa !== _spb) return _spa - _spb;
     if (a.sameType !== b.sameType) return a.sameType - b.sameType;
     if (a.typeRank !== b.typeRank) return a.typeRank - b.typeRank;
     if (a.len !== b.len) return a.len - b.len;

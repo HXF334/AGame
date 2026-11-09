@@ -62,10 +62,10 @@ var okFirst = g.uiHint();
 check('1a 托管不拆同点组 -> AI 不出这手拆组连张',
   !aiAct1 || aiAct1.type === 'PASS', 'act=' + (aiAct1 ? aiAct1.type : 'null'));
 var candsH = g.uiHintCandidates();
-check('1b 提示与托管同口径 -> 不给拆出来的连张',
-  !candsH.some(function (c) { return c.type === 'STRAIGHT'; }),
+check('1b 提示与托管同口径 -> 拆出来的连张也给出(只罚不禁)',
+  candsH.some(function (c) { return c.type === 'STRAIGHT'; }),
   'types=' + JSON.stringify(candsH.map(function (c) { return c.type; })));
-check('1c 托管过牌 -> 提示也无可用牌(与托管同口径, 不硬凑拆组连张)', okFirst === false,
+check('1c 提示能给出拆组连张(与托管同口径)', okFirst === true,
   'log=' + JSON.stringify(g.logHistory().slice(-2)));
 function ranksOf(ids2) {
   return ids2.map(function (id) {
