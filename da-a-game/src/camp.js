@@ -26,6 +26,13 @@
 //   (普通蛋子不再算信号了 —— 那太常见, 推定会乱套。)
 var BIG_EGG_PLUS_TYPES = require('./ai-policy.js').BIG_EGG_PLUS;
 
+// [2026-11-09 21:32 用户] 推定次方的**新信号**: 身份未明的人对**另一个身份未明**的人,
+//   出了「**2 个及以上**的蛋子」(连珠蛋/大连珠蛋/假八/大假八/双龙这类多组同点组合)。
+//   次方身份亮明(次方公开)或明打 -> 一律按实际阵营, 不推定(见 inferNext 开头)。
+var MULTI_EGG_TYPES = {
+  STRAIGHT_TRIPLE: 1, BIG_STRAIGHT_TRIPLE: 1, FAKE_EIGHT: 1, BIG_FAKE_EIGHT: 1, DOUBLE_STRAIGHT: 1
+};
+
 // 公开信息推出的次方(第一次推定即锁定); excludeId = 观察者自己(自己打的牌不算线索)
 function inferNext(state, excludeId) {
   if (!state) return null;
@@ -43,6 +50,7 @@ function inferNext(state, excludeId) {
     if (!p || !p.type) continue;
     // 信号1: 用大蛋子+(大蛋子及以上)压制; 信号2: 用三个4及以上的4取牌
     var _isSignal = (BIG_EGG_PLUS_TYPES[p.type] === 1)
+      || (MULTI_EGG_TYPES[p.type] === 1)   // [2026-11-09] 2 个及以上的蛋子(多组同点组合)
       || (p.kind === 'CAPTURE' && p.useFours >= 3);
     if (!_isSignal) continue;
     if (!p.beat) continue;                                     // 必须是压/取别人(起手不算)

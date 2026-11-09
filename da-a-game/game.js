@@ -97,6 +97,8 @@ function _aiWaitMs(base) {
 //   "Cannot set properties of undefined (setting 'A')"(且只在某些发牌下出现 -> flaky)。
 var uiPlays = {};
 var uiMarks = {};
+// [2026-11-09 用户] 「这手牌被取走了」的记录: pid -> true (给 UI 画「取」标志用)
+var uiTakenPlay = {};
 var _uiMarksWerePublic = false;   // [2026-11-08 16:24] 上次渲染时阵营是否已确定(次方亮明/明打/1V4)
 var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
 
@@ -1464,17 +1466,26 @@ function _uiSyncTrick() {
   _uiCaptureScan();
 //   -> UI: 原牌画成半透明(50%) + 飞向取牌者手牌; 手牌区不再加绿框。
 function _uiCaptureScan() {
-  var now = Date.now();
-  var players = (gameState && gameState.players) || [];
-  players.forEach(function (p) {
+  // [2026-11-09 用户] 「刚打出的999也没人取牌, 怎么有取的标志呢?」
+  //   -> 标志只认「**那一手出牌**被取走过」: 从引擎状态反查(被取走的牌以副本进取牌者手牌, 带「取自」),
+  //      再在 UI 的出牌缓存里找出「谁出的这手牌」-> 记 uiTakenPlay[pid]。
+  //      这样新打的牌/没被取的牌都不会被标上。
+  var _players = (gameState && gameState.players) || [];
+  _players.forEach(function (p) {
     (p.hand || []).forEach(function (c) {
       if (!c || !c['取自']) return;
       if (uiSeenCaptured[c.id]) return;
       uiSeenCaptured[c.id] = true;
-      uiCaptureFx = { cards: [c.id], toPid: p.id, at: now };
+      var _victim = null;
+      Object.keys(uiPlays).forEach(function (pid) {
+        var _arr = uiPlays[pid] || [];
+        for (var _i = 0; _i < _arr.length; _i++) {
+          if (_arr[_i] && _arr[_i].id === c.id) { _victim = pid; break; }
+        }
+      });
+      if (_victim) uiTakenPlay[_victim] = true;
     });
   });
-  if (uiCaptureFx) _uiCaptureAnimStart();
 }
 
 function _uiCaptureAnimStart() {
@@ -1542,6 +1553,7 @@ function _uiCurrentPlays() {
 function _uiRecordPlay(pid, cards) {
   // [2026-11-09 用户] 「托管后不出还会随机丢失」-> 出牌就清「不出」(确定性, 不再靠手牌变少猜)
   delete uiPassed[pid];
+  delete uiTakenPlay[pid];   // [2026-11-09] 他新出了一手 -> 之前那手被取走的标志不再适用
   if (!cards || !cards.length) return;
   _uiSyncTrick();                       // 可能开了新一轮 -> 先清掉旧一轮的显示
   uiPlays[pid] = cards;
@@ -1721,6 +1733,7 @@ function draw() {
     uiPlaysTrick: uiPlaysTrick,
     uiTrickId: uiTrickId,
     marks: uiMarks,
+    uiTakenPlay: uiTakenPlay,
     // [2026-11-04 用户] 「发牌阶段记牌器收起来, 等出牌阶段再判断要不要展开」
     //   -> 发牌阶段强制收起(牌还没发齐, 记出来的数没意义);
     //      进入出牌阶段后按用户设置(默认展开)恢复。
