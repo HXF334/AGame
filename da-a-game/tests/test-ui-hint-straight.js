@@ -61,9 +61,12 @@ var aiAct1 = aiModH.chooseAction(g.gameState(), 'D', {});
 var okFirst = g.uiHint();
 check('1a 托管不拆同点组 -> AI 不出这手拆组连张',
   !aiAct1 || aiAct1.type === 'PASS', 'act=' + (aiAct1 ? aiAct1.type : 'null'));
-check('1b 提示放开拆组 -> 给拆出来的连张', okFirst === true,
+var candsH = g.uiHintCandidates();
+check('1b 提示与托管同口径 -> 不给拆出来的连张',
+  !candsH.some(function (c) { return c.type === 'STRAIGHT'; }),
+  'types=' + JSON.stringify(candsH.map(function (c) { return c.type; })));
+check('1c 托管过牌 -> 提示也无可用牌(与托管同口径, 不硬凑拆组连张)', okFirst === false,
   'log=' + JSON.stringify(g.logHistory().slice(-2)));
-
 function ranksOf(ids2) {
   return ids2.map(function (id) {
     var c = myHand.filter(function (x) { return x.id === id; })[0];

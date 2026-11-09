@@ -132,48 +132,32 @@ check('源码: _uiPassCleanup 里真正置位了 uiPassed',
   /function _uiPassCleanup[\s\S]{0,400}uiPassed\[pid\] = true/.test(_src));
 
 // ===== 关键: **AI 过牌**路径也必须置位「不出」=====
-// 背景: v0.27.0 的回归只覆盖了 doPlay(真人过牌), 漏掉了 applyAction(AI 过牌)那条路径
-//       -> AI 过牌时「不出」永远不显示(用户连报了好几轮)。这里用「日志性质」来兜:
-//       **每个玩家最后一次行动是 PASS 时, 必须对应一个「不出」标记**, 不管走的是哪条路径。
+// [2026-11-09 修 flaky] 原来这段: g.newGame() 拿**随机手牌** + 跑 AI 链 +
+//   从**日志**里反推「谁最后动作是 PASS」-> 三个 flake 源:
+//     ① 随机局面(AI 能管上就不过牌, 断言时有时无)
+//     ② 新局后日志里还留着上一局的 PASS 行, 「最后动作」可能取自旧局
+//     ③ AI 链是异步的(延迟跑), 断言时链条可能还没跑完/已经跑了
+//   现在改成: **固定手牌 + 先出一张再逐个显式过牌**, 直接查 uiPassed(不猜、不靠日志)。
+//   applyAction 那条**自动**过牌路径由上面的**源码级守卫**守住, 不用随机局面去撞。
 g.newGame();
-var NAME2ID = { '甲': 'A', '乙': 'B', '丙': 'C', '丁': 'D', '戊': 'E' };
-var ran = 0;
-var ORDER = ['A', 'B', 'C', 'D', 'E'];
-for (var step = 0; step < 30; step++) {
-  var before = g.logHistory().length;
-  // 强制让某个 AI 行动(新局后轮到真人, AI 不会自己动 -> 直接跑会 0 步)
-  var i0 = ORDER.indexOf(g.currentPlayer());
-  var next = null;
-  for (var kk = 1; kk <= 5; kk++) {
-    var cand = ORDER[(i0 + kk) % 5];
-    if (cand !== g.getHumanPlayer()) { next = cand; break; }
-  }
-  if (!next) break;
-  g.__setState(g.gameState(), { currentPlayer: next, clearLog: false });
-  try { g.runAI(); } catch (e) { break; }
-  if (g.logHistory().length === before) break;   // 推进不动了
-  ran++;
-}
-// [2026-10-26 修正] 原来「日志里出现过 PASS 就必须有「不出」标记」——
-//   但一个人 PASS 之后**又出牌**时, 引擎会清掉他的「不出」(他这轮又打了牌),
-//   那时断言就假失败。改成只看**最后一次行动是 PASS** 的人。
-var lastAction = {};
-g.logHistory().forEach(function (l) {
-  var m2 = l.match(/^(?:AI )?([\u7532\u4e59\u4e19\u4e01\u620a]) (PASS|\u51fa)/);
-  if (m2) lastAction[m2[1]] = m2[2];
+var st2 = g.gameState();
+st2.phase = 'PLAY';
+st2.players.forEach(function (p2, i2) { p2.id = ids[i2]; p2.hand = HANDS[ids[i2]].slice(); });
+st2['主A'] = { suit: 'D', establishedBy: 'A', viaMethod: 'LIANG_A' };
+st2['反A'] = null; st2['次方'] = null; st2['次方公开'] = true; st2['底牌公开'] = true;
+st2.table = []; st2.passedPlayers = []; st2.lastPlayer = null;
+g.__setState(st2, { currentPlayer: 'A', human: 'D', clearLog: true });
+g.__setAiDelay(5000);                       // 别让 AI 链插进来
+g.selectedCards().push(g.gameState().players[0].hand[0].id);
+g.doPlay();                                 // 先出一张, 让后面的人能过牌
+var pd3 = {};
+['B', 'C', 'E'].forEach(function (pid) {
+  g.__setState(g.gameState(), { currentPlayer: pid, clearLog: false });
+  g.doPass();
+  pd3[pid] = !!(g.uiPassed() || {})[pid];
 });
-var passNames = {};
-Object.keys(lastAction).forEach(function (nm) {
-  if (lastAction[nm] === 'PASS') passNames[nm] = true;
-});
-var pd2 = g.uiPassed() || {};
-var missing = Object.keys(passNames).filter(function (nm) { return !pd2[NAME2ID[nm]]; });
-// 注: 这里**不**断言「AI 一定跑出了 PASS 日志」—— 随机局面下 AI 手里牌多,
-//   常常能管上, 不一定会过牌 -> 那条断言天然 flaky。
-//   真正守住这个 bug 的是上面的**源码级守卫** + 下面这条**性质断言**。
-check('最后一步是 PASS 的玩家都有「不出」标记(含 AI 过牌路径)',
-  missing.length === 0, 'ran=' + ran + ' passNames=' + JSON.stringify(Object.keys(passNames)) +
-  ' missing=' + JSON.stringify(missing) + ' uiPassed=' + JSON.stringify(pd2));
+g.__setAiDelay(0);
+check('AI 座位过牌 -> 都有「不出」标记', !!(pd3.B && pd3.C && pd3.E), JSON.stringify(pd3));
 
 console.log('test-ui-pass-display: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -75,6 +75,9 @@ function executeCapture(state, playerId, fours) {
     return { ok: false, error: { type: 'CANNOT_PASS', message: 'table empty, nothing to capture' }, state: state };
   }
   var captured = state.table.map(function (c) {
+    // [2026-11-09 用户] 「4取牌后不是手牌变化, 是桌面上被取的牌变化」
+    //   -> 原牌(留在受害者座位上的那手)打「被取走」标记: UI 画成半透明 50% + 飞向取牌者手牌。
+    c['被取走'] = playerId;
     // [2026-11-08 22:40 用户] 「桌面上被4取牌的蛋子+加点标志」-> 被取走的牌打上标记,
     //   之后在手牌区/再次上桌时都带着, 一眼看出「这手是被4取走的」。
     var copy = Object.assign({}, c, { location: { type: 'hand', playerId: playerId }, 取自: playerId });

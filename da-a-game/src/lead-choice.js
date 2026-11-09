@@ -48,6 +48,22 @@ function leadCandidates(hand) {
   const fours = hand.filter(isFour);
   // ≥2 张 4 -> 全部排除出池(留给取牌); 只有 1 张 4 -> 保留(它最没用, 最先出)
   const pool = fours.length >= 2 ? hand.filter(function (c) { return !isFour(c); }) : hand.slice();
+  // [2026-11-09 用户] 「手牌最后剩 101010JJJQQQ, 怎么先出的101010, 为什么没一起出?」
+  //   -> 101010JJJQQQ 本身就是**连珠蛋**(3 组连续蛋子), 应该整手一起出(一下出完 = 头名)。
+  //      规则: 去掉留作取牌的 4 之后, 若整手正好是一种组合牌型 -> 整手出。
+  const _wholePool = pool.slice();
+  if (_wholePool.length >= 3) {
+    const _wh = identifyHand(_wholePool);
+    const _wholeTypes = {};
+    _wholeTypes[HAND_TYPES.STRAIGHT_TRIPLE] = 1;      // 连珠蛋
+    _wholeTypes[HAND_TYPES.BIG_STRAIGHT_TRIPLE] = 1;  // 大连珠蛋
+    _wholeTypes[HAND_TYPES.FAKE_EIGHT] = 1;           // 假八
+    _wholeTypes[HAND_TYPES.BIG_FAKE_EIGHT] = 1;       // 大假八
+    if (_wh && _wholeTypes[_wh.type]) {
+      return [{ cards: _wholePool, type: _wh.type }];
+    }
+  }
+
   if (!pool.length) {
     // [2026-11-07 23:22 用户] 「AI 最后剩对4, 有任意出牌权, 却单出了一个 4, 应该一起打出」
     //   -> 手上只剩 4(>=2 张)时整组出(对子/大蛋子), 别单出一张。

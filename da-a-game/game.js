@@ -11,6 +11,8 @@ var determineFirstPlayer = engine.determineFirstPlayer;
 var checkGameEnd = engine.checkGameEnd;
 // [fix] ai.js 的 chooseAction 未被 index.js 转发, 直接从 ai.js 引
 var chooseAction = require('./src/ai.js').chooseAction;
+// [2026-11-09 用户] 提示池复用托管的拆组判定(同点数牌型不许拆组)
+var _aiSplitsRejected = require('./src/ai.js').splitsRejected;
 // [2026-11-07 用户 C] AI 决策轨迹(候选集 + 排序键 + 阵营三态) -> 打日志
 var getAiTrace = require('./src/ai.js').getLastTrace;
 // [2026-11-08 22:40] 提示用 AI 的**同一套**选牌逻辑(排序一致), 只是不考虑阵营
@@ -35,6 +37,10 @@ var uiRender = require('./ui-render.js');
 //   (启动路径里它是 undefined -> AI 出牌时抛 "Cannot set properties of undefined")。
 //   这里的 uiPrevHandLens 在启动时也被读 -> 同样必须提前。
 var uiPassed = {};          // pid -> true (该玩家点了「不出」)
+// [2026-11-09 用户] 4取牌动画: 被取走的牌(原牌)飞向取牌者手牌 + 桌面半透明
+var uiSeenCaptured = {};     // cardId -> true (已被取走过, 防重复触发)
+var uiCaptureFx = null;      // { cards:[cardId], toPid, at }
+var uiCaptureTimer = null;   // 动画重绘定时器
 var btnAutoPlay = null;
 var btnAutoPlayCancel = null;
 var uiPrevHandLens = {};    // pid -> 上次的手牌张数(用来发现谁出牌了)
@@ -920,7 +926,7 @@ function uiHintCandidates(mode) {
     try { var _h2 = handTypes.identifyHand(cards); if (_h2 && _h2.type) t = _h2.type; } catch (e) { }
     return t + '|' + toks.join(',');
   }
-  function add(ids, isFirst) {
+  function add(ids, isFirst, allowSplit) {
     if (!ids || !ids.length) return false;
     var cards = ids.map(function (id) { return me.hand.find(function (c) { return c.id === id; }); }).filter(Boolean);
     if (cards.length !== ids.length) return false;
@@ -932,6 +938,10 @@ function uiHintCandidates(mode) {
     seen[key] = 1;
     var h = null;
     try { h = handTypes.identifyHand(cards); } catch (e) { }
+    // [2026-11-09 用户] 「点提示时的拆组应该是组合牌型(龙/双龙/连珠蛋/假八等)才会拆组,
+    //   同点数牌型(对子/蛋子+等)不应该拆组。托管不是这样的吗?」
+    //   -> 提示池直接复用**托管的拆组判定**(ai.splitsRejected); 真人手动点选(engine 池)仍自由拼牌。
+    if (!_isEnginePool && !allowSplit && _aiSplitsRejected(cards, h ? h.type : 'INVALID', me.hand)) return false;
     var pwr = (h && aiPolicy.HINT_TYPE_RANK[h.type] !== undefined) ? aiPolicy.HINT_TYPE_RANK[h.type] : 0;
     out.push({
       ids: ids.slice(), cards: cards, label: _uiComboLabel(cards),
@@ -949,24 +959,24 @@ function uiHintCandidates(mode) {
       if (gameState) gameState.uiMarks = uiMarks;   // 手动敌友标记要进 AI 决策
       var _aiAct = chooseAction(gameState, humanPlayer);
       if (_aiAct && _aiAct.type === 'PLAY' && _aiAct.cardIds && _aiAct.cardIds.length) {
-        add(_aiAct.cardIds.slice(), true);
+        add(_aiAct.cardIds.slice(), true, true);   // 托管那一手 -> 原样进第一候选
       }
     } catch (e) { }
   }
-  // (2) 全量合法出牌(放开拆组): 组合枚举 + 单张
+  // (2) 全量合法出牌: 组合枚举 + 单张; 拆组口径与托管一致(同点数牌型不拆组)
   try {
-    (candidateCombos(me.hand) || []).forEach(function (ids) { add(ids, false); });
+    (candidateCombos(me.hand) || []).forEach(function (ids) { add(ids, false, false); });
   } catch (e) { }
-  me.hand.forEach(function (c) { add([c.id], false); });
+  me.hand.forEach(function (c) { add([c.id], false, false); });
   // 双大A / 双王(枚举层不产出的两种特殊组合)
   try {
     var _zhuSuit = gameState['主A'] && gameState['主A'].suit;
     if (_zhuSuit) {
       var _aces = me.hand.filter(function (c) { return c.rank === 14 && c.suit === _zhuSuit; });
-      if (_aces.length === 2) add([_aces[0].id, _aces[1].id], false);
+      if (_aces.length === 2) add([_aces[0].id, _aces[1].id], false, false);
     }
     var _jks = me.hand.filter(function (c) { return c.isBigJoker || c.isSmallJoker; });
-    if (_jks.length === 2) add([_jks[0].id, _jks[1].id], false);
+    if (_jks.length === 2) add([_jks[0].id, _jks[1].id], false, false);
   } catch (e) { }
   // (3) 全局排序: 托管那一手 -> 同牌型 -> 牌型小->大 -> 张数少 -> 牌力小
   out.sort(function (a, b) {
@@ -1417,6 +1427,37 @@ function _uiSyncTrick() {
   uiPrevTableIds = cur;
 }
 
+// [2026-11-09 用户] 4取牌: 引擎把被取的牌**复制**进取牌者手牌(带「取自」), 原牌留在受害者座位。
+  _uiCaptureScan();
+//   -> UI: 原牌画成半透明(50%) + 飞向取牌者手牌; 手牌区不再加绿框。
+function _uiCaptureScan() {
+  var now = Date.now();
+  var players = (gameState && gameState.players) || [];
+  players.forEach(function (p) {
+    (p.hand || []).forEach(function (c) {
+      if (!c || !c['取自']) return;
+      if (uiSeenCaptured[c.id]) return;
+      uiSeenCaptured[c.id] = true;
+      uiCaptureFx = { cards: [c.id], toPid: p.id, at: now };
+    });
+  });
+  if (uiCaptureFx) _uiCaptureAnimStart();
+}
+
+function _uiCaptureAnimStart() {
+  if (!ctx) return;                 // 无渲染环境(测试) -> 不起定时器, 免得进程挂住
+  if (uiCaptureTimer) return;
+  uiCaptureTimer = setInterval(function () {
+    var fx = uiCaptureFx;
+    if (!fx || Date.now() - fx.at > 900) {
+      clearInterval(uiCaptureTimer);
+      uiCaptureTimer = null;
+      return;
+    }
+    draw();
+  }, 32);
+}
+
 function _uiSyncPassState() {
   var g = gameState;
   if (!g || !g.players) return;
@@ -1427,7 +1468,9 @@ function _uiSyncPassState() {
   //   (那才是引擎给出的准确信号)。
   g.players.forEach(function (p) {
     var prev = uiPrevHandLens[p.id];
-    if (prev !== undefined && p.hand.length < prev) delete uiPassed[p.id];
+    // [2026-11-09 用户] 「托管后不出还会**随机**丢失」-> 原来靠「手牌变少」猜「他出牌了」并清掉「不出」;
+    //   托管会连着走多个动作, 两次 draw() 之间手牌早就变少 -> 刚设的过牌标记被误清(随机丢失)。
+    //   现在改成**只有他自己出牌时**才清(在 _uiRecordPlay 里), 这里不再猜。
     uiPrevHandLens[p.id] = p.hand.length;
   });
   // [2026-10-26] **推风成功** -> 「不出」全清(引擎这时会清空桌牌)
@@ -1461,6 +1504,8 @@ function _uiCurrentPlays() {
 //   而 uiPlays 只在 applyAction 里被更新 -> 真人/引擎出牌后桌面上看不到他出的牌
 //   (用户: 别人出的牌看不见)。applyAction 那边也改成走这个函数, 保证两条路径一致。
 function _uiRecordPlay(pid, cards) {
+  // [2026-11-09 用户] 「托管后不出还会随机丢失」-> 出牌就清「不出」(确定性, 不再靠手牌变少猜)
+  delete uiPassed[pid];
   if (!cards || !cards.length) return;
   _uiSyncTrick();                       // 可能开了新一轮 -> 先清掉旧一轮的显示
   uiPlays[pid] = cards;
@@ -1651,6 +1696,7 @@ function draw() {
     mainAceMarks: _uiMainAceMarks(),
     camps: _uiCamps(),
     uiPassed: uiPassed,
+    captureFx: uiCaptureFx,
     scores: _uiScores(),
     settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
     // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
@@ -2330,6 +2376,29 @@ if (typeof module !== 'undefined' && module.exports) {
     uiButtonBoxes: function () { return btnStage || []; },
     // [2026-10-26] 测试钩子: 渲染一帧并返回**所有画出的文本**
     //   目的: 无头验证「不出」等 UI 文案到底有没有被画出来
+    // [2026-11-09 用户] 测试钩子: 渲染一帧并返回**画出的文字 + 当时的颜色**
+    //   -> 锁「真人和 AI 的贡字颜色一致」这类视觉契约(自动化过 != 真机过)。
+    __renderTextStyles: function () {
+      var out = [];
+      var old = ctx;
+      ctx = {
+        canvas: { width: W || 844, height: H || 390 },
+        measureText: function (t) { return { width: String(t || '').length * 8 }; },
+        fillText: function (t) { out.push({ text: String(t), style: ctx.fillStyle }); },
+        save: function () {}, restore: function () {}, beginPath: function () {}, closePath: function () {},
+        moveTo: function () {}, lineTo: function () {}, arcTo: function () {}, arc: function () {},
+        fill: function () {}, stroke: function () {}, fillRect: function () {}, clearRect: function () {},
+        translate: function () {}, rotate: function () {}, scale: function () {}, setLineDash: function () {},
+        createLinearGradient: function () { return { addColorStop: function () {} }; },
+        fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', textBaseline: '', globalAlpha: 1
+      };
+      try { draw(); } finally { ctx = old; }
+      return out;
+    },
+    // [2026-11-09 用户] 测试钩子: UI 层的「不出/出牌/轮次」标记(无头复现随机丢失用)
+    __uiState: function () {
+      return { uiPassed: uiPassed, uiPlays: uiPlays, uiPlaysTrick: uiPlaysTrick, uiTrickId: uiTrickId, uiMarks: uiMarks };
+    },
     __renderTexts: function () {
       var texts = [];
       var old = ctx;

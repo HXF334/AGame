@@ -57,24 +57,33 @@ section('1. 提示的候选顺序跟托管一致(不考虑阵营)');
     [card.createNormalCard('S',3,'t4'), card.createNormalCard('H',3,'t5'), card.createNormalCard('D',3,'t6')]);
 }
 
-// [2026-11-08 23:36/23:59 用户] 提示**放开拆组**, 但**托管不拆组** -> 两条线分别锁:
-//   托管(AI)不拆同点组 -> 不出这手拆出来的连张; 提示放开拆组 -> 这手连张出现在候选里。
-section('2. 拆组: 托管不拆, 提示放开');
+// [2026-11-09 用户] 「点提示时的拆组应该是组合牌型(龙/双龙/连珠蛋/假八等)才会拆组,
+//   同点数牌型(对子/蛋子+等)不应该拆组。托管不是这样的吗?」
+//   -> 提示与托管**同口径**: 提示候选全部复用 ai.splitsRejected 判定。
+section('2. 拆组: 提示与托管同口径(不拆同点组)');
 {
   var st = mkState([card.createNormalCard('S',6,'h13'), card.createNormalCard('H',6,'h14'),
     card.createNormalCard('D',7,'h15'), card.createNormalCard('C',8,'h16'), card.createNormalCard('S',8,'h17')],
     [card.createNormalCard('S',5,'t7'), card.createNormalCard('H',6,'t8'), card.createNormalCard('D',7,'t9')]);
   g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  var me2 = st.players.filter(function (p) { return p.id === 'A'; })[0];
   var aiAct2 = aiMod.chooseAction(st, 'A', {});
   var cands2 = g.uiHintCandidates();
-  check('2.1 托管不拆同点组 -> 托管不出这手连张',
-    !aiAct2 || aiAct2.type === 'PASS' || cands2.length === 0 ||
-      idsOf(cands2[0].ids) !== idsOf(aiAct2.cardIds) || true,
-    'AI=' + (aiAct2 ? aiAct2.type : 'null'));
-  var hasStraight = cands2.some(function (c) { return c.type === 'STRAIGHT'; });
-  check('2.2 提示放开拆组 -> 候选里出现拆出来的连张', hasStraight,
+  var aiCards2 = (aiAct2 && aiAct2.cardIds) ? aiAct2.cardIds.map(function (id) {
+    return me2.hand.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean) : [];
+  var aiType2 = 'INVALID';
+  try { aiType2 = require('../src/hand-types.js').identifyHand(aiCards2).type; } catch (e) { }
+  check('2.1 托管出的那手符合托管拆组口径',
+    !aiAct2 || aiAct2.type === 'PASS' || aiMod.splitsRejected(aiCards2, aiType2, me2.hand) === false,
+    'AI=' + (aiAct2 ? aiAct2.type : 'null') + ' type=' + aiType2);
+  // 关键断言: 提示候选**全部**符合托管的拆组判定(以前会放进拆同点组的连张)
+  var badOnes = cands2.filter(function (c) { return aiMod.splitsRejected(c.cards, c.type, me2.hand); });
+  check('2.2 提示候选全部符合托管拆组口径(不拆同点组)', badOnes.length === 0,
+    '违规=' + JSON.stringify(badOnes.map(function (c) { return c.type; })));
+  check('2.3 提示不含拆同点组的连张',
+    !cands2.some(function (c) { return c.type === 'STRAIGHT'; }),
     'types=' + JSON.stringify(cands2.map(function (c) { return c.type; })));
-  check('2.3 提示候选按牌型形状去重(同形状只留一个)',
+  check('2.4 提示候选按牌型形状去重(同形状只留一个)',
     (function () {
       var seen = {}, dup = [];
       cands2.forEach(function (c) {
@@ -84,6 +93,7 @@ section('2. 拆组: 托管不拆, 提示放开');
       return dup.length === 0;
     })(), JSON.stringify(cands2.map(function (c) { return c.type; })));
 }
+
 
 console.log('');
 console.log('test-hint-order: ' + pass + ' passed, ' + fail + ' failed');

@@ -490,16 +490,21 @@ function drawSeats(ctx, st, m) {
     //   (上一轮出的牌仍然显示在桌上, 但不能因此抑制他的「不出」)
     var playedThisTrick = (st.uiPlaysTrick || {})[pid] === st.uiTrickId;
     var plays = st.uiPlays || {};
-    if (!playedThisTrick) {
-      // [2026-11-08 22:40 用户] 出完的按顺序显示 大贡/二贡/三贡/四贡(不再统一写「已出完」)
-      var s2 = isOut ? (gongLabelOf(st.gameState, pid) || '已出完') : (isPassed ? '不出' : '');
-      if (s2) {
-        // [2026-11-04 用户] 「AI玩家打出的手牌或者不出离头像再远一点」
-        var ix = cx + inw * (rr_ + 20);
-        var ia = pos.side === 'L' ? 'left' : 'right';
-        // [2026-11-08 23:36 用户] 「桌面上的大贡二贡等文字颜色和结算画面一致」-> 贡字用结算的金色
-    text(ctx, s2, ix, cy, Math.max(12, Math.round(m.vh * 0.044)), (isOut && gongLabelOf(st.gameState, pid)) ? '#f0a500' : (isOut ? '#9a9a9a' : '#ffd700'), ia, true);
-      }
+    // [2026-11-09 用户] 「托管后不出还会**随机**丢失」-> 判据改成「他自己最后动作是不是过牌」:
+    //   之前这里拿「本轮是否出过错牌」当闸门, 托管连走多个动作时两边判据互相打架 -> 随机丢失。
+    var _s2 = '';
+    if (isOut) {
+      if (!playedThisTrick) _s2 = gongLabelOf(st.gameState, pid) || '已出完';
+    } else if (isPassed) {
+      _s2 = '不出';
+    }
+    if (_s2) {
+      // [2026-11-04 用户] 「AI玩家打出的手牌或者不出离头像再远一点」
+      var _ix = cx + inw * (rr_ + 20);
+      var _ia = pos.side === 'L' ? 'left' : 'right';
+      // [2026-11-08 23:36 用户] 贡字用结算金色; [2026-11-09 用户] 真人/AI 贡字颜色一致
+      text(ctx, _s2, _ix, cy, Math.max(12, Math.round(m.vh * 0.044)),
+        (isOut && gongLabelOf(st.gameState, pid)) ? '#f0a500' : (isOut ? '#9a9a9a' : '#ffd700'), _ia, true);
     }
     drawScore(ctx, st, pid, scores[pid], cx, cy + rr_ + Math.round(m.vh * 0.036));
     if (st.mainAceMarks && st.mainAceMarks[pid]) {
@@ -551,6 +556,19 @@ function drawScore(ctx, st, pid, delta, x, y) {
 //   **和手牌一样重叠**(不再一张张分开); 内容按可见宽度居中
 // [2026-10-25 用户] 各家最新出牌 -> 头像**内侧**(朝牌桌中心)
 //   **和手牌一样重叠**; 所有张的内容都按 step 宽居中(最后一张也一样, 不要单独居中)
+// [2026-11-09 用户] 4取牌: 被取走的牌飞向**取牌玩家**的手牌区
+function _captureTargetPos(st, m, seatMap, toPid) {
+  if (!toPid) return null;
+  if (toPid === st.humanPlayer) {
+    var hand = m.hand || {};
+    var hy = (hand.y != null) ? hand.y : Math.round(m.vh * 0.80);
+    return { x: Math.round(m.vw * 0.5), y: hy };
+  }
+  var s = seatMap && seatMap[toPid];
+  if (!s) return null;
+  return { x: s.x, y: s.y };
+}
+
 function drawSeatPlays(ctx, st, m, seatMap) {
   var plays = st.uiPlays || {};
   Object.keys(plays).forEach(function (pid) {
@@ -607,7 +625,34 @@ function drawSeatPlays(ctx, st, m, seatMap) {
     // [2026-11-06 用户] 「禁止 +N 截断」-> 全部画出, 不再有 "+N" 标记
     for (var j = 0; j < n; j++) {
       // 内容一律按 step 宽居中 -> 和其他手牌位置一致
-      drawMiniCard(ctx, cards[j], x0 + j * step, y, cardW, cardH, st, step);
+      var _cd = cards[j];
+      var _taken = _cd && _cd['被取走'];
+      if (_taken) {
+        // [2026-11-09 用户] 「4取牌后不是手牌变化, 是桌面上被取的牌变化」
+        //   -> 被取的这手牌: 动画期间飞向取牌玩家手牌; 之后留在桌面上但**半透明 50%**。
+        var _fx = st.captureFx || null;
+        var _fly = _fx && _fx.cards && _fx.cards.indexOf(_cd.id) >= 0;
+        var _p = _fly ? Math.max(0, Math.min(1, (Date.now() - _fx.at) / 700)) : 1;
+        var _tgt = _captureTargetPos(st, m, seatMap, _taken);
+        if (_tgt && _p < 1) {
+          var _sx = x0 + j * step;
+          var _cxp = _sx + (_tgt.x - _sx) * _p;
+          var _cyp = y + (_tgt.y - y) * _p;
+          var _cw = Math.max(12, Math.round(cardW * (1 - 0.45 * _p)));
+          var _ch = Math.max(16, Math.round(cardH * (1 - 0.45 * _p)));
+          ctx.save();
+          ctx.globalAlpha = 1 - 0.55 * _p;
+          drawMiniCard(ctx, _cd, _cxp, _cyp, _cw, _ch, st, _cw);
+          ctx.restore();
+          continue;
+        }
+        ctx.save();
+        ctx.globalAlpha = 0.5;                        // 被取走了 -> 留在桌面上但半透明
+        drawMiniCard(ctx, _cd, x0 + j * step, y, cardW, cardH, st, step);
+        ctx.restore();
+        continue;
+      }
+      drawMiniCard(ctx, _cd, x0 + j * step, y, cardW, cardH, st, step);
     }
   });
 }
@@ -744,11 +789,8 @@ function drawCard(ctx, card, x, y, w, h, isSel, st, visibleW) {
   text(ctx, SUIT_CHAR[card.suit] || '', cx, suitY, suitFs, col, 'center', true);
   // [2026-11-08 22:40 用户] 「被4取走的蛋子+加点标志」-> 用**绿色描边**标记;
   //   牌面保持干净(2026-10-25 基线), 但一眼能看出这手是被4取走的。
-  if (card.取自) {
-    ctx.strokeStyle = '#2f8f4f';
-    ctx.lineWidth = Math.max(2, Math.round(w * 0.06));
-    rr(ctx, x, y, w, h, 4); ctx.stroke();
-  }
+  // [2026-11-09 用户] 「4取牌后不是手牌变化, 是桌面上被取的牌变化, **不要加绿框**」
+  //   -> 手牌区不再描绿框; 改成: 桌面(受害者座位)那手被取的牌半透明 + 飞向取牌者手牌。
 }
 
 // 底牌牌背: 深色底 + 简单图案
@@ -863,14 +905,19 @@ function drawMeSeat(ctx, st, m) {
   // [2026-11-08 23:59] 只看 UI 层标记 st.uiPassed: 引擎的 passedPlayers 语义是「有人出牌就清全员」,
   //   别人一出手就会把真人的「不出」也带走(用户报障: 下家出完牌后上家的不出文字没了)。
   var _isPassed = (g.phase === 'PLAY') && !!((st.uiPassed || {})[st.humanPlayer]);
-  if (!_playedThisTrick) {
-    var _s2 = _isOut ? (gongLabelOf(st.gameState, st.humanPlayer) || '已出完') : (_isPassed ? '不出' : '');
-    if (_s2) {
-      // [2026-11-03 用户] 「真人玩家的不出文字和打出的手牌在同一个位置, 而不是玩家头像上方」
-      //   -> 画在 layout().humanPlay(原来按钮的位置), 和打出的手牌**完全同一个点**。
-      text(ctx, _s2, m.humanPlay.x, m.humanPlay.y,
-        Math.max(12, Math.round(m.vh * 0.044)), _isOut ? '#9a9a9a' : '#ffd700', 'center', true);
-    }
+  // [2026-11-09 用户] 「托管后不出还会随机丢失」+「真人玩家的大贡颜色和其他人不一样」
+  //   -> 「不出」只看他最后动作(不再被「本轮出过牌」压住); 大贡/二贡颜色与 AI 座位一致(#f0a500)。
+  var _s2 = '';
+  if (_isOut) {
+    if (!_playedThisTrick) _s2 = gongLabelOf(st.gameState, st.humanPlayer) || '已出完';
+  } else if (_isPassed) {
+    _s2 = '不出';
+  }
+  if (_s2) {
+    // [2026-11-03 用户] 「真人玩家的不出文字和打出的手牌在同一个位置」-> 画在 layout().humanPlay
+    text(ctx, _s2, m.humanPlay.x, m.humanPlay.y,
+      Math.max(12, Math.round(m.vh * 0.044)),
+      (_isOut && gongLabelOf(st.gameState, st.humanPlayer)) ? '#f0a500' : (_isOut ? '#9a9a9a' : '#ffd700'), 'center', true);
   }
   text(ctx, st.names[SEAT_IDS.indexOf(st.humanPlayer)], colX + fs * 0.5, cy, fs,
     st.currentPlayer === st.humanPlayer ? '#ffd700' : '#ffffff', 'right', true);

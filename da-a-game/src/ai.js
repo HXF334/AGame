@@ -102,6 +102,57 @@ function _isSameCamp(state, a, b) {
 // opts.ignoreCamp: [2026-11-08 22:40 用户] 「点提示时...只看手中符合条件的牌」->
 //   提示用同一套选牌逻辑, 但**不考虑阵营**(不做同阵营/蛋子+ 的过滤)。
 // opts.ignoreSplit: [2026-11-08 23:36 用户] 「提示也放开拆组」-> 提示用同一套排序, 但不罚拆组
+// ===== [2026-11-09 用户] 拆组口径: 提示 / 托管 共用同一套判定 =====
+// 「同点数家族牌型(对子/蛋子/大蛋子/真七/真八)不许拆组」;
+// 「组合牌型(龙/双龙/连珠蛋/假八...)可以拆, 但拆 >=2 组 或 把某组拆到剩不到 3 张 -> 罚」。
+// 提示候选池直接复用这里的判定 -> 提示 = 托管 口径一致。
+var SAME_RANK_FAMILY = { PAIR: 1, TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1 };
+
+function handGroups(hand) {
+  var g = {};
+  (hand || []).forEach(function (c) { (g[c.rank] = g[c.rank] || []).push(c); });
+  return g;
+}
+
+// 同点数家族牌型拆了手里的同点组 -> true(禁)
+function splitsSameRankGroup(cards, type, hand) {
+  if (!SAME_RANK_FAMILY[type]) return false;
+  var groups = handGroups(hand);
+  var used = {};
+  (cards || []).forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+  for (var rk in groups) {
+    var total = groups[rk].length;
+    var u = used[rk] || 0;
+    if (u && u < total) return true;
+  }
+  return false;
+}
+
+// 组合牌型拆组罚分: 拆了 >=2 组, 或把某组拆到剩不到 3 张
+function splitEggCount(cards, hand) {
+  if (!cards || cards.length < 2) return 0;          // 单张拆组 -> 不罚
+  var groups = handGroups(hand);
+  var used = {};
+  cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+  var n = 0, touched = 0;
+  for (var rk in groups) {
+    var total = groups[rk].length;
+    var u = used[rk] || 0;
+    if (!u || u >= total) continue;                 // 没动 / 整组用掉 -> 不是拆
+    touched++;
+    if (total - u < 3) n++;                        // 该组被拆垮(剩不到 3 张) -> 罚
+  }
+  if (touched >= 2) n++;                            // 拆了 >=2 组 -> 罚
+  return n;
+}
+
+// 这手牌按「托管」的拆组口径是否被禁掉
+function splitsRejected(cards, type, hand) {
+  if (splitsSameRankGroup(cards, type, hand)) return true;
+  if (type !== HAND_TYPES.DOUBLE_BIG_A && splitEggCount(cards, hand) > 0) return true;
+  return false;
+}
+
 function chooseAction(state, playerId, opts) {
   opts = opts || {};
   // [2026-11-07 用户 C] AI 决策日志: 记下候选集 + 排序键, 目视报障时直接看「为什么选这手」
@@ -246,38 +297,14 @@ function chooseAction(state, playerId, opts) {
   //   -> 同点数家族的候选只要**拆了**手里的同点组, 就**不进候选**(硬过滤):
   //      例: 手里 333, 桌面 22 -> 不许出 33(拆蛋子), 只能出 333 整组或者过牌。
   //      单张拆组不罚(手里 66 出 6 正常, 否则会出现没牌可出)。
-  function _splitsSameRankGroup(cards, type) {
-    if (!_sameRankFamily[type]) return false;
-    var used = {};
-    cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
-    for (var rk in _hgroups) {
-      var total = _hgroups[rk].length;
-      var u = used[rk] || 0;
-      if (u && u < total) return true;             // 拿了组里的一部分 = 拆了同点组
-    }
-    return false;
-  }
+  function _splitsSameRankGroup(cards, type) { return splitsSameRankGroup(cards, type, hand); }
   // (2) 组合牌型(龙/双龙/连珠蛋/假八...)拆组 -> 罚(排序降权)
   //   [2026-11-08 16:20 用户] 「上出 5678, 手牌有 67888899, 为什么会出 6789」-> 两条:
   //     a. 拆了 >=2 个同点组 -> 罚(QKKKKA 可以出 QKA, 只动一组; QQKKKKA 不行, 动了两组)
   //     b. 把某个同点组**拆到剩不到 3 张**(对子被拆成单张 / 大蛋子被拆成对子) -> 罚
   //        (6789 拿走 99 里的一张 -> 那个对子没了; 8888 拿走一张 -> 剩 888 仍是蛋子, 不罚)
   //   单张拆组仍然不罚(手里 66 出 6 正常, 否则会出现没牌可出)。
-  function _splitEggCount(cards) {
-    if (cards.length < 2) return 0;               // 单张拆组 -> 不罚
-    var used = {};
-    cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
-    var n = 0, touched = 0;
-    for (var rk in _hgroups) {
-      var total = _hgroups[rk].length;
-      var u = used[rk] || 0;
-      if (!u || u >= total) continue;             // 没动 / 整组用掉 -> 不是拆
-      touched++;
-      if (total - u < 3) n++;                    // 该组被拆垮(剩不到 3 张) -> 罚
-    }
-    if (touched >= 2) n++;                        // 拆了 >=2 组 -> 罚
-    return n;
-  }
+  function _splitEggCount(cards) { return splitEggCount(cards, hand); }
   // 「重手」: 王 / 大A / 蛋子及以上 -> 同阵营时不主动用
   function _isHeavy(cards, type) {
     // [2026-11-07 22:26 用户 B] 「蛋子及以上」= policy.EGG_PLUS(含双龙)
@@ -400,6 +427,8 @@ function chooseAction(state, playerId, opts) {
 }
 
 module.exports = {
+  // [2026-11-09 用户] 提示与托管共用的拆组判定
+  splitsRejected: splitsRejected,
   chooseAction: chooseAction,
   // [2026-11-07 用户 C] 最近一次决策轨迹(候选集 + 排序键 + 阵营三态)
   getLastTrace: function () { return _lastTrace; },

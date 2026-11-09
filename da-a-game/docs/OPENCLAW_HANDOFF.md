@@ -387,3 +387,18 @@ openclaw config set --batch-file .tmp-config-batch.json
   抓方标了敌 -> 托管 AI 当他是敌人 -> 可以用蛋子压制(此前直接跳过)。
 - **桌面大贡/二贡字颜色加深**(`#f0a500`), **结算画面标签再往右移**。
 - 回归: `tests/test-req-20261108.js`(新增 18 条)。全量 89/89, preflight 13/13。
+
+### 7.19 2026-11-09 批次(不出改判据 + 提示拆组回归托管 + 取牌视觉 + 贡字颜色 + 连珠蛋)
+
+- **「不出」判据**: 只看 st.uiPassed(他自己最后动作为过牌), **不再**被「本轮出过牌」压住;
+  清除时机改成**只有他自己出牌时**(_uiRecordPlay)。旧的「手牌变少 -> 清不出」启发式已删(托管连走多动作时误清)。
+  坑: uiTrickId **轮末**才 +1 -> 「本轮」覆盖整轮多个墩, 拿它当「本墩出过牌」用会误判。
+- **提示拆组**: src/ai.js 导出 splitsRejected(cards, type, hand);
+  game.js uiHintCandidates 用它过滤 -> 提示与托管同口径(对子/蛋子+等**同点数牌型不拆组**;
+  组合牌型(龙/双龙/连珠蛋/假八)可拆但受拆组罚分)。真人手动点选(mode=="engine")仍自由拼牌。
+- **4取牌视觉**: 桌面原牌打「被取走」(src/capture.js) -> ui-render.js drawSeatPlays 画半透明 50% +
+  飞向取牌玩家手牌区(700ms); **手牌区不再有绿色描边**。
+- **贡字颜色**: 真人大贡/二贡与 AI 统一为 #f0a500(结算金色)。
+- **连珠蛋**: src/lead-choice.js 整手单牌型 -> 整手出(101010JJJQQQ 一次出完)。
+- **测试钩子**: game.js 新增 __renderTextStyles()(画出的文字+颜色)、__uiState()(uiPassed/uiPlays/uiPlaysTrick/uiTrickId)。
+- **回归**: tests/test-req-20261109.js(新增 10 条)。
