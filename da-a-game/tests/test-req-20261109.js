@@ -186,23 +186,49 @@ section('⑧ 起手: 蛋子级整组留到最后, 弱牌先出(单张先出)');
     'n=' + (act && act.cardIds ? act.cardIds.length : 0));
 }
 
-section('⑨ 出完牌的人被压过 -> 桌面牌清掉, 换成大贡');
+section('⑨ 出完牌的人: 轮到他时才清桌面牌, 换成大贡');
 {
   var st = mkState([card.createNormalCard('S',5,'i1')], [card.createNormalCard('C',3,'i2')]);
   var d = st.players.filter(function (p) { return p.id === 'D'; })[0];
   d.hand = [];                         // 丁已出完
   st['出完顺序'] = ['D'];
-  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  g.__setState(st, { human: 'A', currentPlayer: 'C' });
   g.uiPlays()['D'] = [card.createNormalCard('S',3,'i3')];
   g.uiPlaysTrick()['D'] = g.__uiState().uiTrickId;
-  st.lastPlayer = 'D';                 // 他还是当前墩的出牌人
+  st.lastPlayer = 'D';                 // 他刚出完, 还是当前墩的出牌人
   g.draw();
-  check('⑨ 出完牌的人还是当前出牌人 -> 桌面牌先留着', !!(g.uiPlays()['D'] && g.uiPlays()['D'].length),
+  check('⑨ 出完牌的人: 他最后那手牌先留在桌上', !!(g.uiPlays()['D'] && g.uiPlays()['D'].length),
     JSON.stringify(Object.keys(g.uiPlays())));
   st.lastPlayer = 'B';                 // 被别人压过
   g.draw();
-  check('⑨ 出完牌的人被压过后 -> 桌面牌清掉', !g.uiPlays()['D'], JSON.stringify(Object.keys(g.uiPlays())));
+  check('⑨ 别人压过他 -> 桌面牌还留着(等轮到他才清)', !!(g.uiPlays()['D'] && g.uiPlays()['D'].length),
+    JSON.stringify(Object.keys(g.uiPlays())));
+  g.advanceCurrentPlayer();            // 轮转到丁(他出完牌, 被跳过)
+  check('⑨ 轮到他 -> 桌面牌清掉', !g.uiPlays()['D'], JSON.stringify(Object.keys(g.uiPlays())));
   check('⑨ 清掉后显示大贡字', g.__renderTexts().indexOf('大贡') >= 0, JSON.stringify(g.__renderTexts().slice(0, 20)));
+}
+
+section('⑩ 同一轮多个人都出完牌');
+{
+  var st = mkState([card.createNormalCard('S',5,'m1')], [card.createNormalCard('C',3,'m2')]);
+  var d = st.players.filter(function (p) { return p.id === 'D'; })[0];
+  var e = st.players.filter(function (p) { return p.id === 'E'; })[0];
+  d.hand = []; e.hand = [];            // 丁、戊都出完了
+  st['出完顺序'] = ['D','E'];
+  g.__setState(st, { human: 'A', currentPlayer: 'C' });
+  g.uiPlays()['D'] = [card.createNormalCard('S',3,'m3')];
+  g.uiPlaysTrick()['D'] = g.__uiState().uiTrickId;
+  g.uiPlays()['E'] = [card.createNormalCard('H',4,'m4')];
+  g.uiPlaysTrick()['E'] = g.__uiState().uiTrickId;
+  g.draw();
+  check('⑩ 两人出完: 桌面牌都先留着', !!(g.uiPlays()['D'] && g.uiPlays()['D'].length) && !!(g.uiPlays()['E'] && g.uiPlays()['E'].length),
+    JSON.stringify(Object.keys(g.uiPlays())));
+  g.advanceCurrentPlayer();            // 轮转: 丁(跳过) -> 戊(跳过) -> 甲
+  check('⑩ 轮过之后两人的桌面牌都清掉', !g.uiPlays()['D'] && !g.uiPlays()['E'],
+    JSON.stringify(Object.keys(g.uiPlays())));
+  var t10 = g.__renderTexts();
+  check('⑩ 大贡/二贡 都显示(按出完顺序)', t10.indexOf('大贡') >= 0 && t10.indexOf('二贡') >= 0,
+    JSON.stringify(t10.slice(0, 24)));
 }
 
 console.log('');

@@ -1484,17 +1484,9 @@ function _uiSyncPassState() {
     //   托管会连着走多个动作, 两次 draw() 之间手牌早就变少 -> 刚设的过牌标记被误清(随机丢失)。
     //   现在改成**只有他自己出牌时**才清(在 _uiRecordPlay 里), 这里不再猜。
     uiPrevHandLens[p.id] = p.hand.length;
-  // [2026-11-09 用户] 「丁出一个3后手牌出完了... 乙用小王压制了丁... 这时丁前面的3应该清掉, 换成大贡二贡等文字」
-  //   -> 出完牌的人**被压过之后**(不再是当前墩的出牌人), 他桌面上那手牌就清掉 -> 渲染层改显示 大贡/二贡。
-  //      之前要等**整轮结束**(轮末才清) -> 桌面上一直挂着旧牌。
-  //      注意: 只清**出完牌的人**的桌面牌; 别人还在桌上的牌不动。
-  var _lastPlayed = gameState && gameState.lastPlayer;
-  (gameState.players || []).forEach(function (p) {
-    if (!p || !p.hand || p.hand.length !== 0) return;   // 没出完 -> 不动
-    if (_lastPlayed === p.id) return;                  // 还是当前墩的出牌人 -> 牌留在桌上(让他看见自己最后出的牌)
-    delete uiPlays[p.id];
-    delete uiPlaysTrick[p.id];
-  });
+  // [2026-11-09 用户] 出完牌的人: 桌面上那手旧牌**轮到他时**才清 -> 换成 大贡/二贡 文字。
+  //   (清的动作在 advanceCurrentPlayer: 出完牌的人会被跳过 -> 在跳过他的那一刻清)
+  //   注意: 别人**压过他**时**不清**(那手牌还留在桌上, 等轮到丁才清)。
   });
   // [2026-10-26] **推风成功** -> 「不出」全清(引擎这时会清空桌牌)
   var _pw = g['推风触发者'] || null;
@@ -2233,6 +2225,11 @@ function _uiClearTurnDisplay(pid, opts) {
 }
 
 // === 推进到下一玩家 ===
+// [2026-11-09 用户] 「丁出了一个3后全部手牌出完了... 丙过牌, 这时到了丁, 就该把丁前面的3清掉, 换成大贡二贡等文字」
+//   -> 出完牌的人会被**跳过**(他不能再行动) -> 桌面上那手旧牌一直挂到轮末, 期间还压住了「大贡」字。
+//      在**轮转到他(被跳过)的这一刻**清掉他桌面上那手牌 -> 渲染层改显示 大贡/二贡/已出完。
+//      注意: 别人**压过他**时**不清**(那手牌还留在桌上), 等轮到他才清。
+//      同一轮多个人都出完: 轮转时逐个跳过、逐个清; 贡字按引擎的「出完顺序」分配, 互不影响。
 function advanceCurrentPlayer() {
   if (!gameState || !gameState.players) return;
   var ids = ['A', 'B', 'C', 'D', 'E'];
@@ -2241,6 +2238,10 @@ function advanceCurrentPlayer() {
   for (var step = 1; step <= 5; step++) {
     var next = ids[(idx + step) % 5];
     var nextPlayer = gameState.players.find(function (p) { return p.id === next; });
+      if (nextPlayer && (!nextPlayer.hand || nextPlayer.hand.length === 0)) {
+        delete uiPlays[next];
+        delete uiPlaysTrick[next];
+      }
     if (nextPlayer && nextPlayer.hand && nextPlayer.hand.length > 0) {
       var _prevCur = currentPlayer;   // [2026-11-03] 记下换手前是谁 -> 决定要不要清真人的预选
       currentPlayer = next;
