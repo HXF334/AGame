@@ -127,7 +127,15 @@ function candidateCombos(hand) {
   //   k=1 连张 / k=2 双龙 / k=3 连珠蛋 / k=4 假八 都要覆盖。
   //   [注] byRank 存的是 **card id 字符串**(不是 card 对象), 别写 .id。
   for (var _ak = 1; _ak <= MAX_K; _ak++) {
-    var _aPool = byRank[14];
+var _aPool = byRank[14];
+  // [2026-11-09 用户] 「QKAA(一个普通A一个大A): QKA龙优先带普通A, 不是大A; 只有QK+一个大A时龙才可以带大A」
+  //   -> A 池里**普通A 排前面**(枚举优先取普通A); 没有普通A 才用大A。
+  //      双大A 永远一起走: ai.js 已有硬规则(拆开双大A的组合直接排除)。
+  if (_aPool && _aPool.length > 1) {
+    _aPool = _aPool.slice().sort(function (x, y) {
+      return (x.is主方大A ? 1 : 0) - (y.is主方大A ? 1 : 0);
+    });
+  }
     if (!_aPool || _aPool.length < _ak) continue;
     var _aOpts = _pickCombos(_aPool, _ak);
     var _accA = _aOpts.slice();          // 先放 A 的 k 张

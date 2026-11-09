@@ -124,7 +124,16 @@ function campCertain(state, viewerId, targetId) {
   if (!state || !viewerId || !targetId) return false;
   if (viewerId === targetId) return true;
   var mode = state.mode || '';
-  if ((state['次方公开'] === true) || (mode.indexOf('明打') >= 0) || (mode.indexOf('1V4') >= 0)) return true;
+  if ((state['次方公开'] === true) || (mode.indexOf('明打') >= 0)) return true;
+  // [2026-11-09 用户] 「1V4暗打开局不能给抓方自动标(次方身份还没露)」
+  //   -> 1V4 暗打: 只有**对主A**的关系是确定的(主A 必是敌人);
+  //      抓方之间(谁可能是次方)仍是推测 -> 不自动标。
+  if (mode.indexOf('1V4') >= 0) {
+    var _h14 = state['主A'] && state['主A'].establishedBy;
+    if (_h14 && viewerId === _h14) return true;    // 我是主A: 其他四家都是抓方 -> 确定
+    if (_h14 && targetId === _h14) return true;    // 主A 是身份明的敌人 -> 确定
+    return false;                                   // 抓方之间 -> 推测
+  }
   var next = state['次方'];
   var holder = state['主A'] && state['主A'].establishedBy;
   if (next && next === viewerId) return true;        // 我是次方: 主A持有者是队友, 其余是抓方 -> 确定

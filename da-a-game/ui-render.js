@@ -481,8 +481,12 @@ function drawSeats(ctx, st, m) {
     if (_canM && myMarks[pid]) _mark = myMarks[pid];
     if (st.gameState) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
-      // [2026-11-09 用户] 「不要给真人玩家自动标记敌友」-> 真人只显示**自己手动标的**;
-      //   没手动标就显示「?」, 不用 camp.campOf 自动填(自动填=系统替真人下判断)。
+      if (!_mark && camp.campCertain(st.gameState, st.humanPlayer, pid)) {
+        _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+      }
+      // [2026-11-09 用户] 「已经明确的要标好, 不明确的不能给真人自动标」
+      //   -> 只在**关系已确定**(campCertain: 次方亮明/明打/1V4里对主A)时按真实阵营自动标;
+      //      不确定(暗打抓方之间/1V4开局) -> 不自动填, 显示「?」, 只能手动标。
     }
     drawAllyMark(ctx, st, m, colX, mky, mr, _mark);
     markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
@@ -635,7 +639,9 @@ function drawSeatPlays(ctx, st, m, seatMap) {
       // [2026-11-09 用户] 「标记黄色不明显, 看不出来」+「同一个玩家第二个没被取的蛋子也有取标志」
       //   -> 只认**牌对象自己**的「被取走」标记(capture 时打在原牌上, 副本会去掉这个标记,
       //      所以取牌者以后再打出这手牌不会被误标); 画成**红底黄字**小牌子, 一眼能看见。
-      if (_cd && _cd['被取走']) {
+      if (_cd && _cd['被取走'] && j === n - 1) {
+        // [2026-11-09 用户] 「不用每张都标, 只在最后一张的右下角标」+「只是证明当时这手牌被取走了, 再次打出无关」
+        //   -> 只标那手牌的**最后一张**; 标记在牌对象上, 副本不带 -> 以后再打出不会被标。
         var _fs2 = Math.max(10, Math.round(m.vh * 0.032));
         var _bw = _fs2 * 1.5, _bh = _fs2 * 1.25;
         var _bx = x0 + j * step + cardW - _bw - 1;
@@ -1119,7 +1125,7 @@ function drawSettlement(ctx, st, m) {
     var dtxt = (delta === undefined) ? '0分' : ((delta > 0 ? '+' : '') + delta + '分');
     ctx.fillStyle = (i % 2 === 0) ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
     rr(ctx, px + 12, y - rowH * 0.46, pw - 24, rowH * 0.92, 3); ctx.fill();
-    text(ctx, st.names[i], px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), '#ffd700', 'left', true);
+text(ctx, st.names[i], px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), (pid === st.humanPlayer ? '#ffd700' : '#ffffff'), 'left', true);
     text(ctx, camp + ' · 剩 ' + ((p && p.hand) ? p.hand.length : 0), px + 92, y, Math.max(9, Math.round(m.vh * 0.028)), '#aaaaaa', 'left', false);
     // [2026-11-08 22:40 用户] 结算画面不再显示「头名」, 改成按出完顺序显示 大贡/二贡/三贡/四贡;
     //   标签放在**分数左边**(别压着分数)。
