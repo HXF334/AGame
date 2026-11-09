@@ -1,9 +1,13 @@
 // tests/test-req-20261109.js —— 2026-11-09 用户反馈一批的回归测试
 //   ① 「不出」不再随机丢失(渲染闸门 + 「手牌变少」启发式两处)
-//   ② 4取牌: 桌面被取的牌打「被取走」标记(半透明 + 飞向取牌者手牌)
-//   ③ 提示: 连点不重复 + 拆组口径 = 托管
+//   ② 4取牌: 牌对象不再打「被取走」标记(共享引用会误伤), UI 自己反推
+//   ③ 提示: 连点不重复
 //   ④ 整手牌就是一种牌型 -> 整手出(连珠蛋)
 //   ⑤ 真人和 AI 的「贡字」颜色一致
+//   ⑥ 托管动作不清掉「不出」标记
+//   ⑦ §6.3 牌力: 弱牌先出(双王 < 真七)
+//   ⑧ 起手: 蛋子级整组留到最后, 先出单张
+//   ⑨ 出完牌的人被压过 -> 桌面牌清掉, 换成大贡
 var mock = require('./mock-wx.js');
 mock.install({});
 var g = require('../game.js');
@@ -18,55 +22,6 @@ function check(name, ok, detail) {
   if (ok) { pass++; console.log('  ok   ' + name); }
   else { fail++; console.log('  FAIL ' + name + (detail ? ' | ' + detail : '')); }
 }
-section('⑥ 托管动作不清掉「不出」标记');
-{
-  // 源码级守卫: enterPlayIfNeeded 里必须是**条件清**
-  //   (原来每次调用都清 -> 托管每次动作都清 -> 刚设的「不出」当场没了)
-  var _fs = require('fs'), _path = require('path');
-  var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
-  check('⑥ enterPlayIfNeeded 只在进入 PLAY 时清「不出」',
-    _src.indexOf('if (uiLastPhase !== PHASES.PLAY) uiPassed = {};') >= 0, '');
-  // 行为级: 走**真实托管路径**(真人被 AI 代打过牌)。桌面放一手谁都压不动的蛋子,
-  //   托管动作本身不许动别人的「不出」标记。
-  var st = mkState([card.createNormalCard('S',2,'g1'), card.createNormalCard('H',2,'g2')],
-                   [card.createNormalCard('C',9,'tg1'), card.createNormalCard('D',9,'tg2'), card.createNormalCard('S',9,'tg3')]);
-  st.players.forEach(function (p) {
-    if (p.id !== 'A') p.hand = [card.createNormalCard('C',3,'x' + p.id), card.createNormalCard('D',3,'y' + p.id)];
-  });
-  g.__setState(st, { human: 'A', currentPlayer: 'A' });
-  g.__enterPlay();                  // 先走一次「进入 PLAY」(阶段记上, 之后不再清标记)
-  g.uiPassed()['B'] = true;         // 模拟: 上家过了牌
-  g.__setAutoPlay(true);
-  g.__autoPlayStep();               // 托管接管: AI 替真人过牌
-  g.__setAutoPlay(false);
-  var pd6 = g.uiPassed();
-  check('⑥ 托管过牌后真人自己显示「不出」', pd6['A'] === true, JSON.stringify(pd6));
-  check('⑥ 托管动作不清别人的「不出」标记', pd6['B'] === true, JSON.stringify(pd6));
-}
-
-section('⑦ §6.3 牌力: 弱牌先出(双王 < 真七)');
-{
-  var jokers = [card.createBigJoker('j1'), card.createSmallJoker('j2')];
-  var nines = [];
-  for (var i = 0; i < 7; i++) nines.push(card.createNormalCard('S', 9, 'n' + i));
-  // 桌面 = 蛋子: 只有「双王」和「真七」能压 -> 正好比牌力
-  var tbl = [card.createNormalCard('H',5,'tt1'), card.createNormalCard('D',5,'tt2'), card.createNormalCard('C',5,'tt3')];
-  var st = mkState(jokers.concat(nines), tbl);
-  g.__setState(st, { human: 'A', currentPlayer: 'A' });
-  var act = aiMod.chooseAction(st, 'A', { ignoreCamp: true });
-  var actType = 'NONE';
-  if (act && act.type === 'PLAY' && act.cardIds && act.cardIds.length) {
-    var meH = st.players.filter(function (p) { return p.id === 'A'; })[0];
-    var cs = act.cardIds.map(function (id) {
-      return meH.hand.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
-    try { actType = handTypes.identifyHand(cs).type; } catch (e) { actType = 'ERR'; }
-  }
-  check('⑦ 托管按 §6.3 牌力选牌: 弱牌(双王)先于强牌(真七)', actType === 'DOUBLE_JOKER', 'type=' + actType);
-  var cands = g.uiHintCandidates();
-  check('⑦ 提示第一候选 ≡ 托管那一手(双王)', cands.length > 0 && cands[0].type === 'DOUBLE_JOKER',
-    'first=' + (cands.length ? cands[0].type : '(无)'));
-}
-
 function section(t2) { console.log(''); console.log('=== ' + t2 + ' ==='); }
 function mkState(handCards, tableCards) {
   var st = SB.build({ handMap: { A: handCards }, table: tableCards, lastPlayer: 'B',
@@ -85,7 +40,7 @@ section('① 「不出」不再随机丢失');
   var st = mkState([card.createNormalCard('S',5,'h1'), card.createNormalCard('H',5,'h2')], []);
   g.__setState(st, { human: 'A', currentPlayer: 'A' });
   var ui = g.__uiState();
-  ui.uiPassed['A'] = true;               // 他过了牌
+  ui.uiPassed['A'] = true;                // 他过了牌
   ui.uiPlaysTrick['A'] = ui.uiTrickId;   // 同一轮(uiTrickId 相同)里他**出过牌**
   var texts = g.__renderTexts();
   check('① 同一轮出过牌又过牌 -> 仍然画「不出」', texts.indexOf('不出') >= 0,
@@ -103,7 +58,7 @@ section('① 「不出」不再随机丢失');
     'uiPassed=' + JSON.stringify(g.uiPassed()));
 }
 
-section('② 4取牌: 桌面被取的牌打「被取走」标记');
+section('② 4取牌: 牌对象不打标记, UI 自己反推');
 {
   var t3 = [card.createNormalCard('S',5,'t1'), card.createNormalCard('H',5,'t2'), card.createNormalCard('D',5,'t3')];
   var fours = [card.createNormalCard('S',4,'f1'), card.createNormalCard('H',4,'f2')];
@@ -114,8 +69,10 @@ section('② 4取牌: 桌面被取的牌打「被取走」标记');
     var taker = r.state.players.filter(function (p) { return p.id === 'A'; })[0];
     var copies = taker.hand.filter(function (c) { return c['取自']; });
     check('② 被取的牌进手牌副本带「取自」标记', copies.length === 3, 'copies=' + copies.length);
-    var taken = t3.filter(function (c) { return c['被取走']; });
-    check('② 桌面原牌带「被取走」标记(半透明/飞行动画用)', taken.length === 3, 'taken=' + taken.length);
+    // [2026-11-09 用户] 牌对象**不再**打标记: 牌对象是共享引用, 原地打标记会流到
+    //   UI 的出牌缓存 -> 把没被取的牌也标上(用户报障: 「没被取的牌也透明了」)。
+    var marked = t3.filter(function (c) { return c['被取走']; });
+    check('② 桌面原牌不再被打「被取走」标记(共享引用会误伤)', marked.length === 0, 'marked=' + marked.length);
   }
 }
 
@@ -159,7 +116,6 @@ section('⑤ 真人和 AI 的贡字颜色一致');
   var other = st.players.filter(function (p) { return p.id === 'B'; })[0];
   other.hand = [];
   g.__setState(st, { human: 'A', currentPlayer: 'A' });
-  // 清掉上一段留下的 UI 标记(本轮出过牌/不出), 免得影响贡字判定
   var u5 = g.__uiState();
   Object.keys(u5.uiPlaysTrick).forEach(function (k) { delete u5.uiPlaysTrick[k]; });
   Object.keys(u5.uiPassed).forEach(function (k) { delete u5.uiPassed[k]; });
@@ -172,6 +128,81 @@ section('⑤ 真人和 AI 的贡字颜色一致');
     check('⑤ 真人贡字颜色 = AI 贡字颜色', humanGong.style === aiGong.style,
       'human=' + humanGong.style + ' ai=' + aiGong.style);
   }
+}
+
+section('⑥ 托管动作不清掉「不出」标记');
+{
+  var _fs = require('fs'), _path = require('path');
+  var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
+  check('⑥ enterPlayIfNeeded 只在进入 PLAY 时清「不出」',
+    _src.indexOf('if (uiLastPhase !== PHASES.PLAY) uiPassed = {};') >= 0, '');
+  var st = mkState([card.createNormalCard('S',2,'g1'), card.createNormalCard('H',2,'g2')],
+                   [card.createNormalCard('C',9,'tg1'), card.createNormalCard('D',9,'tg2'), card.createNormalCard('S',9,'tg3')]);
+  st.players.forEach(function (p) {
+    if (p.id !== 'A') p.hand = [card.createNormalCard('C',3,'x' + p.id), card.createNormalCard('D',3,'y' + p.id)];
+  });
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  g.__enterPlay();
+  g.uiPassed()['B'] = true;         // 模拟: 上家过了牌
+  g.__setAutoPlay(true);
+  g.__autoPlayStep();               // 托管接管: AI 替真人过牌
+  g.__setAutoPlay(false);
+  var pd6 = g.uiPassed();
+  check('⑥ 托管过牌后真人自己显示「不出」', pd6['A'] === true, JSON.stringify(pd6));
+  check('⑥ 托管动作不清别人的「不出」标记', pd6['B'] === true, JSON.stringify(pd6));
+}
+
+section('⑦ §6.3 牌力: 弱牌先出(双王 < 真七)');
+{
+  var jokers = [card.createBigJoker('j1'), card.createSmallJoker('j2')];
+  var nines = [];
+  for (var i = 0; i < 7; i++) nines.push(card.createNormalCard('S', 9, 'n' + i));
+  var tbl = [card.createNormalCard('H',5,'tt1'), card.createNormalCard('D',5,'tt2'), card.createNormalCard('C',5,'tt3')];
+  var st = mkState(jokers.concat(nines), tbl);
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  var act = aiMod.chooseAction(st, 'A', { ignoreCamp: true });
+  var actType = 'NONE';
+  if (act && act.type === 'PLAY' && act.cardIds && act.cardIds.length) {
+    var meH = st.players.filter(function (p) { return p.id === 'A'; })[0];
+    var cs = act.cardIds.map(function (id) {
+      return meH.hand.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
+    try { actType = handTypes.identifyHand(cs).type; } catch (e) { actType = 'ERR'; }
+  }
+  check('⑦ 托管按 §6.3 牌力选牌: 弱牌(双王)先于强牌(真七)', actType === 'DOUBLE_JOKER', 'type=' + actType);
+  var cands = g.uiHintCandidates();
+  check('⑦ 提示第一候选 ≡ 托管那一手(双王)', cands.length > 0 && cands[0].type === 'DOUBLE_JOKER',
+    'first=' + (cands.length ? cands[0].type : '(无)'));
+}
+
+section('⑧ 起手: 蛋子级整组留到最后, 弱牌先出(单张先出)');
+{
+  var hand = [card.createNormalCard('S',5,'h8'), card.createNormalCard('H',5,'h9'),
+              card.createNormalCard('D',5,'h10'), card.createNormalCard('C',5,'h11'),
+              card.createNormalCard('S',7,'h12')];
+  var st = mkState(hand, []);
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  var act = aiMod.chooseAction(st, 'A', {});
+  check('⑧ 起手: 先出单张(不整组出蛋子级)', !!(act && act.type === 'PLAY' && act.cardIds.length === 1),
+    'n=' + (act && act.cardIds ? act.cardIds.length : 0));
+}
+
+section('⑨ 出完牌的人被压过 -> 桌面牌清掉, 换成大贡');
+{
+  var st = mkState([card.createNormalCard('S',5,'i1')], [card.createNormalCard('C',3,'i2')]);
+  var d = st.players.filter(function (p) { return p.id === 'D'; })[0];
+  d.hand = [];                         // 丁已出完
+  st['出完顺序'] = ['D'];
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  g.uiPlays()['D'] = [card.createNormalCard('S',3,'i3')];
+  g.uiPlaysTrick()['D'] = g.__uiState().uiTrickId;
+  st.lastPlayer = 'D';                 // 他还是当前墩的出牌人
+  g.draw();
+  check('⑨ 出完牌的人还是当前出牌人 -> 桌面牌先留着', !!(g.uiPlays()['D'] && g.uiPlays()['D'].length),
+    JSON.stringify(Object.keys(g.uiPlays())));
+  st.lastPlayer = 'B';                 // 被别人压过
+  g.draw();
+  check('⑨ 出完牌的人被压过后 -> 桌面牌清掉', !g.uiPlays()['D'], JSON.stringify(Object.keys(g.uiPlays())));
+  check('⑨ 清掉后显示大贡字', g.__renderTexts().indexOf('大贡') >= 0, JSON.stringify(g.__renderTexts().slice(0, 20)));
 }
 
 console.log('');

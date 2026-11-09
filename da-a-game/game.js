@@ -1484,6 +1484,17 @@ function _uiSyncPassState() {
     //   托管会连着走多个动作, 两次 draw() 之间手牌早就变少 -> 刚设的过牌标记被误清(随机丢失)。
     //   现在改成**只有他自己出牌时**才清(在 _uiRecordPlay 里), 这里不再猜。
     uiPrevHandLens[p.id] = p.hand.length;
+  // [2026-11-09 用户] 「丁出一个3后手牌出完了... 乙用小王压制了丁... 这时丁前面的3应该清掉, 换成大贡二贡等文字」
+  //   -> 出完牌的人**被压过之后**(不再是当前墩的出牌人), 他桌面上那手牌就清掉 -> 渲染层改显示 大贡/二贡。
+  //      之前要等**整轮结束**(轮末才清) -> 桌面上一直挂着旧牌。
+  //      注意: 只清**出完牌的人**的桌面牌; 别人还在桌上的牌不动。
+  var _lastPlayed = gameState && gameState.lastPlayer;
+  (gameState.players || []).forEach(function (p) {
+    if (!p || !p.hand || p.hand.length !== 0) return;   // 没出完 -> 不动
+    if (_lastPlayed === p.id) return;                  // 还是当前墩的出牌人 -> 牌留在桌上(让他看见自己最后出的牌)
+    delete uiPlays[p.id];
+    delete uiPlaysTrick[p.id];
+  });
   });
   // [2026-10-26] **推风成功** -> 「不出」全清(引擎这时会清空桌牌)
   var _pw = g['推风触发者'] || null;

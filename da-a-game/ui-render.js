@@ -623,36 +623,29 @@ function drawSeatPlays(ctx, st, m, seatMap) {
           : (slot.x - rr_ - 18 - totalW);
     var y = slot.y - cardH / 2;
     // [2026-11-06 用户] 「禁止 +N 截断」-> 全部画出, 不再有 "+N" 标记
+    // [2026-11-09 用户] 被 4 取走的牌 -> 桌面右下角标「取」(不再整手半透明)
+    var _takenIds = {};
+    var _pls2 = (st.gameState && st.gameState.players) || [];
+    for (var _i2 = 0; _i2 < _pls2.length; _i2++) {
+      var _h2 = _pls2[_i2].hand || [];
+      for (var _j3 = 0; _j3 < _h2.length; _j3++) {
+        if (_h2[_j3] && _h2[_j3]['取自']) _takenIds[_h2[_j3].id] = 1;
+      }
+    }
     for (var j = 0; j < n; j++) {
       // 内容一律按 step 宽居中 -> 和其他手牌位置一致
       var _cd = cards[j];
-      var _taken = _cd && _cd['被取走'];
-      if (_taken) {
-        // [2026-11-09 用户] 「4取牌后不是手牌变化, 是桌面上被取的牌变化」
-        //   -> 被取的这手牌: 动画期间飞向取牌玩家手牌; 之后留在桌面上但**半透明 50%**。
-        var _fx = st.captureFx || null;
-        var _fly = _fx && _fx.cards && _fx.cards.indexOf(_cd.id) >= 0;
-        var _p = _fly ? Math.max(0, Math.min(1, (Date.now() - _fx.at) / 700)) : 1;
-        var _tgt = _captureTargetPos(st, m, seatMap, _taken);
-        if (_tgt && _p < 1) {
-          var _sx = x0 + j * step;
-          var _cxp = _sx + (_tgt.x - _sx) * _p;
-          var _cyp = y + (_tgt.y - y) * _p;
-          var _cw = Math.max(12, Math.round(cardW * (1 - 0.45 * _p)));
-          var _ch = Math.max(16, Math.round(cardH * (1 - 0.45 * _p)));
-          ctx.save();
-          ctx.globalAlpha = 1 - 0.55 * _p;
-          drawMiniCard(ctx, _cd, _cxp, _cyp, _cw, _ch, st, _cw);
-          ctx.restore();
-          continue;
-        }
-        ctx.save();
-        ctx.globalAlpha = 0.5;                        // 被取走了 -> 留在桌面上但半透明
-        drawMiniCard(ctx, _cd, x0 + j * step, y, cardW, cardH, st, step);
-        ctx.restore();
-        continue;
-      }
       drawMiniCard(ctx, _cd, x0 + j * step, y, cardW, cardH, st, step);
+      // [2026-11-09 用户] 「透明度不要了, 只在桌面上被取的牌的右下角标一个半透明的取字」
+      //   -> 「被取走」从**引擎状态**反推: 被取走的牌会以副本进取牌者手牌(带「取自」标记),
+      //      副本 id 与原牌一致 -> 只有真被取走的那手牌会被标上, 不会被误伤。
+      if (_takenIds[_cd.id]) {
+        var _fs2 = Math.max(9, Math.round(m.vh * 0.030));
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        text(ctx, '取', x0 + j * step + cardW - _fs2 * 0.35, y + cardH - _fs2 * 0.35, _fs2, '#ffd98a', 'right', true);
+        ctx.restore();
+      }
     }
   });
 }
