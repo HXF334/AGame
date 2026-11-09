@@ -18,6 +18,55 @@ function check(name, ok, detail) {
   if (ok) { pass++; console.log('  ok   ' + name); }
   else { fail++; console.log('  FAIL ' + name + (detail ? ' | ' + detail : '')); }
 }
+section('⑥ 托管动作不清掉「不出」标记');
+{
+  // 源码级守卫: enterPlayIfNeeded 里必须是**条件清**
+  //   (原来每次调用都清 -> 托管每次动作都清 -> 刚设的「不出」当场没了)
+  var _fs = require('fs'), _path = require('path');
+  var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
+  check('⑥ enterPlayIfNeeded 只在进入 PLAY 时清「不出」',
+    _src.indexOf('if (uiLastPhase !== PHASES.PLAY) uiPassed = {};') >= 0, '');
+  // 行为级: 走**真实托管路径**(真人被 AI 代打过牌)。桌面放一手谁都压不动的蛋子,
+  //   托管动作本身不许动别人的「不出」标记。
+  var st = mkState([card.createNormalCard('S',2,'g1'), card.createNormalCard('H',2,'g2')],
+                   [card.createNormalCard('C',9,'tg1'), card.createNormalCard('D',9,'tg2'), card.createNormalCard('S',9,'tg3')]);
+  st.players.forEach(function (p) {
+    if (p.id !== 'A') p.hand = [card.createNormalCard('C',3,'x' + p.id), card.createNormalCard('D',3,'y' + p.id)];
+  });
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  g.__enterPlay();                  // 先走一次「进入 PLAY」(阶段记上, 之后不再清标记)
+  g.uiPassed()['B'] = true;         // 模拟: 上家过了牌
+  g.__setAutoPlay(true);
+  g.__autoPlayStep();               // 托管接管: AI 替真人过牌
+  g.__setAutoPlay(false);
+  var pd6 = g.uiPassed();
+  check('⑥ 托管过牌后真人自己显示「不出」', pd6['A'] === true, JSON.stringify(pd6));
+  check('⑥ 托管动作不清别人的「不出」标记', pd6['B'] === true, JSON.stringify(pd6));
+}
+
+section('⑦ §6.3 牌力: 弱牌先出(双王 < 真七)');
+{
+  var jokers = [card.createBigJoker('j1'), card.createSmallJoker('j2')];
+  var nines = [];
+  for (var i = 0; i < 7; i++) nines.push(card.createNormalCard('S', 9, 'n' + i));
+  // 桌面 = 蛋子: 只有「双王」和「真七」能压 -> 正好比牌力
+  var tbl = [card.createNormalCard('H',5,'tt1'), card.createNormalCard('D',5,'tt2'), card.createNormalCard('C',5,'tt3')];
+  var st = mkState(jokers.concat(nines), tbl);
+  g.__setState(st, { human: 'A', currentPlayer: 'A' });
+  var act = aiMod.chooseAction(st, 'A', { ignoreCamp: true });
+  var actType = 'NONE';
+  if (act && act.type === 'PLAY' && act.cardIds && act.cardIds.length) {
+    var meH = st.players.filter(function (p) { return p.id === 'A'; })[0];
+    var cs = act.cardIds.map(function (id) {
+      return meH.hand.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
+    try { actType = handTypes.identifyHand(cs).type; } catch (e) { actType = 'ERR'; }
+  }
+  check('⑦ 托管按 §6.3 牌力选牌: 弱牌(双王)先于强牌(真七)', actType === 'DOUBLE_JOKER', 'type=' + actType);
+  var cands = g.uiHintCandidates();
+  check('⑦ 提示第一候选 ≡ 托管那一手(双王)', cands.length > 0 && cands[0].type === 'DOUBLE_JOKER',
+    'first=' + (cands.length ? cands[0].type : '(无)'));
+}
+
 function section(t2) { console.log(''); console.log('=== ' + t2 + ' ==='); }
 function mkState(handCards, tableCards) {
   var st = SB.build({ handMap: { A: handCards }, table: tableCards, lastPlayer: 'B',

@@ -313,11 +313,19 @@ function chooseAction(state, playerId, opts) {
       return c.isBigJoker || c.isSmallJoker || c.is主方大A;
     });
   }
+  // [2026-11-09 用户] 牌力等级(§6.3): 数字小 = 牌力弱 -> 弱牌先出(别浪费大牌)
+  //   例: 手牌「双王 + 真七(9999999)」-> 先出双王(§6.3: 双王 < 假八 < 真七)。
+  function _powerOf(cards, type) {
+    var p = (policy.POWER_RANK[type] || 0) * 10;
+    // 含大A(不是双大A)的牌: 当最后手段(大A 混进组合就不算大A, 但牌本身很重)
+    if (type !== HAND_TYPES.DOUBLE_BIG_A && cards.some(function (c) { return !!c.is主方大A; })) p += 500;
+    return p;
+  }
+
   // [2026-11-06 23:54 用户] 优先度要按**实际牌力**排, 不能只按张数/点数:
   //   - topType: 双大A(最大牌型)/双王/三王/四王, 以及任何**含大A**的牌 -> 优先度**最后**(最后手段)
   //   - bigGroup: 大组牌型(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙) -> 靠后,
   //     但排在「不拆同点组」之后(拆开假八能管上时, 别直接出整个假八)
-  var _topTypeSet = { DOUBLE_BIG_A: 1, DOUBLE_JOKER: 1, TRIPLE_JOKER: 1, FOUR_JOKER: 1 };
   // [2026-11-07 22:26 用户 B] 「蛋子+」= 蛋子及以上(含双龙/大蛋子/王/双大A), 集合见 src/ai-policy.js
   // [2026-11-07 00:19] 阵营不明时不能用大蛋子+ 去压
   var _uncertain = _campUncertain(state, state && state.lastPlayer, playerId);
@@ -374,7 +382,11 @@ function chooseAction(state, playerId, opts) {
       type: h.type,
       sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,   // 同类型优先
       // [2026-11-06 23:54] 双大A/双王/大A 单张 -> 优先度最后; 大组 -> 靠后
-      topType: (_topTypeSet[h.type] || comboCards.some(function (c) { return !!c.is主方大A; })) ? 1 : 0,
+      // [2026-11-09 用户] 「不能固定把双王优先级放在靠后, 要判断牌力大小, 三王四王也是同样的问题」
+      //   -> §6.3 牌力等级(数字小 = 弱): 双王 70 < 连珠蛋 80 < 假八 90 < 真七 100 < 真八 110
+      //      < 三王 120 < 大连珠蛋 130 < 大假八 140 < 四王 150 < 双大A 160。
+      //      含大A(不是双大A)的牌仍是最后手段(大A 不与别的牌混出, 见上面的硬规则)。
+      power: _powerOf(comboCards, h.type),
       bigGroup: _bigGroupTypes[h.type] ? 1 : 0,                        // 大组牌型当最后手段
       split: _splitCount(comboCards),                                  // 不拆牌优先
       // [2026-11-07 21:47] 不拆蛋子级同点组(手里 22222 不该拆出 222)

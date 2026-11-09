@@ -1132,7 +1132,7 @@ function drawSettlement(ctx, st, m) {
     var _gl2 = gongLabelOf(st.gameState, pid);
     if (_gl2) {
       // [2026-11-08 23:36 用户] 「结算画面的大贡二贡等标签往右移」-> 从 -108 挪到 -90
-      text(ctx, _gl2, px + pw - 62, y, Math.max(9, Math.round(m.vh * 0.026)), '#ffd98a', 'right', true);
+      // [2026-11-09 用户] 「结算画面的大贡二贡等标签稍微往左移一点点」-> -62 挪到 -72
     }
     // **全部**剩余手牌, 顺序与手牌区一致(大A > 大王 > 小王 > 3 > 2 > A > K ...)
     var hand = (p && p.hand) ? p.hand : [];

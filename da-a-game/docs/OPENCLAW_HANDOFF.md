@@ -402,3 +402,13 @@ openclaw config set --batch-file .tmp-config-batch.json
 - **连珠蛋**: src/lead-choice.js 整手单牌型 -> 整手出(101010JJJQQQ 一次出完)。
 - **测试钩子**: game.js 新增 __renderTextStyles()(画出的文字+颜色)、__uiState()(uiPassed/uiPlays/uiPlaysTrick/uiTrickId)。
 - **回归**: tests/test-req-20261109.js(新增 10 条)。
+
+### 7.20 2026-11-09 15:13 批次(托管清「不出」+ 牌力 §6.3 + 结算标签)
+
+- **托管每次动作都清空「不出」**: enterPlayIfNeeded() 原本无条件 uiPassed = {}, 而托管出牌/过牌后都调它。
+  改: uiLastPhase 记住阶段, 只在真的进入 PLAY 时清一次。
+  坑: 「进 PLAY 清一次」必须**只发生一次**; 否则每次托管动作都清 -> 刚设的「不出」当场没了。
+- **AI 排序键 topType -> power**: 按 §6.3 牌力(弱牌先出), 不再把 王/大A 一刀切压到最后。
+  牌力表 src/ai-policy.js POWER_RANK(HINT_TYPE_RANK 指向同一份, 不重复维护)。
+- **结算大贡标签左移**: -62 -> -72。
+- **测试钩子**: __enterPlay / __setAutoPlay / __autoPlayStep(真实托管路径, 不靠定时器)。

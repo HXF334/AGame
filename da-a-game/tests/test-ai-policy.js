@@ -19,7 +19,7 @@ function section(t) { console.log(''); console.log('=== ' + t + ' ==='); }
 section('P1. 排序键顺序(裁定 D/E): 不拆组 > 同类型优先');
 {
   check('P1.1 排序键顺序固定',
-    policy.SORT_KEYS.join('>') === 'splitEgg>sameType>topType>fourEgg>split>bigGroup>kv>len',
+    policy.SORT_KEYS.join('>') === 'splitEgg>sameType>power>fourEgg>split>bigGroup>kv>len',
     policy.SORT_KEYS.join('>'));
   check('P1.2 「不拆组」排在「同类型优先」之前',
     policy.SORT_KEYS.indexOf('splitEgg') < policy.SORT_KEYS.indexOf('sameType'),
@@ -79,7 +79,26 @@ section('P3. 敌友标记(src/camp.js): 三态判定(用户 23:27)');
   check('P3.9 公开: 同阵营=友', camp.campOf(st3, 'D', 'E') === 'ALLY', camp.campOf(st3, 'D', 'E'));
   check('P3.10 公开: 不同阵营=敌', camp.campOf(st3, 'D', 'C') === 'ENEMY', camp.campOf(st3, 'D', 'C'));
 }
+section('P4. §6.3 全局牌力等级(2026-11-09 用户: 双王 < 真七, 不能把双王固定靠后)');
+{
+  var R = policy.POWER_RANK;
+  check('P4.1 牌力表齐', !!R && !!R.DOUBLE_JOKER && !!R.TRUE_SEVEN && !!R.FOUR_JOKER, '');
+  check('P4.2 双王 < 连珠蛋 < 假八 < 真七 < 真八 < 三王 < 大连珠蛋 < 大假八 < 四王 < 双大A',
+    R.DOUBLE_JOKER < R.STRAIGHT_TRIPLE && R.STRAIGHT_TRIPLE < R.FAKE_EIGHT &&
+    R.FAKE_EIGHT < R.TRUE_SEVEN && R.TRUE_SEVEN < R.TRUE_EIGHT && R.TRUE_EIGHT < R.TRIPLE_JOKER &&
+    R.TRIPLE_JOKER < R.BIG_STRAIGHT_TRIPLE && R.BIG_STRAIGHT_TRIPLE < R.BIG_FAKE_EIGHT &&
+    R.BIG_FAKE_EIGHT < R.FOUR_JOKER && R.FOUR_JOKER < R.DOUBLE_BIG_A,
+    JSON.stringify(R));
+  check('P4.3 蛋子 < 大蛋子 < 双王', R.TRIPLE < R.BIG_TRIPLE && R.BIG_TRIPLE < R.DOUBLE_JOKER, '');
+  check('P4.4 单张/对子/龙 在蛋子之下', R.SINGLE < R.PAIR && R.PAIR < R.STRAIGHT && R.STRAIGHT < R.TRIPLE, '');
+  check('P4.5 比较器: 牌力弱(数字小)的排前',
+    policy.comparePicks({ splitEgg: 0, sameType: 0, power: R.DOUBLE_JOKER },
+                       { splitEgg: 0, sameType: 0, power: R.TRUE_SEVEN }) < 0, '');
+}
+
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);
 if (fail) { console.log(''); console.log('FAILED:'); failures.forEach(function (f) { console.log('  - ' + f); }); }
 process.exit(fail > 0 ? 1 : 0);
+
+

@@ -37,6 +37,11 @@ var uiRender = require('./ui-render.js');
 //   (启动路径里它是 undefined -> AI 出牌时抛 "Cannot set properties of undefined")。
 //   这里的 uiPrevHandLens 在启动时也被读 -> 同样必须提前。
 var uiPassed = {};          // pid -> true (该玩家点了「不出」)
+// [2026-11-09 用户] 「托管时还是不显示不出文字, 上家上上家过牌的不出文字都清了」
+//   -> enterPlayIfNeeded 之前**每次调用**都清空 uiPassed, 而它被 _autoPlayDoPlay/_autoPlayDoPass
+//      在**每次托管动作之后**调用 -> 刚设好的「不出」当场被清, 别人过牌的也一起没了。
+//      用它记住当前阶段: 只有**真的从别的阶段进入 PLAY** 时才清一次。
+var uiLastPhase = '';
 // [2026-11-09 用户] 4取牌动画: 被取走的牌(原牌)飞向取牌者手牌 + 桌面半透明
 var uiSeenCaptured = {};     // cardId -> true (已被取走过, 防重复触发)
 var uiCaptureFx = null;      // { cards:[cardId], toPid, at }
@@ -513,7 +518,12 @@ function enterPlayIfNeeded() {
   // [2026-10-27 用户] 进 PLAY 阶段 -> 清掉「不出」标记
   //   亮A/反A/身份阶段引擎会**自动过牌**(那些玩家没亮/没选), 标记留到牌局里
   //   -> 我亮了大A而且有首出权, 但甲头上还挂着「不出」(用户真机)
-  uiPassed = {};
+  // [2026-11-09 用户] 「托管时还是不显示不出文字, 上家上上家过牌的不出文字都清了」
+  //   -> 原来这里**每次调用**都清空 uiPassed, 而 _autoPlayDoPlay/_autoPlayDoPass 在
+  //      **每次托管动作之后**都会调它 -> 刚设好的「不出」当场被清, 别人过牌的也一起没了。
+  //   改成: 只在**真的从别的阶段进入 PLAY** 时清一次(进 PLAY 之后不再清)。
+  if (uiLastPhase !== PHASES.PLAY) uiPassed = {};
+  uiLastPhase = PHASES.PLAY;
   if (!currentPlayer) {
     // 补跑 PLAY 档(设首出权)。PLAY 档跑完 currentPlayer 已有值, 递归会终止。
     runGateStage();
@@ -623,7 +633,8 @@ function runGateStage() {
 
     case 'PLAY':
       if (gameState.phase === PHASES.PLAY) {
-        uiPassed = {};                 // [2026-10-27] 开局清「不出」(亮A 阶段的自动过牌不算)
+  uiPassed = {};                 // [2026-10-27] 开局清「不出」
+  uiLastPhase = '';              // [2026-11-09] 新局 -> 阶段重新记(下次进 PLAY 要清一次)
         currentPlayer = determineFirstPlayer(gameState) || 'A';
         log('  首出权 → ' + pn(currentPlayer) + ' (§5)');
         logState('开局');
@@ -830,6 +841,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
   uiPlays = {};                     // 清掉各家出牌显示
   uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
+  uiLastPhase = '';                 // [2026-11-09] 新局 -> 阶段重新记
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
   _autoPlayCancelTimer();             // [2026-11-06] 同时作废排队中的托管动作
   selectedCards = [];
@@ -2447,6 +2459,11 @@ if (typeof module !== 'undefined' && module.exports) {
     uiAutoPlay: function () { return uiAutoPlay; },
   // [2026-11-08] 托管接管次数(测试用)
   __autoPlayTakeovers: function () { return uiAutoPlayTakeovers; },
+    // [2026-11-09 用户] 测试钩子: 走一次「进入 PLAY」/ 开关托管 / 手动触发一次托管接管
+    //   -> 回归「托管过牌后「不出」标记被清」用(不靠定时器, 不用随机局面)。
+    __enterPlay: function () { return enterPlayIfNeeded(); },
+    __setAutoPlay: function (on) { uiAutoPlay = !!on; if (!uiAutoPlay) _autoPlayCancelTimer(); return uiAutoPlay; },
+    __autoPlayStep: function () { return _autoPlayTakeover(); },
     toggleAutoPlay: _uiToggleAutoPlay,
     uiTrickId: function () { return uiTrickId; },
     uiPlaysTrick: function () { return uiPlaysTrick; },
