@@ -224,21 +224,21 @@ section('T9. 明打: 阵营公开, 同阵营不压制(用户 2026-11-06 23:21 �
   check('T9.3 明打时, 次方**不压**主A(队友)', a3.type === 'PASS', a3.type);
 }
 console.log('');
-section('T10. 大组牌型: 不直接出整个假八, 该出大蛋子就出大蛋子(用户 23:33 + 23:54)');
-{
-  // 上家出 22(对子), AI 手牌 9999 101010 -> 不该把 9999 整组打出去
+  section('T10. 出完优先: 整手假八能一次出完 -> 出完整假八直接出局(用户 2026-11-10 21:33)');
+  {
+  // 上家出 22(对子), AI 手牌 9999 101010(正好 8 张 = 整个手牌) -> 能一次出完就出完
+  // [2026-11-10 21:33 用户]「能出完就出完, 假八也一样」-> 原断言(2026-11-06 23:33/23:54
+  //   「不直接出整个假八, 该出大蛋子就出大蛋子」被覆盖: 拆开就不算出完了。
   var hand = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',10), C('H',10), C('D',10), C('C',10)];
   var table = [C('S',2), C('H',2)];   // 对子 22(用户原话: 上家出22)
   var st = stateWith('D', hand, table, {});
   var act = aiMod.chooseAction(st, 'D');
   var played = playedOf(st, 'D', act);
-  check('T10.1 不直接出整个假八(8 张两组)', typeOf(played) !== 'FAKE_EIGHT' && typeOf(played) !== 'BIG_FAKE_EIGHT',
+  check('T10.1 出完整假八(8 张两组)', typeOf(played) === 'FAKE_EIGHT',
     typeOf(played) + ' ranks=' + ranksOf(played));
-  check('T10.2 也没有打 8 张', played.length !== 8,
+  check('T10.2 一次出完 8 张', played.length === 8,
     'played=' + played.length + ' ranks=' + ranksOf(played));
-  check('T10.3 出的是大蛋子(4 张同点)', typeOf(played) === 'BIG_TRIPLE',
-    typeOf(played) + ' ranks=' + ranksOf(played));
-}
+  }
 
 section('T12. 引擎: 2V3 明打 -> 次方公开 = true(用户 2026-11-06 23:33 指令)');
 {
@@ -317,18 +317,20 @@ section('T16. 大组别轻用: 4个9+3个10 对22 -> 出3个10(用户 23:54)');
   check('T16.2 出的是蛋子', typeOf(p16) === 'TRIPLE', typeOf(p16) + ' ranks=' + ranksOf(p16));
 }
 
-section('T17. 有假八时也不直接出假八: 4个9+4个10 对22 -> 出9999(用户 23:54)');
-{
-  var hand17 = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',10), C('H',10), C('D',10), C('C',10)];
+  section('T17. 手里还有别的牌时, 假八出不完 -> 仍按大组靠后出大蛋子(用户 2026-11-10 21:33)');
+  {
+  // 手牌 9999 101010 + 一张 2 -> 假八(8 张)出不完, 不享受出完优先 -> 仍出大蛋子
+  // [2026-11-10 21:33 用户] 出完优先只对「能一次出完」成立; 出不完时大组最后手段不变。
+  var hand17 = [C('S',9), C('H',9), C('D',9), C('C',9), C('S',10), C('H',10), C('D',10), C('C',10), C('S',2)];
   var table17 = [C('S',2), C('H',2)];
   var st17 = stateWith('D', hand17, table17, {});
   var act17 = aiMod.chooseAction(st17, 'D');
   var p17 = playedOf(st17, 'D', act17);
-  check('T17.1 不直接出整个假八', typeOf(p17) !== 'FAKE_EIGHT' && typeOf(p17) !== 'BIG_FAKE_EIGHT',
+  check('T17.1 不出整个假八', typeOf(p17) !== 'FAKE_EIGHT' && typeOf(p17) !== 'BIG_FAKE_EIGHT',
     typeOf(p17) + ' ranks=' + ranksOf(p17));
   check('T17.2 出的是大蛋子(4 张同点)', typeOf(p17) === 'BIG_TRIPLE',
     typeOf(p17) + ' ranks=' + ranksOf(p17));
-}
+  }
 section('T18. 4 组成的蛋子+ 有其他选择时靠后(用户 00:19 报障: 丁出 4444)');
 {
   // 桌面单张 K, 丁手里 4444 + 333 + 一张 2 -> 有更省的选择时, 不该出 4444

@@ -45,7 +45,8 @@
 - 四王：拆成两个双王出。
 
 > 王的拆法只看**这一手用了几张王**：2 张王只能一起出或都不出；3 张王可用 1 / 3 张；4 张王可用 2 / 4 张。
-- 单张大A 不优先进龙（优先普通A进龙）。
+
+> **大A 进龙不是硬过滤**（D-049）：单张大A **允许**进龙；「优先普通A进龙」是**排序**口径（`power` +500 → 靠后），不是合法性口径。
 
 ### 2.3 阵营过滤
 
@@ -65,10 +66,10 @@
 
 | 序 | 键 | 含义 | 为什么在这个位置 |
 |---|---|---|---|
-| 1 | `outAll` | 出完优先（假八除外） | 能一次走完就走完（D-026） |
+| 1 | `outAll` | 出完优先 | 能一次走完就走完（D-026）；**假八/大假八同样适用，没有例外**（D-053） |
 | 2 | `splitEgg` | 组合牌型拆了 ≥2 个同点组 | QQKKKKA 不能出 QKA（动了 QQ+KKKKK）；QKKKKA 可以（只动 KKKKK）。**同点数家族拆同点组是硬过滤**，见 3.1 |
 | 3 | `sameType` | 同牌型优先 | 上家出 JJ、手牌 22777 → 选 22 不选 777 |
-| 4 | `power` | 牌力等级（§6.3 链），弱牌先出 | 双王 < 假八 < 真七；**含大A 的牌 +500 → 最后**（D-026） |
+| 4 | `power` | 牌力等级（§6.3 链），弱牌先出 | 双王 < 假八 < 真七；**含大A 的牌 +500 → 最后**（D-049） |
 | 5 | `fourEgg` | 4 组成的蛋子+ 靠后 | 有别的选择就别出 4 组成的蛋子+（D-027） |
 | 6 | `split` | 不拆同点组 | 拆开的 999 不该赢整组 9999 |
 | 7 | `bigGroup` | 大组牌型靠后 | 大组是最后手段，但排在「不拆组」之后 |
@@ -224,7 +225,8 @@ POWER_RANK: SINGLE>PAIR>STRAIGHT>TRIPLE>BIG_TRIPLE>DOUBLE_STRAIGHT>DOUBLE_JOKER>
 | 牌力等级（§6.3 链） | src/ai-policy.js POWER_RANK | tests/test-ai-policy.js P4 + 本文件机检块 | 2026-11-09 |
 | 硬过滤：同点数家族不拆组 | src/ai.js splitsRejected | tests/test-hint-order.js §2 | 2026-11-09 |
 | 组合拆组只罚不禁 | src/ai.js splitPenalty | tests/test-hint-order.js §2.3 | 2026-11-10 |
-| 出完优先（假八除外） | src/ai.js outAll | tests/test-req-20261106b.js T10/T17 | 2026-11-10 |
+| 出完优先（假八/大假八不再例外） | src/ai.js outAll | tests/test-req-20261106b.js T10/T17 | 2026-11-10 |
+| 单张大A 允许进龙（优先普通A进龙） | src/ai.js _powerOf | tests/test-req-20261110.js §4 | 2026-11-10 |
 | 起手兜底出最弱的一组 | src/lead-choice.js _fallbackWeaker | tests/test-req-20261109.js ⑧ | 2026-11-10 |
 | 阵营可见性 / 推定信号 | src/camp.js campOf / inferNext / inferCatcher | tests/test-ai-policy.js P3.x | 2026-11-10 |
 | 出牌流水不被清空 | src/transition.js 出口 merge | tests/test-req-20261109.js ⑫ | 2026-11-10 |
@@ -236,7 +238,7 @@ POWER_RANK: SINGLE>PAIR>STRAIGHT>TRIPLE>BIG_TRIPLE>DOUBLE_STRAIGHT>DOUBLE_JOKER>
 ## 16. 自查清单（改完逐条验）
 
 1. 1V4 暗打开局：抓方之间是「?」，只有主A 是「敌」。
-2. 暗打有线索后：推定出的次方标「敌」，其余抓方标「友」；被推定为抓方的人对抓方是「友」。
+2. 暗打有线索后（**观察者视角**）：推定出的次方标「敌」，其余抓方标「友」；被推定为抓方的人对抓方是「友」。**真人 UI 只显示已确定的关系，推定的结果不显示**（§11.3）。
 3. 手动点敌友钮：能循环到「?」，且 UI 真的显示「?」。
 4. 次方亮明后：全部按真实阵营，手动标记失效，真人/AI 都不能改。
 5. 被取的牌：只有那手最后一张有「取」；再打出后标志消失，再次被取才再出现。
@@ -244,3 +246,6 @@ POWER_RANK: SINGLE>PAIR>STRAIGHT>TRIPLE>BIG_TRIPLE>DOUBLE_STRAIGHT>DOUBLE_JOKER>
 7. 同阵营/不明：不取牌（不明只用 2 张 4 取，且只取 3 张目标）。
 8. 王的拆法：2 张王不拆、3 张王可 1/3、4 张王可 2/4。
 9. 抓方信号C：三个 4 以上取主A的牌 → 那人是抓方。
+10. 单张大A：允许进龙；含大A 的连张排在普通连张之后（`power` +500）。
+11. 出完优先：能一次出完就出完，假八/大假八同样适用，**没有例外**。
+12. 真人 UI 不显示推定出来的敌友（只有观察者视角显示，且只读不可改）。
