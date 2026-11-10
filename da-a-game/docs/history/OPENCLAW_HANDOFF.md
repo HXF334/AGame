@@ -155,7 +155,7 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 - 画面目视验收：把 `docs/ui/UI_ACCEPTANCE_CHECKLIST.md` 逐条在微信开发者工具模拟器过一遍（无头只能证几何与时序）。
 - 2V3 抓方推定信号C（三个 4 及以上的 4 去取主A 的牌 → 抓方）：真机对局未验证。
-- D-022 创建房间加「是否显示剩余牌数（默认关闭）」——已延期，本批不实现。
+- 创建房间加「是否显示剩余牌数（默认关闭）」——已延期，本批不实现。
 - 房间设置值接入：发牌速度 / AI 等待节奏目前是常量。
 
 ### 7.2 注意事项
@@ -176,7 +176,7 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 1. 模拟器目视验收（§7.1 第一条）→ 回填 `docs/ui/UI_ACCEPTANCE_CHECKLIST.md`。
 2. 真机对局验证推定信号C 与 1V4 暗打敌友显示。
-3. D-022 剩余牌数开关 + 房间设置项接入。
+3. 剩余牌数开关 + 房间设置项接入。
 4. 规则与玩法分家：玩法口径只进 `docs/ai/AI_POLICY.md`，对局规则才进 `skills/da-a-game-rules/SKILL.md`。
 
 ## 8. 旧工作区（只读）
