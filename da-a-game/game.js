@@ -1032,6 +1032,8 @@ function uiHintCandidates(mode) {
 //   规则: 在**引擎认可**(真能出)的候选里, 取 张数最少 / 同张数牌力最小 且**包含这张牌** 的那个
 //   例: 手上有 8 9 9 10 10 J J Q Q, 桌面是 567 -> 选一张 9 -> 自动选中 8 9 10(3 张连张)
 function _uiExpandSelection(cardId) {
+  // [2026-11-10 用户] 观察模式: 不能选牌(只读)
+  if (uiObserver && uiObserver !== humanPlayer) return;
   // [2026-11-03 用户] 别人出牌时真人可以**提前选牌**:
   //   预选阶段只该选中点的那张, **不能**按「当前能不能出牌」去自动扩展成牌型
   //   (那时引擎会拒绝真人的出牌 -> 候选为空 -> 刚选中的牌反而被清掉)。
@@ -1236,6 +1238,8 @@ function uiStopTicker() {
 // 之前 btnPlay/btnPass/btnSelectPlayers 三处各自判断 phase 与 currentPlayer，
 // 容易互相冲突；现在 draw() 只负责排版绘制，触摸只按 id 分发。
 function uiButtons() {
+  // [2026-11-10 用户] 「只是观察者, 不能做任何修改」-> 观察模式下没有出牌/不出/提示按钮
+  if (uiObserver && uiObserver !== humanPlayer) return [];
   var out = [];
   var ph = gameState.phase;
   var c = gateChoice;
@@ -1728,7 +1732,8 @@ function draw() {
     W: W, H: H,
     gameState: gameState,
     currentPlayer: currentPlayer,
-    humanPlayer: humanPlayer,
+    humanPlayer: uiObserver || humanPlayer,   // [2026-11-10] 观察者视角: 整屏切到该玩家
+    readOnly: !!(uiObserver && uiObserver !== humanPlayer),
     selectedCards: selectedCards,
     names: names,
     rankDesc: rankDesc,

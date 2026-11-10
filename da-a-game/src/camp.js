@@ -125,12 +125,6 @@ function campOf(state, viewerId, targetId) {
   //   -> 1V4 **不**当公开处理: 只有「对主A」的关系确定(主A 必是敌人);
   //      抓方之间(次方身份还没露) -> **不明**, 不自动标, 只能手动标。
   var publicCamps = (state['次方公开'] === true) || (mode.indexOf('明打') >= 0);
-  if (mode.indexOf('1V4') >= 0) {
-    var _h14 = state['主A'] && state['主A'].establishedBy;
-    if (_h14 && viewerId === _h14) return 'ENEMY';      // 我是主A: 其他都是抓方 -> 敌
-    if (_h14 && targetId === _h14) return 'ENEMY';      // 主A 是身份明的敌人
-    return 'UNKNOWN';                                   // 抓方之间 -> 不明(不自动标)
-  }
   if (publicCamps) {
     var main = state['主方'] || [];
     var taker = state['抓方'] || [];
@@ -139,6 +133,14 @@ function campOf(state, viewerId, targetId) {
     if ((aMain && vMain) || (aTaker && vTaker)) return 'ALLY';
     return 'ENEMY';
   }
+  // [2026-11-10 用户] 「次A露出来了, 敌友标记为什么还没变?」-> 1V4 这个分支必须排在**明打/次方公开**之后:
+  if (mode.indexOf('1V4') >= 0) {
+    var _h14 = state['主A'] && state['主A'].establishedBy;
+    if (_h14 && viewerId === _h14) return 'ENEMY';      // 我是主A: 其他都是抓方 -> 敌
+    if (_h14 && targetId === _h14) return 'ENEMY';      // 主A 是身份明的敌人
+    return 'UNKNOWN';                                   // 抓方之间 -> 不明(不自动标)
+  }
+  //   次方亮明后 1V4 也按真阵营表走(抓方之间=友), 不能还返回不明。
   // 我是次方 -> 主方两口子: 主A持有者是队友, 其余都是敌人
   if (next && next === viewerId) {
     if (holder && targetId === holder) return 'ALLY';
