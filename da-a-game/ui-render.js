@@ -479,7 +479,12 @@ function drawSeats(ctx, st, m) {
     // [2026-11-10 用户] 「切换到AI玩家要以AI身份查看, 只是观察者不能做任何修改」
     //   -> 观察者视角: 显示**该观察者(含推定)**的敌友, 且**不能**点改。
     var _obsId = st.observer || st.humanPlayer;
-    var _observing = !!st.observer && st.observer !== st.humanPlayer;
+    // [2026-11-11 用户] 「切换到AI玩家视角, AI推测出来的玩家还是问号」
+    //   -> 根因: game.js 观察者视角把 humanPlayer **改写成观察者本人**,
+    //      于是「observer !== humanPlayer」恒为 false -> 掉进「真人手动标记」分支 -> 一直画问号;
+    //      而 AI 出牌走 campOf(含推定) -> 显示与实际出牌不一致。
+    //   -> 判据改成「有没有观察者」(切回自己时 game.js 把 observer 置 null)。
+    var _observing = !!st.observer;
     // [2026-11-10 用户] 「就算手动标记过也是实际确定阵营为最优先; 实际阵营确定后所有人不能修改敌友」
     var _certain = st.gameState ? camp.campCertain(st.gameState, _obsId, pid) : false;
     if (_observing) {

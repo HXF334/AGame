@@ -211,7 +211,7 @@
 - 标志绑在「**那一手出牌**被取过」上，**不跟着牌走**。
 - 有人被 4 取走 → 他座位前那手牌的**最后一张**右下角标「取」。
 - 同一手牌以后再被打出 → 新的一手**没有**标志；只有重新被取才再出现。
-- 实现：引擎状态反查「谁出的这手被取了」（state.被取走者 + uiTakenPlay），**禁止**在牌对象上打标记（共享引用会误伤）。
+- 实现：引擎出牌流水(plays)里 `kind='CAPTURE'` 的条目（其 `beat` = 被取走那手牌的主人）→ `uiTakenPlay[主人]=true`；渲染层只在**最后一张**右下角标「取」。**禁止**在牌对象上打标记（共享引用会误伤）。
 
 ## 15. 口径表（机检：本块与代码不一致 → 闸门失败）
 
@@ -235,6 +235,8 @@ POWER_RANK: SINGLE>PAIR>STRAIGHT>TRIPLE>BIG_TRIPLE>DOUBLE_STRAIGHT>DOUBLE_JOKER>
 | 取牌的阵营过滤（同阵营不取 / 不明不三个以上4取） | src/ai.js _capCampOk | tests/test-req-20261110.js §1 | 2026-11-10 |
 | 王的拆组口径（2→0/2，3→0/1/3，4→0/2/4） | src/ai.js _jkAllow | tests/test-req-20261110.js §2 | 2026-11-10 |
 | 抓方推定信号C（三个4以上取主A） | src/camp.js inferCatcher | tests/test-req-20261110.js §3 | 2026-11-10 |
+| 观察者视角敌友（含推定，只读） | ui-render.js 敌友判定 + src/camp.js campOf | tests/test-ui-observer-camp.js §1 | 2026-11-11 |
+| 取牌「取」标志的判定源（plays 的 CAPTURE 条目） | game.js _uiScanCaptured + ui-render.js 徽标 | tests/test-ui-observer-camp.js §3 | 2026-11-11 |
 
 ## 16. 自查清单（改完逐条验）
 

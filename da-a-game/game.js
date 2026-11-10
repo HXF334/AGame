@@ -43,8 +43,8 @@ var uiPassed = {};          // pid -> true (该玩家点了「不出」)
 //      在**每次托管动作之后**调用 -> 刚设好的「不出」当场被清, 别人过牌的也一起没了。
 //      用它记住当前阶段: 只有**真的从别的阶段进入 PLAY** 时才清一次。
 var uiLastPhase = '';
-// [2026-11-09 用户] 4取牌动画: 被取走的牌(原牌)飞向取牌者手牌 + 桌面半透明
-var uiSeenCaptured = {};     // cardId -> true (已被取走过, 防重复触发)
+// [2026-11-11] 取牌「取」标志改由**引擎出牌流水**判定(见 _uiScanCaptured) -> 不再需要
+//   「按牌 id 记已取过」那张表(它会让同一张牌被取第二次时漏标)。
 var uiCaptureFx = null;      // { cards:[cardId], toPid, at }
 var uiCaptureTimer = null;   // 动画重绘定时器
 var btnAutoPlay = null;
@@ -852,6 +852,8 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
   uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
   uiPlays = {};                     // 清掉各家出牌显示
+  uiTakenPlay = {};                 // [2026-11-11] 清掉上一局的「取」标志(否则新局同座位误标)
+  uiCaptureScanned = 0;             // [2026-11-11] 新局 -> 取牌流水重新数
   uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
   uiLastPhase = '';                 // [2026-11-09] 新局 -> 阶段重新记
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
@@ -1475,32 +1477,25 @@ function _uiSyncTrick() {
   uiPrevTableIds = cur;
 }
 
-// [2026-11-09 用户] 4取牌: 引擎把被取的牌**复制**进取牌者手牌(带「取自」), 原牌留在受害者座位。
-  _uiCaptureScan();
-//   -> UI: 原牌画成半透明(50%) + 飞向取牌者手牌; 手牌区不再加绿框。
-function _uiCaptureScan() {
-  // [2026-11-09 用户] 「刚打出的999也没人取牌, 怎么有取的标志呢?」
-  //   -> 标志只认「**那一手出牌**被取走过」: 从引擎状态反查(被取走的牌以副本进取牌者手牌, 带「取自」),
-  //      再在 UI 的出牌缓存里找出「谁出的这手牌」-> 记 uiTakenPlay[pid]。
-  //      这样新打的牌/没被取的牌都不会被标上。
-  var _players = (gameState && gameState.players) || [];
-  _players.forEach(function (p) {
-    (p.hand || []).forEach(function (c) {
-      if (!c || !c['取自']) return;
-      if (uiSeenCaptured[c.id]) return;
-      uiSeenCaptured[c.id] = true;
-      var _victim = null;
-      Object.keys(uiPlays).forEach(function (pid) {
-        var _arr = uiPlays[pid] || [];
-        for (var _i = 0; _i < _arr.length; _i++) {
-          if (_arr[_i] && _arr[_i].id === c.id) { _victim = pid; break; }
-        }
-      });
-      // [2026-11-10 用户] 兜底: 出牌缓存里找不到受害者时, 用引擎记的「被取走者」
-      if (!_victim) { var _v2 = gameState && gameState['被取走者']; if (_v2) _victim = _v2; }
-      if (_victim) uiTakenPlay[_victim] = true;
-    });
-  });
+// [2026-11-11 用户] 取牌「取」标志: 引擎每次取牌成功都会在**出牌流水**(plays)里追加一条
+//   kind==='CAPTURE' 的记录(src/play.js), 其 beat = 被取走那手牌的主人(取牌前的 state.lastPlayer)。
+//   -> 每条**新出现**的 CAPTURE -> uiTakenPlay[beat] = true -> 渲染层在他座位前那手牌的
+//      **最后一张**右下角标「取」(AI_POLICY 14)。
+//   -> 受害者自己再出一手时 _uiRecordPlay 会清掉这个标志(只证明「当时那手被取走了」)。
+//   -> 受害者自己再出一手时 _uiRecordPlay 会清掉这个标志(只证明「当时那手被取走了」)。
+var uiCaptureScanned = 0;   // 已处理过的 CAPTURE 流水条数
+function _uiScanCaptured() {
+  var plays = (gameState && gameState.plays) || [];
+  var caps = [];
+  for (var i = 0; i < plays.length; i++) {
+    if (plays[i] && plays[i].kind === 'CAPTURE') caps.push(plays[i]);
+  }
+  if (caps.length < uiCaptureScanned) uiCaptureScanned = caps.length;   // 新一局 -> 流水重来
+  for (var k = uiCaptureScanned; k < caps.length; k++) {
+    var victim = caps[k].beat;
+    if (victim) uiTakenPlay[victim] = true;
+  }
+  uiCaptureScanned = caps.length;
 }
 
 function _uiCaptureAnimStart() {
@@ -1725,6 +1720,9 @@ function _uiMemoOpenNow() {
 function draw() {
   // [2026-10-25] 同步「不出」显示状态(谁出牌了/桌牌被收走了)
   _uiSyncPassState();
+  // [2026-11-11] 取牌「取」标志: 从引擎出牌流水里挑**新出现**的 CAPTURE 条目 -> 标受害者那手牌
+  //   (AI_POLICY 14)。以前这个扫描从没被调用过 -> 标志永远不出现。
+  _uiScanCaptured();
   // [2026-11-03/04 用户] 「牌局结束的时候后面的闹钟要清掉」
   //   -> 结束后不再有任何倒计时(回合 20 秒 / AI 等待 / 闸门 5 秒), 也不该继续倒数。
   if (gameState.phase === PHASES.GAME_END) _uiClearCountdowns();
@@ -2473,7 +2471,7 @@ if (typeof module !== 'undefined' && module.exports) {
     },
     // [2026-11-09 用户] 测试钩子: UI 层的「不出/出牌/轮次」标记(无头复现随机丢失用)
     __uiState: function () {
-      return { uiPassed: uiPassed, uiPlays: uiPlays, uiPlaysTrick: uiPlaysTrick, uiTrickId: uiTrickId, uiMarks: uiMarks };
+      return { uiPassed: uiPassed, uiPlays: uiPlays, uiPlaysTrick: uiPlaysTrick, uiTrickId: uiTrickId, uiMarks: uiMarks, uiTakenPlay: uiTakenPlay };
     },
     __renderTexts: function () {
       var texts = [];
