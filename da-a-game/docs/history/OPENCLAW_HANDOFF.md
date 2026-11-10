@@ -33,7 +33,7 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  │  └─ ai.js / card.js / combos.js / phases.js / push-wind.js / util.js
 │  ├─ game.js                  ← 界面与驱动（唯一有真实状态机的层，1866 行）
 │  ├─ ui-render.js             ← 纯几何渲染层（不含规则判断，918 行）
-│  ├─ tests/                   ← 91 个 test-*.js 套件 + mock-wx.js
+│  ├─ tests/                   ← 92 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
 │  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js（**已排除出包**）
@@ -71,7 +71,7 @@ node tests/test-xxx.js         # 单套件
 node tests/_runall.js 10 20    # 只跑第 10~20 个
 ```
 
-当前状态：全量 91 套件 / 失败 0 次；`preflight` 14/14（`--fast` 13/13）；`audit-rules-vs-impl` 4/4。
+当前状态：全量 92 套件 / 失败 0 次；`preflight` 14/14（`--fast` 12/12）；`audit-rules-vs-impl` 4/4。
 
 
 **测试纪律**：
@@ -91,7 +91,7 @@ node scripts/commit-gate.js MSG.txt  # 体检通过才放行 git add + commit
 
 preflight 检查项：shebang（打进包的 .js 不能有）、UTF-8 BOM、行尾（必须 LF）、非标准字符（U+2028/9、孤立代理对）、`node --check` 全量语法、打包配置 `packOptions.ignore`、**陌生 .js 会不会进包**、`game.json` 可解析、**仓库 skills 是否都在 agent 白名单里**、全量测试。
 
-**当前状态：14/14 通过**（`--fast` 13/13 —— 跳过全量测试那一项）。
+**当前状态：14/14 通过**（`--fast` 12/12 —— 跳过全量测试那一项）。
 
 两个关键检查项说明：
 - **陌生 .js 会不会进包**（第 6 项内）：`packOptions.ignore` 是**黑名单**，新增目录忘了加就会漏网进包。改成**白名单反查**：除 `src/` 与 `game.js`/`ui-render.js` 外，任何 `.js` 都不该在包里。
@@ -162,7 +162,7 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 - 已验证、别再怀疑的规则点（与 SKILL 一致，已被回归锁住）：§6.4 单大A（4 张同点=false / 5-6 张=true）、单王、双王列表、双龙只被大蛋子及以上压；§6 双大A 混入第三张 A 降级为普通牌型；三张大A=普通蛋子；混合张数（8,9,9,10,10,J）=INVALID；§4.4 反A 花色不得与主A相同；§7.1 取牌 4 的张数=目标张数−1；§7.3 被取走的大A 失去大A 身份；§4.5 底牌先转移再判阵营；§11.2 2V3 两种 N 推导；§2.2 底牌独立槽位。
 - 引擎↔规则的历史偏差 B1~B5 已全部修完（回归 `tests/test-rules-alignment.js`，枚举层可达性见 `tests/test-handtype-enum-reach.js`）。
-- 回归资产：`test-rules-alignment.js`（规则↔实现）、`test-handtype-enum-reach.js`（枚举层可达性，历史上出过 4 次「认得出、枚举不出」）、`test-straight-low-ace.js`（A 作低端连续段）、`test-pack-manifest.js`（包文件集合 18 个）、`test-ui-play-position.js`（牌位/按钮让位/闹钟）、`test-deal-async.js`（异步发牌路径）。
+- 回归资产：`test-rules-alignment.js`（规则↔实现）、`test-handtype-enum-reach.js`（枚举层可达性，历史上出过 4 次「认得出、枚举不出」）、`test-straight-low-ace.js`（A 作低端连续段）、`test-pack-manifest.js`（包文件集合 18 个）、`test-ui-play-position.js`（牌位/按钮让位/闹钟）、`test-deal-async.js`（异步发牌路径）、`test-ui-color-locks.js`（画面颜色/位置的无头锁）。
 - 工具坑：
   - PowerShell 控制台是 GBK，中文文件直接读会乱码 → 落盘成 `.scratch/*.txt` 再读。
   - `edit` 工具多编辑时任一条 oldText 不匹配会**整体原子回滚** → 改用「JSON 载荷 + node runner（每条唯一性断言）」，脚本放**仓库外** `.scratch/`。
