@@ -66,12 +66,16 @@ function inferNext(state, excludeId) {
   if (mode.indexOf('暗打') < 0) return null;               // 只在暗打
   var holder = state['主A'] && state['主A'].establishedBy;
   var plays = state.plays || [];
-  // [2026-11-09 21:44 用户] 信号3: 累计打出过 2 次及以上「蛋子」的未知玩家 -> 推测他是次方
+  // [2026-11-10 用户修正] 信号3: 累计打出过 2 次及以上「蛋子」**去压制其他身份未明玩家**的人 -> 推测他是次方
+  //   (起手出的蛋子不算; 压主A 的不算 —— 那是「抓方推定」信号)
   var _eggCnt = {};
   plays.forEach(function (p3) {
     if (!p3 || !p3.type || !EGG_COUNT_TYPES[p3.type]) return;
     if (excludeId && p3.playerId === excludeId) return;        // 我自己打的 -> 我知道自己的阵营
     if (holder && p3.playerId === holder) return;             // 主A持有者身份是明的
+    if (!p3.beat) return;                                      // 必须**压制**了别人(起手/自己主动出不算)
+    if (p3.playerId === p3.beat) return;
+    if (holder && p3.beat === holder) return;                  // 压的是主A -> 属于「抓方推定」信号, 不算次方
     _eggCnt[p3.playerId] = (_eggCnt[p3.playerId] || 0) + 1;
   });
   for (var _pid in _eggCnt) {
