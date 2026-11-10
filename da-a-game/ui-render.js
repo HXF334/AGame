@@ -488,9 +488,11 @@ function drawSeats(ctx, st, m) {
       // [2026-11-09 21:44 用户] 「AI 根据逻辑推测出阵营后为什么没有主动标敌友标记?」
       //   -> 自动标按 camp.campOf 的结果: **确定的关系**和**推定出来的关系**都显示(推定次A=敌、其余抓方=友),
       //      推不出来的才是「?」。
-      if (!_mark) _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
-      // [2026-11-09 用户] 「已经明确的要标好, 不明确的不能给真人自动标」
-      //   -> 只在**关系已确定**(campCertain: 次方亮明/明打/1V4里对主A)时按真实阵营自动标;
+      // [2026-11-10 11:27 用户] 阵营推定只针对AI玩家: 不能主动根据**推测**的阵营修改真人玩家的敌友UI,
+      //   只有**已经确定**的关系(campCertain)才给真人标; 推定结果只给 AI 决策用(camp.campOf)。
+      if (!_mark && camp.campCertain(st.gameState, st.humanPlayer, pid)) {
+        _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+      }
       //      不确定(暗打抓方之间/1V4开局) -> 不自动填, 显示「?」, 只能手动标。
     }
     drawAllyMark(ctx, st, m, colX, mky, mr, _mark);

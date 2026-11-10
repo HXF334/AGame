@@ -32,8 +32,16 @@ var BIG_EGG_PLUS_TYPES = require('./ai-policy.js').BIG_EGG_PLUS;
 var EGG_COUNT_TYPES = {
   TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1
 };
-// [2026-11-10 用户] 推定「抓方」: 身份未明的人用**大蛋子+**压了**主A**
+// [2026-11-10 11:19 用户] 推定「抓方」: 某个人**累计打出过 2 次及以上「蛋子」去压制主A玩家**
 //   -> 他是抓方(主方不会压自己人) -> 按阵营表给他敌友标记(对抓方=队友, 对主方=敌)。
+// [2026-11-10 11:19 用户] 推定「抓方」: 某个人**累计打出过 2 次及以上「蛋子」**去**压制主A玩家**
+//   -> 主方不会压自己人 -> 他是**抓方** -> 按阵营表给他敌友标记(对抓方=队友, 对主方=敌)。
+//   口径与「推定次方」信号3 同形: 起手出的蛋子不算, 压身份未明玩家的蛋子也不算(那是次方信号)。
+// [2026-11-10 11:19 用户] 推定「抓方」(两路信号, 命中任一即可):
+//   A. 用**大蛋子+**压制了主A 一次;
+//   B. **累计打出过 2 次及以上「蛋子」**去压制主A玩家。
+//   -> 主方不会压自己人 -> 他是**抓方**。
+//   注意: 这个推定只影响 **AI 自己的判断**(campOf); 真人玩家的敌友 UI 不因推测而变。
 function inferCatcher(state, excludeId) {
   if (!state) return null;
   if (state['次方公开'] === true) return null;            // 次方已亮明 -> 用实际阵营
@@ -42,17 +50,21 @@ function inferCatcher(state, excludeId) {
   var holder = state['主A'] && state['主A'].establishedBy;
   if (!holder) return null;
   var plays = state.plays || [];
-  for (var i = 0; i < plays.length; i++) {
-    var p = plays[i];
-    if (!p || !p.type) continue;
-    if (BIG_EGG_PLUS_TYPES[p.type] !== 1) continue;       // 必须是大蛋子+
-    if (p.kind === 'CAPTURE') continue;                  // 取牌不算压制
-    if (!p.beat || p.beat !== holder) continue;           // 必须是**压主A**
-    if (p.playerId === holder) continue;
-    if (excludeId && p.playerId === excludeId) continue;  // 我自己打的
-    return p.playerId;
+  var _cnt = {};
+  var _big = null;
+  plays.forEach(function (p) {
+    if (!p || !p.type) return;
+    if (p.kind === 'CAPTURE') return;                     // 取牌不算压制
+    if (!p.beat || p.beat !== holder) return;              // 必须是压制主A
+    if (p.playerId === holder) return;
+    if (excludeId && p.playerId === excludeId) return;     // 我自己打的
+    if (BIG_EGG_PLUS_TYPES[p.type] === 1 && !_big) _big = p.playerId;   // 信号A
+    if (EGG_COUNT_TYPES[p.type] === 1) _cnt[p.playerId] = (_cnt[p.playerId] || 0) + 1;  // 信号B
+  });
+  for (var pid in _cnt) {
+    if (_cnt[pid] >= 2) return pid;                        // 信号B: 累计 2 次及以上
   }
-  return null;
+  return _big;                                            // 信号A: 单次大蛋子+
 }
 
 function inferNext(state, excludeId) {
@@ -139,9 +151,9 @@ function campOf(state, viewerId, targetId) {
     if (inferredM) {
       if (targetId === inferredM) return 'ALLY';
       return 'ENEMY';
+    }
     var inferredC2 = inferCatcher(state, viewerId);
     if (inferredC2 && targetId === inferredC2) return 'ENEMY';   // 推定为抓方 -> 敌
-    }
     return 'UNKNOWN';
   }
   // 我是抓方(暗打, 次方未亮明)
@@ -150,12 +162,11 @@ function campOf(state, viewerId, targetId) {
   if (inferred) {
     if (targetId === inferred) return 'ENEMY';              // 推定的次方: 敌人
     return 'ALLY';                                          // 裁定 A: 其余未知玩家 = 队友
-  // [2026-11-10 用户] 「用大蛋子+压了主A -> 推测该玩家为抓方, 根据阵营设置他的敌友标记」
+  }
+  // [2026-11-10 11:27 用户] 推定「抓方」: 用大蛋子+压主A 一次, 或累计 2 次以上蛋子压主A
   var inferredC = inferCatcher(state, viewerId);
   if (inferredC && targetId === inferredC) return 'ALLY';   // 推定为抓方 -> 对抓方观察者是队友
-  if (inferredC) return 'UNKNOWN';                          // 其他人仍不明
-  }
-  return 'UNKNOWN';
+  return 'UNKNOWN';                                         // 其他人仍不明
 }
 
 // 真人手动标的敌友(state.uiMarks, 由 game.js 注入): 'friend'/'enemy'/null
