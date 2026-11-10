@@ -476,27 +476,26 @@ function drawSeats(ctx, st, m) {
     // [2026-11-08 22:20 用户] 「只有次A身份已经明了的时候不能手动改, 其他时候是可以改的」
     //   -> 身份未明: 手动标记优先(点了就生效); 身份明了: 以真阵营表为准, 手动标记不再生效。
     var _mark = null;
-    // [2026-11-08 22:33 用户] 能不能手动改按观察者自己的知情程度(camp.canManualMark)
-    var _canM = st.gameState ? camp.canManualMark(st.gameState, st.humanPlayer, pid) : false;
-    // [2026-11-10 用户] 「切到问号后 UI 还显示敌/友」-> 手动标过(哪怕标的是问号)就用手动的,
-    //   不再被自动判定覆盖。
-    if (_canM && Object.prototype.hasOwnProperty.call(myMarks, pid)) {
-      _mark = (myMarks[pid] === 'unknown') ? null : myMarks[pid];
-    }
-    if (st.gameState) {
+    // [2026-11-10 用户] 「切换到AI玩家要以AI身份查看, 只是观察者不能做任何修改」
+    //   -> 观察者视角: 显示**该观察者(含推定)**的敌友, 且**不能**点改。
+    var _obsId = st.observer || st.humanPlayer;
+    var _observing = !!st.observer && st.observer !== st.humanPlayer;
+    // [2026-11-10 用户] 「就算手动标记过也是实际确定阵营为最优先; 实际阵营确定后所有人不能修改敌友」
+    var _certain = st.gameState ? camp.campCertain(st.gameState, _obsId, pid) : false;
+    if (_observing) {
+      var _co = st.gameState ? camp.campOf(st.gameState, _obsId, pid) : 'UNKNOWN';
+      _mark = (_co === 'ENEMY') ? 'enemy' : (_co === 'ALLY' ? 'friend' : null);
+    } else if (_certain) {
       var _c = camp.campOf(st.gameState, st.humanPlayer, pid);
-      // [2026-11-09 21:44 用户] 「AI 根据逻辑推测出阵营后为什么没有主动标敌友标记?」
-      //   -> 自动标按 camp.campOf 的结果: **确定的关系**和**推定出来的关系**都显示(推定次A=敌、其余抓方=友),
-      //      推不出来的才是「?」。
-      // [2026-11-10 11:27 用户] 阵营推定只针对AI玩家: 不能主动根据**推测**的阵营修改真人玩家的敌友UI,
-      //   只有**已经确定**的关系(campCertain)才给真人标; 推定结果只给 AI 决策用(camp.campOf)。
-      if (!_mark && camp.campCertain(st.gameState, st.humanPlayer, pid)) {
-        _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+      _mark = (_c === 'ENEMY') ? 'enemy' : (_c === 'ALLY' ? 'friend' : null);
+    } else {
+      var _canM = st.gameState ? camp.canManualMark(st.gameState, st.humanPlayer, pid) : false;
+      if (_canM && Object.prototype.hasOwnProperty.call(myMarks, pid)) {
+        _mark = (myMarks[pid] === 'unknown') ? null : myMarks[pid];
       }
-      //      不确定(暗打抓方之间/1V4开局) -> 不自动填, 显示「?」, 只能手动标。
     }
     drawAllyMark(ctx, st, m, colX, mky, mr, _mark);
-    markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
+    if (!_observing) markHits.push({ x: colX - mr, y: mky - mr, w: mr * 2, h: mr * 2, id: pid });
     // 「不出」在头像内侧
     // 「不出」/「已出完」: 判据是**本轮**是否出过错牌
     //   (上一轮出的牌仍然显示在桌上, 但不能因此抑制他的「不出」)

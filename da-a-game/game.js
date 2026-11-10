@@ -206,6 +206,9 @@ let lastEmptiedPlayer = null;
 var SEAT_IDS = ['A', 'B', 'C', 'D', 'E'];
 function _randomSeat() { return SEAT_IDS[Math.floor(Math.random() * SEAT_IDS.length)]; }
 let humanPlayer = _randomSeat();
+// [2026-11-10 用户] 顶部 5 按钮 = **以该玩家身份观察**(只读): 看他的敌友(含推定), 不能改任何东西。
+//   以后这个切换功能会去掉, 只是现在方便测试。
+var uiObserver = null;
 let selectedCards = [];
 let handCardHitboxes = [];
 
@@ -1415,6 +1418,10 @@ function uiMarkCycle(pid) {
   // [2026-11-08 22:33 用户] 1V4: 只有主A不能改(其余四家可以); 2V3暗打: 只有次A不能改(其余人可以);
   //   次方亮明后所有人不能改(自动更新)。
   var campMod = require('./src/camp.js');
+  if (uiObserver && uiObserver !== humanPlayer) {
+    log('观察模式下不能改敌友标记');
+    return null;
+  }
   if (!campMod.canManualMark(gameState, humanPlayer, pid)) {
     log('你已知道这些玩家的阵营, 敌友标记按真实阵营自动判定, 不能手动改');
     return null;
@@ -1737,6 +1744,7 @@ function draw() {
     uiPlaysTrick: uiPlaysTrick,
     uiTrickId: uiTrickId,
     marks: uiMarks,
+    observer: uiObserver,
     uiTakenPlay: uiTakenPlay,
     // [2026-11-04 用户] 「发牌阶段记牌器收起来, 等出牌阶段再判断要不要展开」
     //   -> 发牌阶段强制收起(牌还没发齐, 记出来的数没意义);
@@ -2325,8 +2333,9 @@ if (typeof wx !== 'undefined') {
       if (x >= bp.x && x <= bp.x + bp.w && y >= bp.y && y <= bp.y + bp.h) {
         // [2026-10-25 P0 修复] 原来用**槽位索引**当玩家 ID, 但座位现在是**动态环排**的
         //   -> 点谁都不是谁(切不到戊)。改成用 hitbox 里带的**真实 pid**。
-        humanPlayer = bp.id;
-        log('切换玩家: ' + names[['A','B','C','D','E'].indexOf(bp.id)]);
+    // [2026-11-10 用户] 切换 = 以该玩家身份**观察**(只读), 不是换真人座位
+    uiObserver = (bp.id === humanPlayer) ? null : bp.id;
+    log('观察视角: ' + names[['A','B','C','D','E'].indexOf(bp.id)] + (uiObserver ? ' (只读)' : ''));
         draw();
         return;
       }
