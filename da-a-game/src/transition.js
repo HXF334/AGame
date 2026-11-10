@@ -124,7 +124,17 @@ function transition(state, action) {
   // 在出口统一 merge: handler 覆盖生效, 未覆盖从旧 state 继承
   var _r = dispatch(state, action.type, payload);
   if (_r && _r.ok) {
-    _r.state = Object.assign({}, state, _r.state);
+    var _newState = Object.assign({}, state, _r.state);
+    // [2026-11-10 用户] 出牌流水(plays)是**推定次方/抓方**的唯一依据(公开信息):
+    //   过牌/轮末等动作返回的 state 里 plays 是空数组, merge 会把旧流水**整个覆盖掉** ->
+    //   一过牌推定依据就没了(「用大蛋子+压主A」「累计两次蛋子压主A」等信号永远不触发)。
+    //   这里统一保住: 新 state 的 plays 为空而旧的有内容 -> 沿用旧的。
+    if (_newState.phase !== PHASES.GAME_START &&
+        (!Array.isArray(_newState.plays) || _newState.plays.length === 0) &&
+        Array.isArray(state.plays) && state.plays.length > 0) {
+      _newState.plays = state.plays;
+    }
+    _r.state = _newState;
   } else if (_r && _r.ok === false) {
     _r.state = origState;               // [A3 fix] 错误路径: 返回原 state 引用
   }

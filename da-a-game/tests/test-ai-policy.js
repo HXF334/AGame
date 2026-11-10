@@ -74,6 +74,15 @@ section('P3. 敌友标记(src/camp.js): 三态判定(用户 23:27)');
   check('P3.14 1V4: 主A持有者看其他四人是敌', camp.campOf(st4, 'A', 'B') === 'ENEMY', camp.campOf(st4, 'A', 'B'));
   // [2026-11-10 用户] 1V4 暗打开局不能给抓方自动标(次方身份还没露) -> 抓方之间 = 不明
   check('P3.15 1V4: 抓方之间=不明(次方未露, 不自动标)', camp.campOf(st4, 'B', 'C') === 'UNKNOWN', camp.campOf(st4, 'B', 'C'));
+
+  // [2026-11-10 用户] 「我用大蛋子压制主A了, 其他人的视角敌友标记怎么都没变?」
+  //   -> 回归: 1V4 暗打 + 有人用大蛋子+压主A -> 推定他是抓方 -> 其他抓方视角=友(队友)。
+  var st5 = mk({ mode: '1V4_暗打', '主方': ['A'], '抓方': ['B','C','D','E'],
+    plays: [{ playerId: 'C', type: 'BIG_TRIPLE', count: 4, beat: 'A' }] });
+  check('P3.16 1V4: 用大蛋子+压主A -> 推定为抓方 -> 其他抓方视角=友',
+    camp.campOf(st5, 'B', 'C') === 'ALLY', camp.campOf(st5, 'B', 'C'));
+  check('P3.17 1V4: 抓方对主A=敌(确定)',
+    camp.campOf(st5, 'B', 'A') === 'ENEMY', camp.campOf(st5, 'B', 'A'));
   check('P3.17 次方亮明后: 关系=确定', camp.campCertain(st3, 'D', 'E') === true, String(camp.campCertain(st3, 'D', 'E')));
   check('P3.18 主A持有者看主A持有者=确定(身份明)', camp.campCertain(st, 'D', 'A') === true, String(camp.campCertain(st, 'D', 'A')));
   check('P3.9 公开: 同阵营=友', camp.campOf(st3, 'D', 'E') === 'ALLY', camp.campOf(st3, 'D', 'E'));

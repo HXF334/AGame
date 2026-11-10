@@ -134,12 +134,6 @@ function campOf(state, viewerId, targetId) {
     return 'ENEMY';
   }
   // [2026-11-10 用户] 「次A露出来了, 敌友标记为什么还没变?」-> 1V4 这个分支必须排在**明打/次方公开**之后:
-  if (mode.indexOf('1V4') >= 0) {
-    var _h14 = state['主A'] && state['主A'].establishedBy;
-    if (_h14 && viewerId === _h14) return 'ENEMY';      // 我是主A: 其他都是抓方 -> 敌
-    if (_h14 && targetId === _h14) return 'ENEMY';      // 主A 是身份明的敌人
-    return 'UNKNOWN';                                   // 抓方之间 -> 不明(不自动标)
-  }
   //   次方亮明后 1V4 也按真阵营表走(抓方之间=友), 不能还返回不明。
   // 我是次方 -> 主方两口子: 主A持有者是队友, 其余都是敌人
   if (next && next === viewerId) {
@@ -149,6 +143,8 @@ function campOf(state, viewerId, targetId) {
   // 我是主A持有者 -> [2026-11-08 用户] 「暗打时主A也不知道谁是次A」
   //   -> 开局时其他人对他一律**不明**; 推定出次方之后, 那个次方是**友**(主方两口子), 其余是**敌**。
   if (holder && holder === viewerId) {
+    // [2026-11-10 用户] 1V4: 主A 知道其他四家都是抓方 -> 确定是敌
+    if (mode.indexOf('1V4') >= 0) return 'ENEMY';
     var inferredM = inferNext(state, viewerId);
     if (inferredM) {
       if (targetId === inferredM) return 'ALLY';
@@ -168,6 +164,10 @@ function campOf(state, viewerId, targetId) {
   // [2026-11-10 11:27 用户] 推定「抓方」: 用大蛋子+压主A 一次, 或累计 2 次以上蛋子压主A
   var inferredC = inferCatcher(state, viewerId);
   if (inferredC && targetId === inferredC) return 'ALLY';   // 推定为抓方 -> 对抓方观察者是队友
+  // [2026-11-10 用户] 「我用大蛋子压制主A了, 其他人的视角敌友标记怎么都没变?」
+  //   -> 1V4 暗打的「抓方之间=不明」必须排在**推定之后**: 推定出次方/抓方时,
+  //      其他人的视角要按**推定结果**标(推定抓方=队友), 不能还返回不明。
+  if (mode.indexOf('1V4') >= 0) return 'UNKNOWN';           // 1V4 暗打且次方身份还没露 -> 抓方之间不明
   return 'UNKNOWN';                                         // 其他人仍不明
 }
 

@@ -257,5 +257,21 @@ section('⑫ 抓方不能手改主A的敌友标记');
 }
 
 console.log('');
+section('⑫ 出牌流水(plays)不能被过牌清空(推定次方/抓方的依据)');
+{
+  var engine = require('../src/index.js');
+  var st = { phase: 'PLAY', mode: '2V3_暗打', players: [
+      { id: 'A', hand: [{ id: 'c1', rank: 5, suit: 'S' }] },
+      { id: 'B', hand: [{ id: 'c2', rank: 6, suit: 'H' }] }
+    ],
+    table: [{ id: 't1', rank: 9, suit: 'D' }], lastPlayer: 'A', passedPlayers: [], passCount: 0,
+    plays: [{ playerId: 'A', type: 'BIG_TRIPLE', count: 4, beat: 'B' }]
+  };
+  var r = engine.transition(st, { type: 'PASS', payload: { playerId: 'B' } });
+  check('⑫ 过牌后出牌流水仍在(推定依据不能丢)',
+    !!(r && r.ok && r.state && r.state.plays && r.state.plays.length === 1),
+    JSON.stringify(r && r.state && r.state.plays));
+}
+
 console.log('test-req-20261109: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
