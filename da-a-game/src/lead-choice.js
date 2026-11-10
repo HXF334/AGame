@@ -115,15 +115,14 @@ function leadCandidates(hand) {
     const h = identifyHand(cs);
     if (!h || (h.type !== HAND_TYPES.STRAIGHT && h.type !== HAND_TYPES.DOUBLE_STRAIGHT)) return;
     if (splitCount(cs) > 1) return;                       // 拆散超过 1 组 -> 淘汰
-    // [2026-11-06 23:54 用户] 「单张大A不加在龙里出, 单张普通A可以加在龙里出」
-    //   -> 链里**任何**大A 都不能带(不管手里有几张); 双大A/双王也不能拆开带
+    // 双大A/双王不能拆开带;
+    // [2026-11-10 用户 AI_POLICY 2.2] 「单张大A 不优先进龙(优先普通A进龙)」-> 允许大A进龙, 但同锚点下优先不含大A的链
     var _bigAIds = pool.filter(function (c) { return !!c.is主方大A; }).map(function (c) { return c.id; });
     var _jokerIds = pool.filter(function (c) { return c.isBigJoker || c.isSmallJoker; }).map(function (c) { return c.id; });
     var _inBig = cs.filter(function (c) { return _bigAIds.indexOf(c.id) >= 0; }).length;
-    if (_inBig > 0) return;
     var _inJk = cs.filter(function (c) { return _jokerIds.indexOf(c.id) >= 0; }).length;
     if (_jokerIds.length >= 2 && _inJk > 0 && _inJk < _jokerIds.length) return;
-    chains.push({ cards: cs, type: h.type, splits: splitCount(cs),
+    chains.push({ cards: cs, type: h.type, splits: splitCount(cs), hasBigA: _inBig > 0,
       minRank: Math.min.apply(null, cs.map(function (c) { return c.rank; })) });
   });
   // 逐张牌(由小到大)当锚点
@@ -136,18 +135,24 @@ function leadCandidates(hand) {
     //   单张的 A/2/3 也要进龙。规则: **含锚点** + **取最长**(最长链自然把相邻的都带上)。
     //   [2026-11-04 用户] 链里可以带高端 A(例 9 10 10 JQKA -> 出 6 张) —— 最长链满足这条。
     let best = null;
-    chains.forEach(function (ch) {
-      if (ch.cards.indexOf(anchor) < 0) return;                 // 必须含锚点
-      if (!best) { best = ch; return; }
-      // [2026-11-07 23:22 用户] 「22 在 34 无法组成龙的时候才会拆 22」/「3456 能组成龙, 就不用非得拆 22」
-      //   -> 优先**不拆同点组**的龙; 都不拆时才比长短(拆 1 组的龙只当备选)。
-      if (ch.splits !== best.splits) { if (ch.splits < best.splits) best = ch; return; }
-      if (ch.cards.length > best.cards.length
-          || (ch.cards.length === best.cards.length
-              && ch.type === HAND_TYPES.DOUBLE_STRAIGHT && best.type !== HAND_TYPES.DOUBLE_STRAIGHT)) {
-        best = ch;
-      }
-    });
+    const _pickChain = function (pool) {
+      let b = null;
+      pool.forEach(function (ch) {
+        if (ch.cards.indexOf(anchor) < 0) return;               // 必须含锚点
+        if (!b) { b = ch; return; }
+        if (ch.splits !== b.splits) { if (ch.splits < b.splits) b = ch; return; }
+        if (ch.cards.length > b.cards.length
+            || (ch.cards.length === b.cards.length
+                && ch.type === HAND_TYPES.DOUBLE_STRAIGHT && b.type !== HAND_TYPES.DOUBLE_STRAIGHT)) {
+          b = ch;
+        }
+      });
+      return b;
+    };
+    // [2026-11-10 用户 AI_POLICY 2.2] 「单张大A 不优先进龙(优先普通A进龙)」:
+    //   先在**不含大A**的链里挑(含锚点/不拆组/取最长); 没有合适的才用含大A的链当最后手段
+    best = _pickChain(chains.filter(function (c) { return !c.hasBigA; }))
+         || _pickChain(chains.filter(function (c) { return c.hasBigA; }));
     if (best) {
       // [2026-11-08 16:01 用户] 「手牌 555678 出了 5678, 正常 678 能组成龙的时候就不用拆 555」
       //   -> 锚点那条龙要**拆组**时, 先看有没有**不拆组**的龙(不要求含锚点): 有就不拆。

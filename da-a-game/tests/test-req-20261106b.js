@@ -520,7 +520,7 @@ section('T27. 手牌只剩一组时整组出(用户 23:22: 只剩对4 却单出�
     act27.type + ' ' + typeOf(p27) + ' ranks=' + ranksOf(p27));
 }
 
-section('T28. 取牌: 44 可取同阵营, 三个4及以上不取同阵营(用户 23:22)');
+section('T28. 取牌: 同阵营一律不取(用户 2026-11-10 改口径)');
 {
   var hand28a = [C('S',4), C('H',4), C('S',3)];
   var table28a = [C('S',9), C('H',9), C('D',9)];   // 同阵营(抓方 E)出的 3 张
@@ -529,8 +529,10 @@ section('T28. 取牌: 44 可取同阵营, 三个4及以上不取同阵营(用户
     主方: ['A','C'], 抓方: ['B','D','E'], lastPlayer: 'E' });
   var act28a = aiMod.chooseAction(st28a, 'D');
   var p28a = playedOf(st28a, 'D', act28a);
-  check('T28.1 用 44 取同阵营的 3 张目标',
-    p28a.length === 2 && p28a.every(function (c) { return c.rank === 4; }),
+  // [2026-11-10 改口径] 原断言「用 44 取同阵营的 3 张目标」锁的是 2026-11-07 23:22 旧裁定
+  //   「44 可以取同阵营的牌」; 用户 2026-11-10 在 AI_POLICY 2.3 改为「同阵营不用4取牌」。
+  check('T28.1 同阵营不再用 4 取牌',
+    !(p28a.length === 2 && p28a.every(function (c) { return c.rank === 4; })),
     act28a.type + ' ' + typeOf(p28a) + ' ranks=' + ranksOf(p28a));
   var hand28b = [C('S',4), C('H',4), C('D',4), C('S',3)];
   var table28b = [C('S',9), C('H',9), C('D',9), C('C',9)];   // 同阵营出的 4 张
@@ -571,7 +573,7 @@ section('T30. 裁定 A: 推定次方后, 其余未知玩家是队友(不取他�
   check('T30.1 推定次方后不取队友的牌',
     !(p30.length === 3 && p30.every(function (c) { return c.rank === 4; })),
     act30.type + ' ' + typeOf(p30) + ' ranks=' + ranksOf(p30));
-  // 对照: 没有推定线索 -> B 阵营不明 -> 可以取他的牌
+  // 对照: 没有推定线索 -> B 阵营不明 -> 只用 2 张 4 取他的 3 张目标
   var st30b = stateWith('D', hand30, table30, {
     mode: '2V3_暗打', 次方: 'C', 次方公开: false,
     主A: { suit: 'H', establishedBy: 'A', viaMethod: 'FORCED_CHECK' },
@@ -579,8 +581,10 @@ section('T30. 裁定 A: 推定次方后, 其余未知玩家是队友(不取他�
   st30b.plays = [];
   var act30b = aiMod.chooseAction(st30b, 'D');
   var p30b = playedOf(st30b, 'D', act30b);
-  check('T30.2 没有推定线索时, 阵营不明就照常取牌',
-    p30b.length === 3 && p30b.every(function (c) { return c.rank === 4; }),
+  // [2026-11-10 改口径] 原断言「阵营不明就照常取牌」锁的是旧口径(三个4也能取);
+  //   用户 2026-11-10 改为「不明时不用三个及以上的4取牌」-> 这里锁: 三个4不取。
+  check('T30.2 阵营不明时不用三个及以上4取牌',
+    !(p30b.length === 3 && p30b.every(function (c) { return c.rank === 4; })),
     act30b.type + ' ' + typeOf(p30b) + ' ranks=' + ranksOf(p30b));
 }
 section('T31. 拆组口径: 拆了>=2 组才罚(用户 11-08: QKKKKA 可出 QKA, QQKKKKA 不行)');

@@ -64,6 +64,17 @@ function inferCatcher(state, excludeId) {
   for (var pid in _cnt) {
     if (_cnt[pid] >= 2) return pid;                        // 信号B: 累计 2 次及以上
   }
+  // 信号C: 用三个 4 及以上的 4 取主A玩家的牌 -> 抓方(主方不会抢自己人)
+  var _cap3 = null;
+  plays.forEach(function (p3) {
+    if (!p3 || p3.kind !== 'CAPTURE') return;
+    if (!p3.useFours || p3.useFours < 3) return;
+    if (!p3.beat || p3.beat !== holder) return;
+    if (p3.playerId === holder) return;
+    if (excludeId && p3.playerId === excludeId) return;
+    if (!_cap3) _cap3 = p3.playerId;
+  });
+  if (_cap3) return _cap3;                                // 信号C
   return _big;                                            // 信号A: 单次大蛋子+
 }
 
@@ -175,7 +186,7 @@ function campOf(state, viewerId, targetId) {
 function _manualCamp(state, viewerId, targetId) {
   // [2026-11-08 23:59] 手动标记只在「**该观察者本来就能手改**」时生效:
   //   阵营公开(次方亮明/明打)或观察者已知全部阵营 -> 一律按真实阵营, 手动标记作废。
-  if (!canManualMark(state, viewerId)) return null;
+  if (!canManualMark(state, viewerId, targetId)) return null;
   var marks = state && state.uiMarks;
   if (!marks) return null;
   var row = marks[viewerId];
@@ -185,7 +196,7 @@ function _manualCamp(state, viewerId, targetId) {
   if (m === 'enemy') return 'ENEMY';
   // [2026-11-10 用户] 「手动切到问号后, UI 上还是显示敌/友」-> 手动标过问号 = 明确表示「不明」,
   //   不再按引擎的推定/真实关系来显示。
-  if (v === 'unknown') return 'UNKNOWN';
+  if (m === 'unknown') return 'UNKNOWN';
   return null;
 }
 
@@ -223,8 +234,14 @@ function canManualMark(state, viewerId, targetId) {
   if (!state || !viewerId) return false;
   var mode = state.mode || '';
   var holder = state['主A'] && state['主A'].establishedBy;
-  if (mode.indexOf('1V4') >= 0) return !(holder && holder === viewerId);
+  // 公开确定阵营(次方亮明/明打) -> 谁都不能再手改(AI_POLICY 12)
   if (state['次方公开'] === true || mode.indexOf('明打') >= 0) return false;
+  // 1V4: 主A持有者不能改; 其余四人可改, 但「对主A」是确定关系 -> 也不能改
+  if (mode.indexOf('1V4') >= 0) {
+    if (holder && holder === viewerId) return false;
+    if (targetId && holder && targetId === holder) return false;
+    return true;
+  }
   var next = state['次方'];
   // [2026-11-09 用户] 「我是抓方, 还能修改主A的敌友标记」
   //   -> 抓方对**主A**的关系是确定的(主A 必是主方 = 自己的敌) -> 必须用真实关系, 不能手改。

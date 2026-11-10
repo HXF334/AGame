@@ -216,17 +216,22 @@ function chooseAction(state, playerId, opts) {
   //   「拆4后剩余4最少两个」-> 手上4 减去用掉的, 至少留 2 张
   //   「也避让, 不取同阵营的蛋子」
   var fours = hand.filter(isFour);
-  var _sameCampTable = _isSameCamp(state, state && state.lastPlayer, playerId);
   var _need = table.length - 1;              // §7.1: N 张目标用 N-1 张 4
   var _capSubset = null;
+  // [2026-11-10 用户 AI_POLICY 2.3] 取牌的阵营过滤:
+  //   同阵营(友) -> 一律不取牌; 阵营不明 -> 不用三个及以上的 4 取(只用 44 取小的)
+  var _capSame = _isSameCamp(state, state && state.lastPlayer, playerId);
+  var _capUncertain = _campUncertain(state, state && state.lastPlayer, playerId);
+  var _capCampOk = true;
+  if (!opts.ignoreCamp) {
+    if (_capSame) _capCampOk = false;                      // 同阵营: 一律不取
+    else if (_capUncertain) _capCampOk = (_need <= 2);      // 不明: 只用 2 张 4 取(3 张目标)
+  }
   // [2026-11-06 用户] 取牌优先度**靠前**, 但**不能拆散 4 组**:
   //   手牌 33344  + 别人出 222 -> 4 只有 2 张(不是蛋子), 取 2 张=整组 -> 取牌;
   //   手牌 333444 + 别人出 222 -> 4 是 444(蛋子), 取 2 张会拆散它 -> **不取**, 改出 333;
   //   手牌 444    + 别人出 5555 -> 取 3 张=整组 -> 取牌 (§7.1: 取 N 张用 N-1 张 4)。
-  // [2026-11-07 23:22 用户] 「44 可以取同阵营的牌, 三个 4 及以上的 4 不取同阵营的牌」
-  //   -> 同阵营取牌: 只允许用 2 张 4(去取 3 张目标); 需要 3 张及以上 4 时不取同阵营的牌。
-  var _sameCampCapOk = (_need <= 2);
-  if ((opts.ignoreCamp || !_sameCampTable || _sameCampCapOk) && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
+  if (_capCampOk && _need >= 2 && _need <= 8 && table.length >= 3 && table.length <= 8
       && fours.length >= _need) {
     var _g4 = fours.length;
     var _wholeGroup = (_g4 === _need);         // 整组用掉 -> 不拆散
@@ -362,14 +367,18 @@ function chooseAction(state, playerId, opts) {
       var _inBig = _cntGroup(_bigAIds, comboCards);
       if (_inBig > 0 && (_inBig < _bigAIds.length || comboCards.length > _bigAIds.length)) return;
     }
-    // 双王: 不许拆开出单王
+    // 王不许拆散(AI_POLICY 2.2):
+    //   2 张王 -> 要么一起出(双王), 要么都不出
+    //   3 张王 -> 可拆 1 张单出(剩 2 张以后一起出), 也可 3 张一起(三王)
+    //   4 张王 -> 可拆成两个双王(各 2 张), 也可 4 张一起(四王)
+    var _jkAllow = { 2: { 0: 1, 2: 1 }, 3: { 0: 1, 1: 1, 3: 1 }, 4: { 0: 1, 2: 1, 4: 1 } };
     if (_jokerIds.length >= 2) {
       var _inJk = _cntGroup(_jokerIds, comboCards);
-      if (_inJk > 0 && _inJk < _jokerIds.length) return;
+      var _jkOk = _jkAllow[_jokerIds.length];
+      if (!_jkOk || !_jkOk[_inJk]) return;
     }
-    // [2026-11-06 23:54 用户] 「单张大A不加在龙里出, 单张普通A可以加在龙里出」
-    if ((h.type === HAND_TYPES.STRAIGHT || h.type === HAND_TYPES.DOUBLE_STRAIGHT) &&
-        comboCards.some(function (c) { return !!c.is主方大A; })) return;
+    // [2026-11-10 用户 AI_POLICY 2.2] 「单张大A 不优先进龙(优先普通A进龙)」:
+    //   不再硬性排除 -> 允许大A进龙, _powerOf 给含大A的组合 +500 -> 排序自动靠后(最后手段)
     // [2026-11-07 00:19 用户] 阵营不明(次方未亮明)时, 不用大蛋子+ 去压
     if (!opts.ignoreCamp && _uncertain && policy.EGG_PLUS[h.type]) return;
     // [2026-11-08 13:59 用户] 同点数的牌不拆: 拆了同点组的对子/蛋子/大蛋子/真七/真八 不进候选
