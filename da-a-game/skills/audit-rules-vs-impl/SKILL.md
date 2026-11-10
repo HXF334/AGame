@@ -72,7 +72,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js
 
 ## 5. 报告格式
 
-发现写成表格进 `da-a-game/docs/OPENCLAW_HANDOFF.md` §7：
+发现写成表格进 `da-a-game/docs/history/OPENCLAW_HANDOFF.md` §7：
 
 | # | 位置 | 偏差 | SKILL 依据 | 影响 |
 |---|---|---|---|---|

@@ -216,6 +216,10 @@ if (FAST) {
   });
   check('全部套件 PASS', fail.length === 0,
     (pass + '/' + names.length) + (fail.length ? ' 失败: ' + fail.join(', ') : ''));
+
+// [2026-11-10] AI 口径文档 vs 代码 防漂移(排序键/牌力表)
+var _docChk = cp.spawnSync(process.execPath, [path.join(__dirname, 'check-ai-policy-doc.js')], { encoding: 'utf8' });
+check('AI 口径文档与代码一致(排序键/牌力表)', _docChk.status === 0, String(_docChk.stdout || '').trim().split(String.fromCharCode(10)).slice(-2).join(' | '));
 }
 
 // ---------------------------------------------------------------- 汇总

@@ -2,7 +2,7 @@
 
 > 面向**新会话 / 新 agent** 的接手说明。
 > 最后更新：2026-11-04 22:05 (Asia/Shanghai) · Git HEAD 见 `git log -1`
-> 相关文档：**画面验收清单** UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** DECISIONS.md
+> 相关文档：**画面验收清单** ui/UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** history/DECISIONS.md
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
 ---
@@ -221,8 +221,8 @@ openclaw config set --batch-file .tmp-config-batch.json
    - **AI 起手连张要带上高端的 A**：用户例「丁有 9 10 10 JQKA，出牌却只出 9 10 JQK」。根因：起手候选里「大牌保护」把含 A 的 6 张连张一起滤掉了。改法：大牌保护**只管锚点和同点组**，链本身允许带高端 A；同时补一条硬约束「**链必须从锚点起**」（链里不能有比锚点更小的牌），否则 `3-4-5-6` 会把大牌 3 拽进来（保护大牌的老断言仍成立）。
    - **AI 的出牌 /「不出」离头像再远一点**：`ui-render.js` 里 AI 侧「不出」文字 `rr_+10 → rr_+20`、打出的牌 `rr_+8 → rr_+18`、AI 等待闹钟同步外移 `+10 → +20`（三者同一档距离）。
 9. **2026-11-04 09:36 按用户指示补齐的配套件**：
-   - `docs/UI_ACCEPTANCE_CHECKLIST.md`：**画面验收清单**（17 条，分闸门 / 出牌提示 / AI 回合推风 / 收尾四段，每条含操作、期望、异常样貌、对应回归锁点）。
-   - `docs/DECISIONS.md`：**决策记录**（D-001~D-010，含依据与影响面；D-006 记下产品定位「主要真人对真人，AI 只用于验证规则，不追求强度」）。
+   - `docs/ui/ui/UI_ACCEPTANCE_CHECKLIST.md`：**画面验收清单**（17 条，分闸门 / 出牌提示 / AI 回合推风 / 收尾四段，每条含操作、期望、异常样貌、对应回归锁点）。
+   - `docs/history/history/DECISIONS.md`：**决策记录**（D-001~D-010，含依据与影响面；D-006 记下产品定位「主要真人对真人，AI 只用于验证规则，不追求强度」）。
    - `tests/test-pushwind-edge.js`：**推风边界回归**（连续两次推风 / 推风目标立刻出完→牌局结束 / 推风后回合显示清干净，10 条断言）。
    - 顺带把「牌局结束清闹钟」从只写在 `draw()` 改成**在真正置 GAME_END 的 7 处都清**（`_uiClearCountdowns()`），内部状态与画面一致。
 10. **2026-11-04 20:46 用户 7 条报障已修**（新增 `tests/test-deal-async.js`，34 条断言；全量 82/82 全绿；preflight 13/13）：
@@ -311,13 +311,13 @@ openclaw config set --batch-file .tmp-config-batch.json
   - 新增 `splitEgg`: 蛋子级牌型只用了手里某个 ≥3 张同点组的一部分 -> 罚。例: 手里 22222 桌面蛋子 -> 出 22222 整组, 不拆 222 凑同牌型。
 - **「大蛋子+」改名「蛋子+」**: 集合不变(大蛋子/真七/真八/连珠蛋/大连珠蛋/假八/大假八/双龙/双大A)。
 - **暗打推定次方**: 引擎记 `state.plays`(公开出牌流水); ai.js `_canInferNext`/`_inferredNext` —— 身份未明的人对身份未明的人出蛋子+ -> 其他抓方标记他是次A(本局有效) -> 可以出任何牌压制他。
-- **口径表**: `docs/AI_POLICY.md`(建议稿, 待定稿)。
+- **口径表**: `docs/ai/ai/AI_POLICY.md`(建议稿, 待定稿)。
 ### 7.11 2026-11-07 22:26 批次(口径配置化 + 「X+」定义 + AI 决策日志)
 
 - **新增 `src/ai-policy.js`**: 口径唯一来源 —— 「X+」牌型集合(蛋子+=蛋子及以上 12 型 / 大蛋子+=大蛋子及以上 11 型, **双龙不在内**)、`SORT_KEYS`(排序键顺序)、`SORT_KEY_LABELS`、`comparePicks`。
 - **src/ai.js**: 排序/集合改走 policy; 新增 `getLastTrace()` 决策轨迹(含决定键); 修 `_campUncertain` 漏判「明打=身份公开」的 bug。
 - **game.js**: 每手 AI 出牌后打一行 `[AI决策]` 日志(桌/阵营三态/选中/候选带排序键/决定键)。
-- **口径定稿**: `docs/AI_POLICY.md`(A-E 结论 + 日志怎么读 + 报障对照清单)。
+- **口径定稿**: `docs/ai/ai/AI_POLICY.md`(A-E 结论 + 日志怎么读 + 报障对照清单)。
 ### 7.12 2026-11-07 23:22 批次(敌友标记统一口径 + 拆组收紧 + 跟牌/取牌 + UI)
 
 - **新增 `src/camp.js`**: 敌/友/不明唯一来源(`campOf` + `inferNext`); ai.js 的同阵营/阵营不明判断全部改读它。
