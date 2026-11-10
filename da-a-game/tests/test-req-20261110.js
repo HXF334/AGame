@@ -123,7 +123,7 @@ section('§2. 王的拆组口径(AI_POLICY 2.2)');
     'counts=' + c4.join(','));
 }
 
-section('§3. 抓方信号C(AI_POLICY 11.2)');
+section('§3. 抓方推定信号A/B/C(AI_POLICY 11.2)');
 {
   // E 用 3 个 4 取了主A的牌 -> E 是抓方 -> 对抓方观察者 D 是队友
   var stC = buildState([C('S',9), C('H',9)], [], {
@@ -137,6 +137,19 @@ section('§3. 抓方信号C(AI_POLICY 11.2)');
     plays: [{ playerId: 'E', kind: 'CAPTURE', useFours: 2, beat: 'A' }] });
   check('§3.2 两个4取主A的牌 -> 不构成抓方信号(差分对照)',
     campMod.campOf(stC2, 'D', 'E') === 'UNKNOWN', 'campOf=' + campMod.campOf(stC2, 'D', 'E'));
+  // 信号A: 用大蛋子+压制主A 一次 -> 那人是抓方 -> 对抓方观察者是队友
+  var stA = buildState([C('S',9), C('H',9)], [], {
+    lastPlayer: 'B', 次方公开: false,
+    plays: [{ playerId: 'E', type: 'BIG_TRIPLE', beat: 'A' }] });
+  check('§3.3 信号A：大蛋子+压主A -> 那人是抓方(对抓方观察者是队友)',
+    campMod.campOf(stA, 'D', 'E') === 'ALLY', 'campOf=' + campMod.campOf(stA, 'D', 'E'));
+  // 信号B: 累计 2 次蛋子去压制主A -> 那人是抓方
+  var stB = buildState([C('S',9), C('H',9)], [], {
+    lastPlayer: 'B', 次方公开: false,
+    plays: [{ playerId: 'E', type: 'TRIPLE', beat: 'A' },
+            { playerId: 'E', type: 'TRIPLE', beat: 'A' }] });
+  check('§3.4 信号B：累计2次蛋子压主A -> 那人是抓方(对抓方观察者是队友)',
+    campMod.campOf(stB, 'D', 'E') === 'ALLY', 'campOf=' + campMod.campOf(stB, 'D', 'E'));
 }
 
 section('§4. 单张大A 不优先进龙(AI_POLICY 2.2 / D-049)');
