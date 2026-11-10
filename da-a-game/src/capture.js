@@ -55,6 +55,9 @@ function canCapture(fours, target) {
 // 执行取牌: target 移入玩家手牌, 4s 移上桌
 // state (含): phase, table, lastPlayer, passedPlayers, passCount, players
 function executeCapture(state, playerId, fours) {
+  // [2026-11-10 用户] 「桌面上的7777右下角为什么没有取标志」-> 记下**被取走的是谁出的那手牌**,
+  //   UI 靠它在出牌缓存里定位受害者(不用靠猜)。
+  var _prevLast = state.lastPlayer;
   const result = canCapture(fours, state.table);
   if (!result.canCapture) {
     return { ok: false, error: { type: 'CANNOT_CAPTURE', message: result.reason }, state: state };
@@ -108,6 +111,7 @@ function executeCapture(state, playerId, fours) {
     state: Object.assign({}, state, {
       table: foursOnTable,
       lastPlayer: playerId,
+      被取走者: _prevLast,
       passedPlayers: [],
       passCount: 0,
       players: newPlayers

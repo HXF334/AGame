@@ -44,6 +44,9 @@ var BIG_EGG_PLUS = toSet(BIG_EGG_PLUS_TYPES);   // 大蛋子+ = 大蛋子及以�
 // [用户 2026-11-07 22:26 裁定 E] 不拆组 > 同类型优先
 // [裁定 D] 改口径 = 改这个数组; tests/test-ai-policy.js 会锁住顺序
 var SORT_KEYS = [
+  // [2026-11-10 用户] 「托管最后剩KKKK, 上家出5, 托管给我出了一个K而不是KKKK; 只剩KKK后别人出牌过来托管也不出牌」
+  //   -> 候选**能把手牌一次出完**时优先出完(出完=出局=大贡), 别拆着出最后几手。
+  'outAll',      // 出完优先(这一手打完手牌就出局)
   'splitEgg',   // 不拆蛋子级同点组(>=3 张同点的组不拆着出)
   'sameType',   // 同牌型优先
   // [2026-11-09 用户] 「手牌有双王和9999999, 托管或者提示应该优先出双王, 因为双王牌力小于9999999。
@@ -59,7 +62,7 @@ var SORT_KEYS = [
   'len'         // 张数少
 ];
 var SORT_KEY_LABELS = {
-  splitEgg: '拆蛋组', sameType: '同型', power: '牌力', fourEgg: '4蛋',
+  splitEgg: '拆蛋组', outAll: '出完', sameType: '同型', power: '牌力', fourEgg: '4蛋',
   split: '拆组', bigGroup: '大组', kv: '价值', len: '张数'
 };
 function comparePicks(a, b) {

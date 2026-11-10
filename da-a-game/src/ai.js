@@ -384,11 +384,28 @@ function chooseAction(state, playerId, opts) {
     //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。
     var _willEmpty = (comboCards.length === hand.length);
     if (!opts.ignoreCamp && _sameCamp && _isHeavy(comboCards, h.type) && !_willEmpty) return;
+    // [2026-11-10 用户] 出完优先: 这一手打完手牌就出局(大贡) -> 别拆着出最后几手
+    //   假八/大假八**例外**: 拆开(大蛋子)能压住上家 -> 拆开出大蛋子(让 bigGroup 排序去管);
+    //   拆开压不住, 或**起手**(没有上家牌) -> 整体出假八 -> 这两种情况才享受出完优先。
+    var _outAll = (comboCards.length === hand.length) ? 0 : 1;
+    if (_outAll === 0 && (h.type === HAND_TYPES.FAKE_EIGHT || h.type === HAND_TYPES.BIG_FAKE_EIGHT) && currentHand) {
+      var _r0 = comboCards[0].rank;
+      var _part = comboCards.filter(function (c) { return c.rank === _r0; });
+      if (_part.length === 4) {
+        var _ph = null;
+        try { _ph = identifyHand(_part); } catch (e) { _ph = null; }
+        var _splitBeat = false;
+        try { _splitBeat = !!(currentHand && _ph && canBeat(_ph, currentHand)); } catch (e) { _splitBeat = false; }
+        if (_splitBeat) _outAll = 1;        // 拆开压得住 -> 别整手出
+      }
+    }
     var _pick = {
       cards: comboCards,
       type: h.type,
-      sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,   // 同类型优先
-      // [2026-11-06 23:54] 双大A/双王/大A 单张 -> 优先度最后; 大组 -> 靠后
+      // [2026-11-10 用户] 出完优先: 这一手打完手牌就出局(大贡) -> 别拆着出最后几手
+      //   假八/大假八例外: 拆开(大蛋子)能压住上家 -> 拆开出大蛋子; 压不住或起手 -> 整体出。
+      outAll: _outAll,
+      sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,
       // [2026-11-09 用户] 「不能固定把双王优先级放在靠后, 要判断牌力大小, 三王四王也是同样的问题」
       //   -> §6.3 牌力等级(数字小 = 弱): 双王 70 < 连珠蛋 80 < 假八 90 < 真七 100 < 真八 110
       //      < 三王 120 < 大连珠蛋 130 < 大假八 140 < 四王 150 < 双大A 160。

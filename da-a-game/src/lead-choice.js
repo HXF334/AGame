@@ -43,6 +43,20 @@ function isFour(c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; }
 
 // 起手候选(按优先级排好): 双龙 > 连张 > 对子 > 单张
 // 返回 [{ cards, type }]; 空手牌返回 []
+// 兜底选组: 谁更弱谁先出(含大A 最强留最后; 点数小先出; 张数少先出)
+function _fallbackWeaker(a, b) {
+  var _hasA = function (grp) { return grp.some(function (c) { return !!c.is主方大A; }); };
+  var _aA = _hasA(a) ? 1 : 0, _bA = _hasA(b) ? 1 : 0;
+  if (_aA !== _bA) return _aA < _bA;
+  if (a.length !== b.length) return a.length < b.length;
+  var _minRank = function (grp) {
+    var r = 99;
+    grp.forEach(function (c) { if (c.rank < r) r = c.rank; });
+    return r;
+  };
+  return _minRank(a) < _minRank(b);
+}
+
 function leadCandidates(hand) {
   if (!hand || !hand.length) return [];
   const fours = hand.filter(isFour);
@@ -163,7 +177,9 @@ function leadCandidates(hand) {
     }
     // 该点数是 3 张以上(蛋子及以上) -> 留着整组, 跳过(留到最后兜底)
     if (grp.length >= 3) {
-      if (!_fallback && !_isDoubleBigA(grp)) _fallback = grp;
+      // [2026-11-10 用户] 「AAAQQQ77777 为什么会先出77777」-> 兜底要出**最弱**的一组:
+      //   含大A 的组留到最后; 同级点数小的先出; 张数少(蛋子3张)弱于大蛋子(5张) -> 先出。
+      if (!_isDoubleBigA(grp) && (!_fallback || _fallbackWeaker(grp, _fallback))) _fallback = grp;
       continue;
     }
     // [2026-11-06 用户] 双大A(两张同花色主A)起手**不整手打出**

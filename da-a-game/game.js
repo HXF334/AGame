@@ -1485,6 +1485,8 @@ function _uiCaptureScan() {
           if (_arr[_i] && _arr[_i].id === c.id) { _victim = pid; break; }
         }
       });
+      // [2026-11-10 用户] 兜底: 出牌缓存里找不到受害者时, 用引擎记的「被取走者」
+      if (!_victim) { var _v2 = gameState && gameState['被取走者']; if (_v2) _victim = _v2; }
       if (_victim) uiTakenPlay[_victim] = true;
     });
   });
