@@ -119,9 +119,9 @@
 
 ## F. 自动判定覆盖（2026-11-11 新增）
 
-> 下面这些项**不再需要人眼** —— 用工作区根 `tools/check-items.js`（跑**真 game.js** + 真 canvas，录制绘制调用后逐项断言）自动判定。
-> 报告落 `tools/shots/item-report.txt`（UTF-8）。**当前结果：21 项全部 PASS**。
-> 跑法：`node tools/check-items.js`（每个场景独立进程，避免 game.js 模块级状态串味）。
+> 下面这些项**不再需要人眼** —— 用仓库内 `da-a-game/tools/ui-acceptance-check.js`（跑**真 game.js**，录制全部绘制调用后逐项断言）自动判定。
+> 跑法：`node tools/ui-acceptance-check.js`（**每个场景独立进程**，避免 game.js 模块级状态串味）。报告落 `%TEMP%\dada-ui-accept\item-report.txt`（UTF-8，可用环境变量 `DADA_ACCEPT_OUT` 改位置）。**当前结果：21 条断言全部 PASS**。
+> 盘点还剩多少要人眼：`node tools/ui-acceptance-cover.js` → `cover-report.txt`。
 
 | 项 | 判定内容 | 场景 | 结论 |
 |---|---|---|---|
@@ -151,7 +151,7 @@
 
 ## 附：不需要人眼验的部分（无头已锁死）
 
-- **离线渲染自动判定**：工作区根 `tools/check-items.js`（真 game.js + 真 canvas → 逐项断言），覆盖见上面 F 段；出图用 `tools/render-real.js`。
+- **离线渲染自动判定**：仓库内 `da-a-game/tools/ui-acceptance-check.js`（真 game.js → 逐项断言，零依赖），覆盖见上面 F 段；出图看画面用工作区根 `tools/render-real.js`（需 npm canvas）。
 
 - 规则一致性（牌型识别 / 枚举 / 对账）：test-rules-alignment.js + audit-rules-vs-impl
 - AI 起手选牌（新规则：锚点 + 最长链 + 拆组 ≤ 1）：test-req-20261103b.js 第 1/10 节
