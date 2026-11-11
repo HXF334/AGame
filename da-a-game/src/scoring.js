@@ -78,21 +78,21 @@ function calculateScore(state, result, n) {
   }
 
   if (mode === '1V4_暗打') {
-    // 1V4 暗打: 倍率=2
+    // 1V4 暗打: 倍率=1 (SKILL §11.1; 2026-11-11 用户把 2 改为 1)
     if (winner === '主方') {
       const changes = {};
       const C = camps(state);
       const 独打者 = C.main[0];
-      if (独打者) changes[独打者] = 32;
-      for (const pid of C.takers) changes[pid] = -8;
+      if (独打者) changes[独打者] = 16;
+      for (const pid of C.takers) changes[pid] = -4;
       return changes;
     }
     if (winner === '抓方') {
       const changes = {};
       const C = camps(state);
       const 独打者 = C.main[0];
-      if (独打者) changes[独打者] = -32;
-      for (const pid of C.takers) changes[pid] = 8;
+      if (独打者) changes[独打者] = -16;
+      for (const pid of C.takers) changes[pid] = 4;
       return changes;
     }
     return {};

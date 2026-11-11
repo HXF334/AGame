@@ -61,7 +61,7 @@ test('1.2 1V4 明打 抓方胜: -64 +16*4 = 0', function () {
   assert.strictEqual(sum(c), 0);
 });
 
-test('1.3 1V4 暗打 主方胜: +32 -8*4 = 0', function () {
+test('1.3 1V4 暗打 主方胜: +16 -4*4 = 0', function () {
   const st = s1V4('1V4_暗打', { A: true });
   const c = calculateScore(st, { winner: '主方' });
   assert.strictEqual(sum(c), 0);
@@ -110,18 +110,18 @@ test('2.2 1V4 明打 抓方胜: 独打者 -64, 抓方各 +16', function () {
   ['B', 'C', 'D', 'E'].forEach(p => assert.strictEqual(c[p], 16, p));
 });
 
-test('2.3 1V4 暗打 主方胜: 独打者 +32, 抓方各 -8', function () {
+test('2.3 1V4 暗打 主方胜: 独打者 +16, 抓方各 -4 (SKILL §11.1 倍率1)', function () {
   const st = s1V4('1V4_暗打', { A: true });
   const c = calculateScore(st, { winner: '主方' });
-  assert.strictEqual(c.A, 32);
-  ['B', 'C', 'D', 'E'].forEach(p => assert.strictEqual(c[p], -8, p));
+  assert.strictEqual(c.A, 16);
+  ['B', 'C', 'D', 'E'].forEach(p => assert.strictEqual(c[p], -4, p));
 });
 
-test('2.4 1V4 暗打 抓方胜: 独打者 -32, 抓方各 +8', function () {
+test('2.4 1V4 暗打 抓方胜: 独打者 -16, 抓方各 +4 (SKILL §11.1 倍率1)', function () {
   const st = s1V4('1V4_暗打', { B: true });
   const c = calculateScore(st, { winner: '抓方' });
-  assert.strictEqual(c.A, -32);
-  ['B', 'C', 'D', 'E'].forEach(p => assert.strictEqual(c[p], 8, p));
+  assert.strictEqual(c.A, -16);
+  ['B', 'C', 'D', 'E'].forEach(p => assert.strictEqual(c[p], 4, p));
 });
 
 test('2.5 1V4 明打 平局: 全 0 (SKILL §11.1)', function () {

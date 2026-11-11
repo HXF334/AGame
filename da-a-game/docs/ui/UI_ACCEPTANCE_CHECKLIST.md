@@ -120,7 +120,7 @@
 ## F. 自动判定覆盖（2026-11-11 新增）
 
 > 下面这些项**不再需要人眼** —— 用仓库内 `da-a-game/tools/ui-acceptance-check.js`（跑**真 game.js**，录制全部绘制调用后逐项断言）自动判定。
-> 跑法：`node tools/ui-acceptance-check.js`（**每个场景独立进程**，避免 game.js 模块级状态串味）。报告落 `%TEMP%\dada-ui-accept\item-report.txt`（UTF-8，可用环境变量 `DADA_ACCEPT_OUT` 改位置）。**当前结果：21 条断言全部 PASS**。
+> 跑法：`node tools/ui-acceptance-check.js`（**每个场景独立进程**，避免 game.js 模块级状态串味）。报告落 `%TEMP%\dada-ui-accept\item-report.txt`（UTF-8，可用环境变量 `DADA_ACCEPT_OUT` 改位置）。**当前结果：25 条断言全部 PASS**。
 > 盘点还剩多少要人眼：`node tools/ui-acceptance-cover.js` → `cover-report.txt`。
 
 | 项 | 判定内容 | 场景 | 结论 |
@@ -143,11 +143,17 @@
 | E32c | 贡标签不压分数（按左右边界判定） | settle | PASS |
 | E33a | 被取的一手牌: **只标最后一张**一个「取」 | taken | PASS |
 | E33b | 没被取的牌**不出现**「取」 | play | PASS |
+| E38 | 结算画面大贡/二贡/三贡标签位置（左移后）且不压内容 | settle | PASS |
+| E40 | 出完的人被**跳过**时才清掉桌面那手牌（换贡字） | skipClears | PASS |
+| E41 | 同一轮多人出完: 贡字按出完顺序分配, **互不串位** | settle | PASS |
 | E45 | 三个 4 取主A的牌 -> 那人被标友(抓方) | signalC | PASS |
 | E47 | 桌面 `#f0a500` 与结算 `#ffd98a` **两种金色不同是预期** | gong/settle | PASS |
 | B6 | 真人「不出」画在按钮位（不是头像上方） | passed | PASS |
+| DELAY | 结算画面延迟: 真机/模拟器 **1000ms**, 无头 0ms | play | PASS |
 
-> **仍需人眼/真机**：E2/E3/E5/E10/E11 的观感与手感、AI 决策类（E12~E21/E34/E37~E44）、动画与真机行为。
+> **仍需人眼/真机（6 项）**：E26/E27/E30/E34/E37/E39 —— 均为「控制台日志内容」「托管与推风流程」「提示候选与托管一致性」等**行为/流程**类，不是画面问题；另外 E2/E3/E10/E11 的观感手感与全部真机动画行为。
+>
+> **真机复验（用户 2026-11-11）**：抓方信号C + 2V3 暗打已在真机对局验证通过，无需再验。
 
 ## 附：不需要人眼验的部分（无头已锁死）
 

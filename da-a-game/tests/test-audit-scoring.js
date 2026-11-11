@@ -34,7 +34,7 @@ function eq(name, actual, expected) {
 }
 
 // ================= §11.1 1V4 =================
-section('1. §11.1 1V4 独打 (倍率 4 / 2)');
+section('1. §11.1 1V4 独打 (倍率 4 / 1)');
 
 eq('1.1 明打·独打者胜: 主方+64, 4抓方各-16',
   calculateScore(mkState('1V4_明打'), { winner: '主方' }),
@@ -44,13 +44,13 @@ eq('1.2 明打·抓方胜: 主方-64, 4抓方各+16',
   calculateScore(mkState('1V4_明打'), { winner: '抓方' }),
   { A: -64, B: 16, C: 16, D: 16, E: 16 });
 
-eq('1.3 暗打·独打者胜: 主方+32, 4抓方各-8',
+eq('1.3 暗打·独打者胜: 主方+16, 4抓方各-4',
   calculateScore(mkState('1V4_暗打'), { winner: '主方' }),
-  { A: 32, B: -8, C: -8, D: -8, E: -8 });
+  { A: 16, B: -4, C: -4, D: -4, E: -4 });
 
-eq('1.4 暗打·抓方胜: 主方-32, 4抓方各+8',
+eq('1.4 暗打·抓方胜: 主方-16, 4抓方各+4',
   calculateScore(mkState('1V4_暗打'), { winner: '抓方' }),
-  { A: -32, B: 8, C: 8, D: 8, E: 8 });
+  { A: -16, B: 4, C: 4, D: 4, E: 4 });
 
 eq('1.5 明打·平局: 全 0 变更',
   calculateScore(mkState('1V4_明打'), { winner: 'draw' }), {});

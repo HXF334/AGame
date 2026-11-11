@@ -11,6 +11,8 @@ var HERE = __dirname;
 // 报告默认写到系统临时目录: 仓库内不留生成物(commit-gate 会 git add -A)
 var SHOTS = process.env.DADA_ACCEPT_OUT || path.join(require("os").tmpdir(), "dada-ui-accept");
 var VW = 844, VH = 390;
+var GAME = path.resolve(__dirname, '..');
+var uiRender = require(path.join(GAME, 'ui-render.js'));
 
 var SCENES = {};
 function sc(name) {
@@ -198,6 +200,51 @@ var CHECKS = [
     fn: function (d) {
       var n = textsOf(d, "不出").length;
       return { ok: n >= 2, detail: "不出x" + n };
+    } },
+  { id: "E38", scene: "settle", desc: "结算画面大贡/二贡/三贡标签位置(左移后)且不压内容",
+    fn: function (d) {
+      var SL = uiRender.settlementLayout(d.layout);
+      var anchor = Math.round(SL.px + SL.pw - 72);   // 2026-11-09 用户定的 -72
+      var labels = ["大贡", "二贡", "三贡"], bad = [];
+      labels.forEach(function (t) {
+        var g = textsOf(d, t).filter(function (x) { return x.style === "#ffd98a"; });
+        if (g.length !== 1) { bad.push(t + "x" + g.length); return; }
+        if (Math.abs(g[0].x - anchor) > 1) bad.push(t + ":x=" + Math.round(g[0].x) + " 期望" + anchor);
+      });
+      return { ok: bad.length === 0, detail: bad.length ? bad.join(";") : ("三个标签右对齐于 x=" + anchor) };
+    } },
+  { id: "E41", scene: "settle", desc: "同一轮多人出完: 贡字按出完顺序分配, 互不串位",
+    fn: function (d) {
+      var SL = uiRender.settlementLayout(d.layout);
+      var rowY = SL.py + SL.titleH;
+      var want = { "大贡": "A", "二贡": "B", "三贡": "C" };
+      var bad = [];
+      Object.keys(want).forEach(function (t) {
+        var g = textsOf(d, t).filter(function (x) { return x.style === "#ffd98a"; });
+        if (g.length !== 1) { bad.push(t + "x" + g.length); return; }
+        var idx = -1;
+        for (var i = 0; i < 5; i++) { if (Math.abs(g[0].y - (rowY + i * SL.rowH)) < 2) { idx = i; break; } }
+        if (idx < 0) { bad.push(t + ":不在结算行上"); return; }
+        var pid = uiRender.SEAT_IDS[idx];
+        if (pid !== want[t]) bad.push(t + "在" + pid + "行(期望" + want[t] + ")");
+      });
+      return { ok: bad.length === 0, detail: bad.length ? bad.join(";") : "大贡/二贡/三贡 各在自己那一行" };
+    } },
+  { id: "E40", scene: "skipClears", desc: "出完的人被跳过时才清掉桌面那手牌",
+    fn: function (d) {
+      var before = (d.extra && d.extra.beforeAdvance) || [];
+      var after = (d.extra && d.extra.afterAdvance) || [];
+      var okBefore = before.indexOf("A") >= 0;
+      var okAfter = after.indexOf("A") < 0;
+      var gong = textsOf(d, "大贡").filter(function (x) { return x.style === "#f0a500"; });
+      return { ok: okBefore && okAfter && gong.length === 1,
+               detail: "跳空前A在桌面=" + okBefore + " 跳过后已清=" + okAfter + " 大贡字x" + gong.length };
+    } },
+  { id: "DELAY", scene: "play", desc: "结算画面延迟: 真机/模拟器 1000ms, 无头 0ms",
+    fn: function (d) {
+      var mock = d.settleDelayMock, real = d.settleDelayReal;
+      return { ok: mock === 0 && real === 1000 && d.settleDelayMs === 0,
+               detail: "mock=" + mock + " real=" + real + " 当前生效=" + d.settleDelayMs + "ms" };
     } }
 ];
 

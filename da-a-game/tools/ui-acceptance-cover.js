@@ -6,7 +6,7 @@ var ROOT = path.resolve(__dirname, '..');   // 仓库内: tools/ 的上一级 = 
 var CK = path.join(ROOT, 'docs', 'ui', 'UI_ACCEPTANCE_CHECKLIST.md');
 var lines = fs.readFileSync(CK, 'utf8').split(/\r?\n/);
 
-var AUTO = ['E1','E4','E5','E8','E15','E22','E23','E24','E28','E29','E31','E32','E33','E45','E47','B6'];
+var AUTO = ['E1','E4','E5','E8','E15','E22','E23','E24','E28','E29','E31','E32','E33','E38','E40','E41','E45','E47','B6'];
 
 var items = [];
 lines.forEach(function (L) {

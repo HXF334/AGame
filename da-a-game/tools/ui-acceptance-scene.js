@@ -28,6 +28,7 @@ var canvas = { width: VW, height: VH, getContext: function (t) { return t === '2
   addEventListener: function () {}, removeEventListener: function () {},
   requestAnimationFrame: function (cb) { setImmediate(cb); return 1; }, cancelAnimationFrame: function () {} };
 var touch = [];
+var extra = {};        // 场景可往这里塞自定义观测数据(判定器读取)
 global.wx = {
   __isMock: true, createCanvas: function () { return canvas; },
   onTouchStart: function (cb) { touch.push(cb); },
@@ -182,6 +183,19 @@ SCENES.signalC = function () {
   tap(m.seats[2].x, m.seats[2].y);   // R1 = 抓方 A
 };
 
+// E40: 出完牌的人被**跳过**时 -> 轮到他才清掉桌面那手牌(换成大贡字)
+SCENES.skipClears = function () {
+  var st = base({ plays: [], emptyPlayers: ['A'], '出完顺序': ['A'] });
+  setState(st, 'D', 'E');
+  var us = g.__uiState();
+  us.uiPlays['A'] = [sb.C('H', 9), sb.C('H', 5)];
+  us.uiPlaysTrick['A'] = us.uiTrickId;
+  extra.beforeAdvance = Object.keys(g.__uiState().uiPlays).slice();
+  g.advanceCurrentPlayer();          // 轮到 A -> 被跳过 -> 清掉他桌面那手牌
+  extra.afterAdvance = Object.keys(g.__uiState().uiPlays).slice();
+  extra.currentAfter = g.currentPlayer();
+};
+
 function main() {
   var name = process.argv[2];
   var outFile = process.argv[3];
@@ -193,6 +207,7 @@ function main() {
   Object.keys(_us.uiPlays).forEach(function (k) { delete _us.uiPlays[k]; });
   Object.keys(_us.uiPlaysTrick).forEach(function (k) { delete _us.uiPlaysTrick[k]; });
   Object.keys(_us.uiTakenPlay).forEach(function (k) { delete _us.uiTakenPlay[k]; });
+  extra = {};
   SCENES[name]();
   // 只录**最后一帧**: __setState / 触摸切观察者 内部都会 draw(),
   // 一起录进来会让所有计数翻倍(敌友徽章数翻倍、按钮残留等)。
@@ -214,6 +229,10 @@ function main() {
     phase: gs.phase,
     mode: gs.mode,
     '出完顺序': gs['出完顺序'] || [],
+    settleDelayMs: g.__settleDelayMs(),
+    settleDelayMock: g._computeSettleDelay({ __isMock: true }),
+    settleDelayReal: g._computeSettleDelay({}),
+    extra: extra,
     players: gs.players.map(function (p) { return { id: p.id, hand: (p.hand || []).length }; })
   };
   fs.writeFileSync(outFile, JSON.stringify(out), 'utf8');

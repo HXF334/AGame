@@ -81,6 +81,16 @@ function _computeAiDelay(wxObj) {
   return 1000;                       // 真机 / 微信开发者工具模拟器
 }
 
+// [2026-11-11 用户] 「对局结束时的结算画面等一秒再弹出」
+//   -> 结束瞬间**先留在牌桌画面**(让玩家看清最后一手), 1 秒后才弹结算面板。
+//   纯函数: 真机/模拟器 1000ms; node 无头(mock) 0ms -> 无头断言不必等定时器(D-008)。
+function _computeSettleDelay(wxObj) {
+  if (!wxObj) return 0;
+  if (wxObj.__isMock) return 0;
+  return 1000;
+}
+var SETTLE_DELAY_MS = _computeSettleDelay(typeof wx !== 'undefined' ? wx : null);
+
 // [2026-11-04 用户] AI 出牌统一「随机约 1 秒」(不再有 3 秒慢手)。
 //   纯函数: 基准 base 毫秒 + ±20% 随机抖动 -> 800~1200ms(真机/模拟器)。
 //   无头测试 base=0 -> 直接返回 0(不能等, 否则套件被拖慢)。
@@ -308,6 +318,9 @@ function _dealLiangA(suit) {
 // 托管时真人手牌区显示**半透明「取消托管」**标识, 点该区域或顶栏机器人都能取消。
 // **不跨局保留**: 每局开始重置为关闭(见 newGame)。
 var uiAutoPlay = false;        // 托管开关
+// [2026-11-11 用户] 结算画面延迟 1 秒弹出: 记下结束时刻 + 到点重绘的定时器
+var uiSettleAt = 0;            // 牌局结束的时刻(0 = 未结束)
+var uiSettleTimer = 0;         // 到点重绘的定时器
 var uiAutoPlayTakeovers = 0;   // [2026-11-08] 托管接管次数(测试用: 托管是否**持续**生效)
 var uiAutoPlayTimer = 0;       // 托管排队中的动作(取消托管时必须清掉)
 
@@ -848,6 +861,8 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiStopTicker();                   // 清理倒计时定时器
   uiStartTicker();                  // [2026-10-27] 重新起 ticker(原来只停不启 -> 下一局后倒计时不刷新, 玩家看不到)
   uiToast = null;                   // 清残留提示
+  uiSettleAt = 0;                    // [2026-11-11] 新一局 -> 结算延迟计时归零
+  if (uiSettleTimer) { clearTimeout(uiSettleTimer); uiSettleTimer = 0; }
   uiLogVisible = false;             // 日志面板默认隐藏
   uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
   uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
@@ -1356,6 +1371,25 @@ case 'next':     log('  【下】已移除(各阶段自动推进)'); return fals
   }
 }
 
+// [2026-11-11 用户] 「对局结束时的结算画面等一秒再弹出」
+//   -> 结束瞬间先留在**牌桌画面**(看清最后一手), 满 1 秒才弹结算面板。
+//   返回 null = 此刻还不弹结算面板(只画牌桌)。
+function _uiSettleForDraw() {
+  if (gameState.phase !== PHASES.GAME_END) return null;
+  if (!uiSettleAt) {
+    uiSettleAt = Date.now();
+    // 到点自己重绘一次 -> 结算面板准时出现(不靠用户点任何东西)
+    if (SETTLE_DELAY_MS > 0 && !uiSettleTimer && typeof setTimeout !== 'undefined') {
+      uiSettleTimer = setTimeout(function () {
+        uiSettleTimer = 0;
+        if (ctx) draw();
+      }, SETTLE_DELAY_MS);
+    }
+  }
+  if (Date.now() - uiSettleAt < SETTLE_DELAY_MS) return null;
+  return _settlementData();
+}
+
 // ===== 结算画面 (需求十) =====
 // 五人得分表 + 胜负结果。分数**由引擎 calculateScore 给出**, UI 不自己算。
 // [注] 这两个函数必须在**文件作用域**, 不能落在 draw() 体内 ——
@@ -1762,7 +1796,7 @@ function draw() {
     uiPassed: uiPassed,
     captureFx: uiCaptureFx,
     scores: _uiScores(),
-    settlement: (gameState.phase === PHASES.GAME_END) ? _settlementData() : null,
+    settlement: _uiSettleForDraw(),
     // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
     // [2026-11-03] 倒计时闹钟: 亮A 用亮A 的, 真人回合用回合的, **AI 回合用 AI 等待的**
     // [2026-11-03] 闸门倒计时(亮A/反A/身份, 5 秒)优先; 其次出牌回合倒计时(20 秒, 任何玩家轮到都计时)
@@ -2538,6 +2572,10 @@ if (typeof module !== 'undefined' && module.exports) {
     uiScores: function () { return _uiScores(); },
     uiLayoutSnapshot: function () { return uiRender.layout(W || 844, H || 390); },
     selectedCards: function () { return selectedCards; },
+    // [2026-11-11] 结算延迟: 纯函数 + 当前生效值(供无头断言)
+    _computeSettleDelay: _computeSettleDelay,
+    __settleDelayMs: function () { return SETTLE_DELAY_MS; },
+    __settleAt: function () { return uiSettleAt; },
   // [2026-11-08] 供测试: 点选后自动补牌型(真人点选的「保住已选」逻辑)
   __uiExpandSelection: function (cardId) { return _uiExpandSelection(cardId); },
   // [2026-11-08] 供测试: 设定当前预选(模拟真人已经点了哪些牌)

@@ -84,32 +84,32 @@ test('平局: 全 0', () => {
 // ============================================================
 section('2. 1V4 暗打');
 
-test('独打者胜: 独打 +32, 4 抓方各 -8', () => {
+test('独打者胜: 独打 +16, 4 抓方各 -4 (SKILL §11.1 倍率1)', () => {
   const state = makeState({
     mode: '1V4_暗打',
     主方: ['A'],
     抓方: ['B', 'C', 'D', 'E']
   });
   const r = calculateScore(state, { winner: '主方' });
-  assert.strictEqual(r['A'], 32);
-  assert.strictEqual(r['B'], -8);
-  assert.strictEqual(r['C'], -8);
-  assert.strictEqual(r['D'], -8);
-  assert.strictEqual(r['E'], -8);
+  assert.strictEqual(r['A'], 16);
+  assert.strictEqual(r['B'], -4);
+  assert.strictEqual(r['C'], -4);
+  assert.strictEqual(r['D'], -4);
+  assert.strictEqual(r['E'], -4);
 });
 
-test('抓方胜: 独打 -32, 4 抓方各 +8', () => {
+test('抓方胜: 独打 -16, 4 抓方各 +4 (SKILL §11.1 倍率1)', () => {
   const state = makeState({
     mode: '1V4_暗打',
     主方: ['A'],
     抓方: ['B', 'C', 'D', 'E']
   });
   const r = calculateScore(state, { winner: '抓方' });
-  assert.strictEqual(r['A'], -32);
-  assert.strictEqual(r['B'], 8);
-  assert.strictEqual(r['C'], 8);
-  assert.strictEqual(r['D'], 8);
-  assert.strictEqual(r['E'], 8);
+  assert.strictEqual(r['A'], -16);
+  assert.strictEqual(r['B'], 4);
+  assert.strictEqual(r['C'], 4);
+  assert.strictEqual(r['D'], 4);
+  assert.strictEqual(r['E'], 4);
 });
 
 test('平局: 全 0', () => {
