@@ -1,9 +1,9 @@
 // tests/test-ai-log-flow.js —— 控制台日志口径 + 托管/推风流程(无头回归)
 //
-// 覆盖 UI 验收清单里最后 3 项「日志/流程」类(原来只能人眼看控制台):
-//   E26 暗打一局  -> 控制台 [AI决策] 里「推定次方=<名字>」+ 托管日志带出具体牌
-//   E27 托管中同阵营推风 -> 推风把回合交给真人后, 托管的 AI 立刻替他出牌(回合不停住)
-//   E30 任意对局  -> AI 自己出牌不再每手都打 [AI决策]; 托管那一行含牌名+决策
+// 覆盖「日志/流程」类口径「日志/流程」类(原来只能人眼看控制台):
+//   暗打推定 暗打一局  -> 控制台 [AI决策] 里「推定次方=<名字>」+ 托管日志带出具体牌
+//   托管推风 托管中同阵营推风 -> 推风把回合交给真人后, 托管的 AI 立刻替他出牌(回合不停住)
+//   日志口径 任意对局  -> AI 自己出牌不再每手都打 [AI决策]; 托管那一行含牌名+决策
 //
 // [断言纪律] 只锁**性质**, 不写死具体牌:
 //   - 「推定次方=」后面必须是玩家名(甲乙丙丁戊), 不能是 id(A-E)
@@ -53,20 +53,20 @@ function darkState() {
   });
 }
 
-section('1. E26 暗打一局: 推定次方打名字 + 托管日志带出具体牌');
+section('1. 暗打推定 暗打一局: 推定次方打名字 + 托管日志带出具体牌');
 {
   g.__setState(darkState(), { human: 'D', currentPlayer: 'D', clearLog: true });
   g.__setAutoPlay(true);
   g.__autoPlayStep();
   var ml = managedLine();
-  check('E26.1 托管那一行存在(托管代打出牌)', ml.length > 0, ml.slice(0, 80));
-  check('E26.2 托管行带出具体牌面(不是只写张数)', cardTokens(ml).length > 0, ml.slice(0, 120));
+  check('暗打推定.1 托管那一行存在(托管代打出牌)', ml.length > 0, ml.slice(0, 80));
+  check('暗打推定.2 托管行带出具体牌面(不是只写张数)', cardTokens(ml).length > 0, ml.slice(0, 120));
   var all = logs().join('\n');
-  check('E26.3 [AI决策] 里「推定次方=」后面是玩家名', /推定次方=[甲乙丙丁戊]/.test(all), '');
-  check('E26.4 「推定次方=」后面不是玩家 id', !/推定次方=[A-E](\W|$)/.test(all), '');
+  check('暗打推定.3 [AI决策] 里「推定次方=」后面是玩家名', /推定次方=[甲乙丙丁戊]/.test(all), '');
+  check('暗打推定.4 「推定次方=」后面不是玩家 id', !/推定次方=[A-E](\W|$)/.test(all), '');
 }
 
-section('2. E30 任意对局: AI 出牌不打 [AI决策]; 托管那一行含牌名+决策');
+section('2. 日志口径 任意对局: AI 出牌不打 [AI决策]; 托管那一行含牌名+决策');
 {
   g.__setAutoPlay(false);
   g.__setState(SB.build({
@@ -78,22 +78,22 @@ section('2. E30 任意对局: AI 出牌不打 [AI决策]; 托管那一行含牌�
   g.runAI();
   var aiPlays = logs().filter(function (l) { return /^AI .*PLAY/.test(l); });
   var aiWithTrace = aiPlays.filter(function (l) { return l.indexOf('[AI决策]') >= 0; });
-  check('E30.1 AI 自己出了牌(有样本)', aiPlays.length > 0, 'aiPlays=' + aiPlays.length);
-  check('E30.2 AI 的出牌行一律不含 [AI决策]', aiWithTrace.length === 0,
+  check('日志口径.1 AI 自己出了牌(有样本)', aiPlays.length > 0, 'aiPlays=' + aiPlays.length);
+  check('日志口径.2 AI 的出牌行一律不含 [AI决策]', aiWithTrace.length === 0,
         aiWithTrace.length ? aiWithTrace[0].slice(0, 100) : '');
   // 接着真人回合开托管 -> 托管那一行必须「牌名 + 决策」
   g.__setState(darkState(), { human: 'D', currentPlayer: 'D', clearLog: false });
   g.__setAutoPlay(true);
   g.__autoPlayStep();
   var ml2 = managedLine();
-  check('E30.3 托管那一行含 [AI决策]', ml2.indexOf('[AI决策]') >= 0, ml2.slice(0, 100));
-  check('E30.4 托管那一行含牌名', cardTokens(ml2).length > 0, ml2.slice(0, 120));
+  check('日志口径.3 托管那一行含 [AI决策]', ml2.indexOf('[AI决策]') >= 0, ml2.slice(0, 100));
+  check('日志口径.4 托管那一行含牌名', cardTokens(ml2).length > 0, ml2.slice(0, 120));
   var traceLines = logs().filter(function (l) { return l.indexOf('[AI决策]') >= 0; });
-  check('E30.5 不是每手都打决策轨迹(轨迹行数 < 出牌行数)', traceLines.length < aiPlays.length,
+  check('日志口径.5 不是每手都打决策轨迹(轨迹行数 < 出牌行数)', traceLines.length < aiPlays.length,
         'trace=' + traceLines.length + ' aiPlays=' + aiPlays.length);
 }
 
-section('3. E27 托管中同阵营推风: 回合交给真人后托管 AI 立刻代打');
+section('3. 托管推风 托管中同阵营推风: 回合交给真人后托管 AI 立刻代打');
 var e27 = { armed: false };
 {
   g.__setAutoPlay(false);
@@ -108,17 +108,17 @@ var e27 = { armed: false };
   g.__setAutoPlay(true);
   var before = handN('D');
   g.doPushWind();
-  check('E27.1 推风把回合交给了真人', g.currentPlayer() === 'D', String(g.currentPlayer()));
-  check('E27.2 推风日志写了目标=真人', logs().join('\n').indexOf('推风完成') >= 0, '');
+  check('托管推风.1 推风把回合交给了真人', g.currentPlayer() === 'D', String(g.currentPlayer()));
+  check('托管推风.2 推风日志写了目标=真人', logs().join('\n').indexOf('推风完成') >= 0, '');
   e27 = { before: before, armed: true };
 }
 
 // 托管接管是**定时器**驱动的(真机 700ms) -> 等它到点再断言
 setTimeout(function () {
-  section('3b. E27 推风后托管 AI 确实替他出了牌(回合没停住)');
+  section('3b. 托管推风 推风后托管 AI 确实替他出了牌(回合没停住)');
   var ml3 = managedLine();
-  check('E27.3 托管 AI 接管并出了牌', ml3.length > 0, ml3.slice(0, 100));
-  check('E27.4 真人的手牌少了(牌真的被打出去)', handN('D') < e27.before,
+  check('托管推风.3 托管 AI 接管并出了牌', ml3.length > 0, ml3.slice(0, 100));
+  check('托管推风.4 真人的手牌少了(牌真的被打出去)', handN('D') < e27.before,
         'before=' + e27.before + ' after=' + handN('D'));
   console.log('');
   console.log('test-ai-log-flow: ' + pass + ' passed, ' + fail + ' failed');

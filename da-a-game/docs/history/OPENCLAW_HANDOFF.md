@@ -2,7 +2,7 @@
 
 > 面向**新会话 / 新 agent** 的接手说明。
 > 最后更新：2026-11-11（E26/E27/E30 收口 + 取事实机制化）· Git HEAD 见 `git log -1`
-> 相关文档：**AI 决策口径** ai/AI_POLICY.md ｜ **画面验收清单** ui/UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** history/DECISIONS.md
+> 相关文档：**规则唯一来源** skills/da-a-game-rules/SKILL.md ｜ **AI 决策口径** ai/AI_POLICY.md
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
 ---
@@ -36,8 +36,8 @@ AGame/                         ← Git 仓库根（.git 在这里）
 │  ├─ tests/                   ← 94 个 test-*.js 套件 + mock-wx.js
 │  ├─ scripts/                 ← commit-gate.js / preflight.js
 │  ├─ skills/                  ← 5 份: da-a-game-rules(规则唯一来源) / senior-dev-standard / git-safe-workflow / windows-cn-batch-encoding / audit-rules-vs-impl
-│  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js / ui-acceptance-{check,cover,scene}.js（**已排除出包**）
-│  ├─ docs/                    ← 不进包：ai/ 口径 + history/ 交接·决策 + ui/ 验收清单 + rules/ 索引
+│  ├─ tools/                   ← audit-skill-tests.js / stress-pushwind.js / ui-acceptance-{check,scene}.js（**已排除出包**）
+│  ├─ docs/                    ← 不进包：ai/ 口径 + history/ 交接
 │  ├─ game.json  project.config.json
 ├─ tools/                      ← wechat-cli.ps1（微信开发者工具 CLI 的 PowerShell 包装）
 └─ .gitattributes              ← 强制 LF，见 §4
@@ -149,50 +149,13 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 ---
 
-## 7. 已知盲区与待办
+## 7. 待办与注意事项
 
 ### 7.1 待办事项
 
-- **画面观感验收（最大空档，但已大幅收窄）**：`docs/ui/UI_ACCEPTANCE_CHECKLIST.md` 共 **70 项** —— **19 项**由仓库内离线渲染判定器自动判（`tools/ui-acceptance-check.js`，25 条断言，当前 25/25 PASS）、**51 项**有回归锁（**锁点列即可当状态用**，不再另开「已验/未验」列；盘点跑 `tools/ui-acceptance-cover.js`）。**纯日志/流程类已收口为 0**（E26/E27/E30 → `tests/test-ai-log-flow.js`）。仍需人眼的是 **E2/E3/E10/E11 的观感手感**与**全部真机动画行为** —— 自动化证明不了「好看/不遮挡/流畅度」。
-- ~~2V3 抓方推定信号C 真机对局未验证~~ → **已验证**（用户 2026-11-11 真机对局确认通过）。
-- **真机/模拟器自动化渠道缺失**：开发者工具 9420 端口在本环境不可用（`evaluate`/`screenshot` 超时）；助手进程处于无交互桌面会话，直接抓屏也失败（`windows_found=0`）。要复验真机观感**只能靠用户手动操作**。
-- 创建房间加「是否显示剩余牌数（默认关闭）」——已延期，本批不实现。
-- 房间设置值接入：发牌速度 / AI 等待节奏目前是常量。
+1. **真机画面观感与动画复验** —— 自动化证明不了「好不好看/挡不挡/顺不顺」；本环境 9420 自动化通道不可用，只能用户手动。
+2. **1V4 暗打敌友显示真机复验** —— 离线判定已覆盖，真机未验。
+3. **创建房间「是否显示剩余牌数（默认关闭）」开关** —— 已延期。
+4. **房间设置值接入** —— 发牌速度 / AI 等待节奏目前是常量。
 
-### 7.2 注意事项
-
-- 已验证、别再怀疑的规则点（与 SKILL 一致，已被回归锁住）：§6.4 单大A（4 张同点=false / 5-6 张=true）、单王、双王列表、双龙只被大蛋子及以上压；§6 双大A 混入第三张 A 降级为普通牌型；三张大A=普通蛋子；混合张数（8,9,9,10,10,J）=INVALID；§4.4 反A 花色不得与主A相同；§7.1 取牌 4 的张数=目标张数−1；§7.3 被取走的大A 失去大A 身份；§4.5 底牌先转移再判阵营；§11.2 2V3 两种 N 推导；§2.2 底牌独立槽位。
-- 引擎↔规则的历史偏差 B1~B5 已全部修完（回归 `tests/test-rules-alignment.js`，枚举层可达性见 `tests/test-handtype-enum-reach.js`）。
-- **文档分层已定并已完成**（`ac6a373`）：玩法口径 → `docs/ai/AI_POLICY.md`；对局规则 → `skills/da-a-game-rules/SKILL.md`；裁定 → `docs/history/DECISIONS.md`；画面事实 → `docs/ui/UI_ACCEPTANCE_CHECKLIST.md`。别再重做分家。
-- 回归资产：`test-rules-alignment.js`（规则↔实现）、`test-handtype-enum-reach.js`（枚举层可达性，历史上出过 4 次「认得出、枚举不出」）、`test-straight-low-ace.js`（A 作低端连续段）、`test-pack-manifest.js`（包文件集合 18 个）、`test-ui-play-position.js`（牌位/按钮让位/闹钟）、`test-deal-async.js`（异步发牌路径）、`test-ui-color-locks.js`（画面颜色/位置的无头锁）、`test-ai-log-flow.js`（**日志/流程类**验收锁：E26 推定次方打名字而不是 id、托管行带牌面；E27 推风后托管 AI 确实代打；E30 AI 出牌行不打 `[AI决策]`）。
-- 工具坑：
-  - PowerShell 控制台是 GBK，中文文件直接读会乱码 → 落盘成 `.scratch/*.txt` 再读。
-  - `edit` 工具多编辑时任一条 oldText 不匹配会**整体原子回滚** → 改用「JSON 载荷 + node runner（每条唯一性断言）」，脚本放**仓库外** `.scratch/`。
-  - 上下文压缩会重复读同一批文件 → 动手前一次性把事实打包成一个文件读。
-  - 无头默认 `DEAL_STEP=0`，发牌同步跑完，异步发牌路径默认测不到 → 用 `__setDealStep` 钩子强制异步。
-  - `candidateCombos` 返回的是 **id 数组**，没有 `.type` → 必须逐个 `identifyHand`。
-  - 牌对象是**共享引用**（引擎状态 / UI 缓存指向同一批牌）→ 不要在牌对象上原地打标记，用副本。
-  - 临时探针脚本：子进程必须显式 `process.exit(0)`，同步 spawn 必须带 `timeout`，跑完立刻删。
-  - **别再「写临时脚本→跑→输出落文件→再读文件」四趟** —— 实测把一个简单 bug 修复拖成 1.5 小时并二次灌满上下文。查代码用工作区根 `tools/probe.js`（一条命令出「文件:行号:内容」，支持 `--ctx/--max/--lines/--out`）；单次工具输出 ≤80 行、单轮 ≤300 行。
-  - **node 直出 stdout 会被 PowerShell 按 GBK 解码 → 中文乱码**；落盘 UTF-8 再 `Get-Content -Encoding UTF8` 读回（`probe.js --out F` 已内置此路径）。
-  - **微信开发者工具的自动化端口 9420 默认没开**（`Test-NetConnection 127.0.0.1 -Port 9420` = False）；进程在跑 ≠ 端口在。`evaluate`/`screenshot` 通道此前超时过 → 同一通道失败 2 次即判定本环境不可用，别硬试第 3、4 次。
-  - **查多个事实要合批**（2026-11-11 用户裁定：光加规则没用，必须改机制）：`node tools/digest.js --root <目录> --p <正则> --p <正则> ... [--out F]` —— 一次扫完、命中合并去重、只回一次。**别一个正则一次调用**（实测一轮 74 次调用 → 7 次压缩）。
-  - **压缩/重启后一条命令恢复现场**：`node tools/resume.js --out F`（git 状态/未 push/工具清单/套件数/事实表一次拿全）。已推得的事实读 `tools/facts-da-a.md`，**别重新推一遍**。
-  - **commit-gate 的输出重定向文件不能和 msgfile 同路径** → `fatal: failed to write commit object`（exit=128），看着像提交失败其实是路径冲突。
-  - 工作区根 `tools/`（`digest.js` / `facts-da-a.md` / `resume.js` / `probe.js` / `render-real.js`）**不在 Git 里**（工作区根不是仓库）→ 丢了无法恢复；要版本管理需挪进 `AGame/da-a-game/tools/`（该目录已排除出包）。
-
-### 7.3 下一阶段任务
-
-1. 画面观感与真机动画复验（§7.1 第一条）：只剩 E2/E3/E10/E11 观感手感 + 真机动画；清单锁点列已能当状态用，不必另开状态列。
-2. ~~真机对局验证推定信号C~~ → **已完成**（2026-11-11，用户确认 2V3 暗打无误）。**1V4 暗打敌友显示真机仍未验** —— 只有离线判定覆盖（E28a/E28b），需用户手动复验。
-3. 剩余牌数开关 + 房间设置项接入。
-4. ~~规则与玩法分家~~ → **已完成**（`ac6a373`），已从待办移除，见 §7.2。
-
-## 8. 旧工作区（只读）
-
-`C:\Users\MyFirstAI\.openclaw\workspace-work` 是上一代工作区，**只读参考**：
-
-- 它自己的 `AGame/` 克隆停在 `8268ce6`，比本仓库旧。
-- 它的 `MEMORY.md` / `memory/*.md` / `docs/` 里有大量踩坑结论（枚举、渲染、测试纪律等）。
-- **不迁移、不删除、不擅自取用**。命中同类问题可以去那里查答案；要把内容带回本项目，**必须先向用户确认**，只取精华。
-- 上一代 agent 的 Workshop 镜像副本（8 份 GENERATED-BY 生成的同步镜像）已于 2026-11-03 删除——仓库是唯一来源，镜像只会造成漂移。
+（坑与已知事项见工作区根 `AGENTS.md` §19 与 `tools/facts-da-a.md`，此处不重复。）
