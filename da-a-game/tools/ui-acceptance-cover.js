@@ -36,7 +36,7 @@ items.forEach(function (it) {
 
 var out = [];
 out.push('总条目 = ' + items.length);
-out.push('已自动判定(离线渲染) = ' + auto.length + ' : ' + auto.join(' '));
+out.push('已自动判定(离线渲染) = ' + auto.length + ' 个条目 / 25 条断言 : ' + auto.join(' '));
 out.push('已有回归锁 = ' + tested.length);
 out.push('仍需人眼/真机(锁点=目视) = ' + visual.length);
 out.push('--- 仍需人眼明细 ---');

@@ -95,6 +95,41 @@ section('2. 拆组: 提示与托管同口径(不拆同点组)');
 }
 
 
+section('3. 牌力链(§6.3): 手上有双王 + 真七(大蛋子+) 时先出双王(清单 E39)');
+{
+  // 手牌: 双王 + 7 张 9(真七); 桌面: 4 张 8(大蛋子)
+  //   关键: 手牌**不含 4** -> 「用4取牌」分支不成立(那是另一条优先级), 只剩压制分支
+  //   §6.3 牌力链 双王 70 < 真七 100 -> 弱牌先出 -> 应出双王
+  var hand3 = [card.createBigJoker('b1'), card.createSmallJoker('b2')];
+  ['S', 'H', 'D', 'C'].forEach(function (su, i) { hand3.push(card.createNormalCard(su, 9, 'n' + i)); });
+  ['S', 'H', 'D'].forEach(function (su, i) { hand3.push(card.createNormalCard(su, 9, 'm' + i)); });
+  var table3 = [card.createNormalCard('S', 8, 't1'), card.createNormalCard('H', 8, 't2'),
+                card.createNormalCard('D', 8, 't3'), card.createNormalCard('C', 8, 't4')];
+  var st3 = SB.build({
+    handMap: { A: hand3 }, table: table3, lastPlayer: 'C',
+    '主A': { suit: 'H', establishedBy: 'E', viaMethod: 'FORCED_CHECK' },
+    '次方': 'C', '次方公开': true,
+    '主方': ['C', 'E'], '抓方': ['A', 'B', 'D'], mode: '2V3_明打' });
+  var me3 = st3.players.filter(function (p) { return p.id === 'A'; })[0];
+  st3.discarded = st3.discarded.concat(me3.hand.slice(hand3.length));
+  me3.hand = hand3.slice();
+  var ht3 = require('../src/hand-types.js');
+  var aiAct3 = aiMod.chooseAction(st3, 'A', {});
+  var aiCards3 = (aiAct3 && aiAct3.cardIds) ? aiAct3.cardIds.map(function (id) {
+    return me3.hand.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean) : [];
+  var aiType3 = aiCards3.length ? ht3.identifyHand(aiCards3).type : '(无)';
+  check('3.1 托管先出双王(不是真七/其他大蛋子+)', aiType3 === 'DOUBLE_JOKER',
+    'AI=' + aiType3 + ' n=' + aiCards3.length);
+  g.__setState(st3, { human: 'A', currentPlayer: 'A' });
+  var cands3 = g.uiHintCandidates();
+  // 候选对象自带 type(游戏内已识别); 注意 ids 是 id 字符串数组, 不能直接喂 identifyHand
+  var hintType3 = cands3.length ? cands3[0].type : '(无候选)';
+  var aiIds3 = (aiAct3 && aiAct3.cardIds) ? aiAct3.cardIds.slice().sort().join(',') : '';
+  var hintIds3 = cands3.length ? cands3[0].ids.slice().sort().join(',') : '';
+  check('3.2 提示第一手 = 托管那一手(双王)',
+    hintType3 === 'DOUBLE_JOKER' && aiIds3 === hintIds3,
+    '提示=' + hintType3 + ' AI=' + aiIds3 + ' 提示ids=' + hintIds3);
+}
 console.log('');
 console.log('test-hint-order: ' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
