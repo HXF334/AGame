@@ -1,7 +1,7 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
 > 面向**新会话 / 新 agent** 的接手说明。
-> 最后更新：2026-11-10 · Git HEAD 见 `git log -1`
+> 最后更新：2026-11-11 · Git HEAD 见 `git log -1`
 > 相关文档：**AI 决策口径** ai/AI_POLICY.md ｜ **画面验收清单** ui/UI_ACCEPTANCE_CHECKLIST.md ｜ **决策记录** history/DECISIONS.md
 > 本文只覆盖「怎么接、怎么跑、不能动什么」。游戏规则一律以 `skills/da-a-game-rules/SKILL.md` 为准。
 
@@ -71,7 +71,7 @@ node tests/test-xxx.js         # 单套件
 node tests/_runall.js 10 20    # 只跑第 10~20 个
 ```
 
-当前状态：全量 92 套件 / 失败 0 次；`preflight` 14/14（`--fast` 12/12）；`audit-rules-vs-impl` 4/4。
+当前状态：全量 **93** 套件 / 失败 0 次；`preflight` 14/14（`--fast` 12/12）；`audit-rules-vs-impl` 4/4。
 
 
 **测试纪律**：
@@ -153,7 +153,7 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 ### 7.1 待办事项
 
-- 画面目视验收：把 `docs/ui/UI_ACCEPTANCE_CHECKLIST.md` 逐条在微信开发者工具模拟器过一遍（无头只能证几何与时序）。
+- **画面目视验收（当前最大空档）**：把 `docs/ui/UI_ACCEPTANCE_CHECKLIST.md` 逐条在微信开发者工具模拟器过一遍（无头只能证几何与时序）。E 段累计 **47 项** + D 段；清单**目前没有「已验/未验」状态列** → 验收进度无处回填，要先补列再逐条勾。
 - 2V3 抓方推定信号C（三个 4 及以上的 4 去取主A 的牌 → 抓方）：真机对局未验证。
 - 创建房间加「是否显示剩余牌数（默认关闭）」——已延期，本批不实现。
 - 房间设置值接入：发牌速度 / AI 等待节奏目前是常量。
@@ -162,6 +162,7 @@ openclaw config set --batch-file .tmp-config-batch.json
 
 - 已验证、别再怀疑的规则点（与 SKILL 一致，已被回归锁住）：§6.4 单大A（4 张同点=false / 5-6 张=true）、单王、双王列表、双龙只被大蛋子及以上压；§6 双大A 混入第三张 A 降级为普通牌型；三张大A=普通蛋子；混合张数（8,9,9,10,10,J）=INVALID；§4.4 反A 花色不得与主A相同；§7.1 取牌 4 的张数=目标张数−1；§7.3 被取走的大A 失去大A 身份；§4.5 底牌先转移再判阵营；§11.2 2V3 两种 N 推导；§2.2 底牌独立槽位。
 - 引擎↔规则的历史偏差 B1~B5 已全部修完（回归 `tests/test-rules-alignment.js`，枚举层可达性见 `tests/test-handtype-enum-reach.js`）。
+- **文档分层已定并已完成**（`ac6a373`）：玩法口径 → `docs/ai/AI_POLICY.md`；对局规则 → `skills/da-a-game-rules/SKILL.md`；裁定 → `docs/history/DECISIONS.md`；画面事实 → `docs/ui/UI_ACCEPTANCE_CHECKLIST.md`。别再重做分家。
 - 回归资产：`test-rules-alignment.js`（规则↔实现）、`test-handtype-enum-reach.js`（枚举层可达性，历史上出过 4 次「认得出、枚举不出」）、`test-straight-low-ace.js`（A 作低端连续段）、`test-pack-manifest.js`（包文件集合 18 个）、`test-ui-play-position.js`（牌位/按钮让位/闹钟）、`test-deal-async.js`（异步发牌路径）、`test-ui-color-locks.js`（画面颜色/位置的无头锁）。
 - 工具坑：
   - PowerShell 控制台是 GBK，中文文件直接读会乱码 → 落盘成 `.scratch/*.txt` 再读。
@@ -171,13 +172,16 @@ openclaw config set --batch-file .tmp-config-batch.json
   - `candidateCombos` 返回的是 **id 数组**，没有 `.type` → 必须逐个 `identifyHand`。
   - 牌对象是**共享引用**（引擎状态 / UI 缓存指向同一批牌）→ 不要在牌对象上原地打标记，用副本。
   - 临时探针脚本：子进程必须显式 `process.exit(0)`，同步 spawn 必须带 `timeout`，跑完立刻删。
+  - **别再「写临时脚本→跑→输出落文件→再读文件」四趟** —— 实测把一个简单 bug 修复拖成 1.5 小时并二次灌满上下文。查代码用工作区根 `tools/probe.js`（一条命令出「文件:行号:内容」，支持 `--ctx/--max/--lines/--out`）；单次工具输出 ≤80 行、单轮 ≤300 行。
+  - **node 直出 stdout 会被 PowerShell 按 GBK 解码 → 中文乱码**；落盘 UTF-8 再 `Get-Content -Encoding UTF8` 读回（`probe.js --out F` 已内置此路径）。
+  - **微信开发者工具的自动化端口 9420 默认没开**（`Test-NetConnection 127.0.0.1 -Port 9420` = False）；进程在跑 ≠ 端口在。`evaluate`/`screenshot` 通道此前超时过 → 同一通道失败 2 次即判定本环境不可用，别硬试第 3、4 次。
 
 ### 7.3 下一阶段任务
 
-1. 模拟器目视验收（§7.1 第一条）→ 回填 `docs/ui/UI_ACCEPTANCE_CHECKLIST.md`。
+1. 模拟器目视验收（§7.1 第一条）：先给 `docs/ui/UI_ACCEPTANCE_CHECKLIST.md` 的 E 段补「已验/未验」状态列，再逐条勾选回填。
 2. 真机对局验证推定信号C 与 1V4 暗打敌友显示。
 3. 剩余牌数开关 + 房间设置项接入。
-4. 规则与玩法分家：玩法口径只进 `docs/ai/AI_POLICY.md`，对局规则才进 `skills/da-a-game-rules/SKILL.md`。
+4. ~~规则与玩法分家~~ → **已完成**（`ac6a373`），已从待办移除，见 §7.2。
 
 ## 8. 旧工作区（只读）
 

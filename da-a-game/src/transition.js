@@ -448,7 +448,9 @@ function runForcedCheck(state) {
 
 // === handler: ADVANCE ===
 // C-1 阶段：LIANG_A_RESOLVED → FAN_A 已打通
-// FAN_A_RESOLVED → REVEAL_BOTTOM 仍未实现
+// FAN_A_RESOLVED → REVEAL_BOTTOM **也已打通** —— 但走的是 REVEAL_BOTTOM action，不是 ADVANCE
+//   （见 handleRevealBottom：FAN_A / FAN_A_RESOLVED 两阶段都允许翻底牌；
+//     此处 ADVANCE 显式报错，防止调用方用错动作。详见 transition.js:472）
 function handleAdvance(state, payload) {
   if (state.phase === PHASES.LIANG_A_RESOLVED) {
     return ok({
