@@ -11,7 +11,7 @@
 |---|---|
 | 分支 | `main` |
 | HEAD | 本轮 `D-059/D-060` 提交（`git log -1`；上一提交 `091bae1 docs: 重组接手文档`） |
-| 与远端 | `ahead 8`（远端 `https://github.com/HXF334/AGame.git`），**未 push** |
+| 与远端 | 已同步（`main...origin/main` 无差异，2026-11-12 已 push），远端 `https://github.com/HXF334/AGame.git` |
 | 工作区 | 干净（本轮改动已提交） |
 | 技术栈 | 原生微信小游戏，CommonJS + `wx.*` + Canvas，无构建、无 npm 依赖 |
 | 基础库 | 3.17.6（`project.config.json` 与本地 `project.private.config.json` 已统一；真机最低版本由 MP 后台决定） |
@@ -106,7 +106,7 @@ node tools/ui-acceptance-check.js # 离线渲染逐项验收（如仍需要）
 
 ## 9. 交接须知
 
-- 工作区提交后应为干净；本轮改动已提交（`git log -1`）。提交/推送由用户决定（不 push，除非明确授权）。
+- 工作区提交后应为干净；本轮改动已提交并 push（`git log -1`）。推送策略：每任务结束推一次，失败即停、下次再推。
 - 新会话先读 `AGENTS.md` → 本文件 → 涉及规则读 SKILL 对应章节。
 - 不要照抄 `docs/history/OPENCLAW_HANDOFF.md` 里的旧路径与 OpenClaw 命令。
 - 每次任务结束：更新本文件的「快照 / 测试结果 / 已知问题 / 待办」。

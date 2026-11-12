@@ -96,7 +96,8 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 ## 9. Git
 
 - 仓库根是 `AGame/`；在 `AGame` 或 `AGame/da-a-game` 里执行 git 都能找到 `.git`。
-- **不 push**，除非用户明确授权；`reset --hard` / `clean -fd` / 切分支前必须先看工作区。
+- **push 由用户授权、每任务结束推一次**：任务收尾提交后执行一次 `git push`；无论成功失败都只尝试一次——失败就停下、记录报错，留到下次需要 push 时一并推，不反复重试、不改远端配置。
+- `reset --hard` / `clean -fd` / 切分支前必须先看工作区。
 - 提交信息用 `git commit -F <file>`（不要 `-m`，失败会被下一条命令掩盖）；提交后核对 `git log --oneline -1`。
 - 一个提交一个主题；不要在同一个提交里混代码、文档、无关格式。
 
