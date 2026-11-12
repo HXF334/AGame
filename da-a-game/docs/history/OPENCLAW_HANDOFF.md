@@ -1,5 +1,14 @@
 # OPENCLAW_HANDOFF · 内蒙古打大A 微信小游戏
 
+> **⚠️ 历史迁移资料（2026-11-12 起）**
+> 本文记录项目从 OpenClaw 工作区迁到 DSH 时的状态，**不是现行规范**。
+> 其中的旧绝对路径、`tools/probe.js` / `resume.js`、`openclaw config`、Gateway 重启、套件数（94）等多数已失效。
+> 现行入口：仓库根 `AGENTS.md`；背景/架构/决策/状态见 `da-a-game/docs/`。
+>
+> 以下为原文（保留作历史对照）。
+
+---
+
 > 面向**新会话 / 新 agent** 的接手说明。
 > 最后更新：2026-11-11（E26/E27/E30 收口 + 取事实机制化）· Git HEAD 见 `git log -1`
 > 相关文档：**规则唯一来源** skills/da-a-game-rules/SKILL.md ｜ **AI 决策口径** ai/AI_POLICY.md
