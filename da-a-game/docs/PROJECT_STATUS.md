@@ -41,7 +41,7 @@
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
 - **测试**：97 个无头套件（规则/AI/UI/E2E/审计）。
 
-## 4. 本轮变更（2026-11-12，D-059/D-060/D-061）
+## 4. 本轮变更（2026-11-12，D-059～D-063）
 
 ### 代码
 
@@ -58,6 +58,10 @@
 | `da-a-game/tests/test-combos-qkaa.js` | **新增**（7 断言）：QKAA/A23 优先普通 A，只有大A 时仍能组龙。 |
 | `da-a-game/tests/test-turn-ownership.js` | **新增（12 断言）**：越序拒绝、未设轮次兼容、game.js 镜像、引擎推进（含跳空手 / 清桌后 lastPlayer 领出 / lastPlayer 已出完顺延）。 |
 | `da-a-game/tests/test-pack-manifest.js` | 入包清单增加 `src/turn.js`（现 23 个文件）。 |
+| `da-a-game/scripts/preflight.js` | **D-063**：第 8 项不再读 `~/.openclaw/openclaw.json`，改为检查 `skills/*/SKILL.md` 存在、frontmatter 含 `name`/`description` 且 `name` 与目录名一致；已用临时坏技能变异验证（缺 SKILL.md / 缺 description 都会 FAIL）。 |
+| `da-a-game/game.js`（文案） | 推风日志不再写死「同阵营=…」，改为输出触发者阵营 + 依据（§9.3 同阵营 / §9.4 顺时针非主A）。 |
+| `da-a-game/game.js`（测试钩子） | `__setState` 注入局面时重置 `uiTakenPlay`/`uiCaptureScanned` 并重扫 CAPTURE 流水；修复 `test-ui-observer-camp` §3.5 约 1/4 概率随机失败（初始化随机局的扫描游标污染注入局面）。10 次连跑 0 失败。 |
+| `da-a-game/src/phases.js` | 清理顶部过时注释（原文称「只实现到 LIANG_A_RESOLVED」，实际全部阶段已实现）。 |
 
 ### 文档与 skills
 
@@ -79,17 +83,17 @@
 |---|---|---|---|
 | 高 | **真机未验证**（开发者工具已完整跑通一局 2V3 并核对结算） | 真机字体/安全区/性能/触摸命中可能与模拟器不同 | 发布前在真机各跑 1 局 2V3、1V4、反A |
 | 中 | ~~轮次推进仍在 game.js~~（D-061 已解决：引擎在 `transition` 写入 `state.currentPlayer`，`game.js` 只镜像 + 清 UI） | — | 已实施；新增出牌入口必须走 `transition` |
-| 中 | preflight 第 8 项读 `~/.openclaw/openclaw.json` | 换机/删 OpenClaw 配置后该项会红 | 改 DSH 检查或删除（待确认） |
+| 中 | ~~preflight 第 8 项读 `~/.openclaw/openclaw.json`~~（D-063 已解决：改为仓库内 skills 结构检查） | — | 已实施，不再依赖外部配置 |
 | 低 | 基础库版本 | 仓库内字段不等于真机实际版本 | 已统一 3.17.6；真机最低版本在 MP 后台设置并回归 |
-| 低 | 推风日志写死「同阵营=…」 | 次方未公开、实际推给抓方时文案误导 | 文案改为按实际阵营输出 |
+| 低 | ~~推风日志写死「同阵营=…」~~（已改为输出触发者阵营 + §9.3/§9.4 依据） | — | 已实施 |
 | 低 | UI 镜像（`uiPlays`/`uiTableIds`/`uiTakenPlay`…）手工同步 | 漏同步会画面滞后 | 长期改为从 state 派生 |
 | 低 | 微信开发者工具 `open` 项目会**重写 `project.config.json`**（键顺序变化、行尾转 CRLF、末尾无换行） | 产生无关 diff，CRLF 有打包风险 | 提交前 `git diff` 检查；本次已 `git checkout -- project.config.json` 还原 |
-| 低 | `src/phases.js` 顶部注释称「只实现到 LIANG_A_RESOLVED」 | 过时，误导 | 可顺手清理 |
+| 低 | ~~`src/phases.js` 顶部注释过时~~（已清理） | — | 已完成 |
 
 ## 7. 待办与优先级
 
 1. **P0**：真机验证（2V3 / 1V4 / 反A 各一局），核对结算分数与贡字顺序。
-2. **P1**：preflight 去掉 OpenClaw 依赖；推风文案修正。
+2. **P1**：~~preflight 去掉 OpenClaw 依赖；推风文案修正~~（2026-11-12 已完成，见 D-063；phases 过时注释一并清理）。
 3. **P2**：UI 镜像收敛（`uiPlays`/`uiTableIds`/`uiTakenPlay` 从 state 派生）；发牌/闸门仍是 `game.js` 的驱动代码。
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
 5. **持续**：改动后更新本文件；保持 97+ 套件全绿。

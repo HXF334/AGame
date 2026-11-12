@@ -171,33 +171,40 @@ section('7. 其它配置文件');
   check(f + ' 可解析', ok, msg);
 });
 
-// ---------------------------------------------------------------- 8. Skill 白名单覆盖
-// [2026-11-03 改] 原来是「sync-skills --check」——比对仓库 skills 与 **work agent 的
-//   Workshop 镜像**。work agent 已被本项目取代, 镜像不再保留 -> 这项检查恒红,
-//   是在检查一个**对当前 agent 毫无影响**的目录, 属噪音。
-//   换成真正会咬人的那条: 仓库里放了 skill, 但**没加进 agent 白名单** ->
-//   agent 看不见它(显式白名单会**替换**默认并过滤掉其余 skill)。
-//   这才是「加了 skill 却用不上」的根因, 也是本项目实际踩过的坑。
-section('8. Skill 白名单覆盖（仓库 skills 必须都在 agent 白名单里）');
-try {
-  var cfgPath = path.join(require('os').homedir(), '.openclaw', 'openclaw.json');
-  var ocCfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-  var agentEntry = (ocCfg.agents && ocCfg.agents.entries && ocCfg.agents.entries['dada-dev']) || {};
-  var allow = agentEntry.skills || [];
-  var skillsDir = path.join(ROOT, 'skills');
-  var repoSkills = fs.existsSync(skillsDir)
-    ? fs.readdirSync(skillsDir).filter(function (d) {
-        return fs.existsSync(path.join(skillsDir, d, 'SKILL.md'));
-      })
-    : [];
-  var missing = repoSkills.filter(function (s) { return allow.indexOf(s) < 0; });
-  check('仓库 skills 都在 dada-dev 白名单里', missing.length === 0,
-    missing.length
-      ? '未加白名单(agent 看不见): ' + missing.join(', ')
-      : repoSkills.length + ' 份全部已加白名单');
-} catch (e) {
-  check('仓库 skills 都在 dada-dev 白名单里', false, '读 openclaw.json 失败: ' + e.message);
+// ---------------------------------------------------------------- 8. Skill 清单
+// [2026-11-12 改] 原第 8 项读 ~/.openclaw/openclaw.json 的 dada-dev 白名单。
+//   这是 OpenClaw 工作流的残留：换机、删配置或不再用 OpenClaw 后该项恒红，
+//   而它对 DSH 下的技能发现没有任何影响（纯噪音红）。
+//   改为检查仓库自身：每个 skills/<dir>/SKILL.md 都必须存在、frontmatter 完整
+//   （name + description），且 name 与目录名一致 —— 这是「技能能被加载」的
+//   真正前提，不依赖任何外部配置。
+section('8. 技能清单（skills/*/SKILL.md 存在且 frontmatter 完整）');
+var skillsDir = path.join(ROOT, 'skills');
+var skillProblems = [];
+var repoSkills = [];
+if (!fs.existsSync(skillsDir)) {
+  skillProblems.push('skills/ 目录缺失');
+} else {
+  fs.readdirSync(skillsDir).forEach(function (d) {
+    var dir = path.join(skillsDir, d);
+    if (!fs.statSync(dir).isDirectory()) return;
+    var f = path.join(dir, 'SKILL.md');
+    if (!fs.existsSync(f)) { skillProblems.push(d + ': 缺 SKILL.md'); return; }
+    repoSkills.push(d);
+    var txt = fs.readFileSync(f, 'utf8');
+    if (txt.slice(0, 3) !== '---') { skillProblems.push(d + ': 缺 frontmatter'); return; }
+    var end = txt.indexOf('\n---', 3);
+    var fm = end < 0 ? '' : txt.slice(3, end);
+    var nameM = /(^|\n)name:\s*(\S+)/.exec(fm);
+    var descM = /(^|\n)description:\s*(\S)/.exec(fm);
+    if (!nameM) skillProblems.push(d + ': frontmatter 缺 name');
+    else if (nameM[2].replace(/["']/g, '') !== d) skillProblems.push(d + ': name=' + nameM[2] + ' 与目录名不一致');
+    if (!descM) skillProblems.push(d + ': frontmatter 缺 description');
+  });
+  if (!repoSkills.length) skillProblems.push('skills/ 下没有任何 SKILL.md');
 }
+check('skills 目录结构完整（SKILL.md + name/description）', skillProblems.length === 0,
+  skillProblems.length ? skillProblems.join('; ') : '已检查 ' + repoSkills.length + ' 份: ' + repoSkills.join(', '));
 
 // ---------------------------------------------------------------- 9. 全量测试
 section('9. 全量测试');

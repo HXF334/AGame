@@ -266,7 +266,7 @@ chooseAction(state, playerId)
 | 2 | UI 镜像状态与 `gameState` 双份（`uiPlays`、`uiTableIds`、`uiTakenPlay`…） | 手工同步，漏同步会画面滞后 | 逐步改为从 state 派生；短期保持现状 |
 | 3 | `transition` 出口 merge + `plays` 保护是补丁式设计 | 新 handler 容易忘记返回字段 | 新 handler 明确列出所有变更字段；补测试锁 `plays` 不丢 |
 | 4 | `game.js` 约 2.6k 行，混驱动/闸门/触摸/托管/日志 | 可读性下降，改动易牵连 | 只做低风险拆分（如日志/闸门），不重写 |
-| 5 | preflight 第 8 项仍读 `~/.openclaw/openclaw.json` 的 dada-dev 白名单 | OpenClaw 已迁移，换机/删配置后该项会红 | 改成 DSH 环境检查或删除该项（需确认） |
+| 5 | ~~preflight 第 8 项仍读 `~/.openclaw/openclaw.json` 的 dada-dev 白名单~~（D-063 已解决） | 原为 OpenClaw 残留，换机/删配置会恒红；现改为仓库内 skills 结构检查（SKILL.md + name/description） | 保持；新增技能只需保证目录名与 frontmatter 一致 |
 | 6 | 基础库：仓库字段只影响开发者工具，真机由用户微信决定 | 模拟器与真机行为可能有差异 | 统一 3.17.6；MP 后台最低版本另行设置 |
-| 7 | 推风日志文案写死「同阵营=…」 | 次方未公开、目标其实是抓方时文案误导 | 文案改为「推给下一位」或按实际阵营输出 |
-| 8 | `src/phases.js` 顶部注释称「只实现到 LIANG_A_RESOLVED」 | 过时，误导新人 | 已在新文档纠正；源码注释可顺手清理 |
+| 7 | ~~推风日志文案写死「同阵营=…」~~（已解决） | 次方未公开时实际目标可能是抓方，旧文案会误导 | 现按 §9.3/§9.4 输出依据与目标 |
+| 8 | ~~`src/phases.js` 顶部注释称「只实现到 LIANG_A_RESOLVED」~~（已清理） | 过时，误导新人 | 已改为「全部阶段均已实现」 |

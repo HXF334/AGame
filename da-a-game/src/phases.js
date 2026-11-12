@@ -6,16 +6,16 @@
 //   ACTIONS — 玩家/系统可发起的动作
 //   ERR     — transition() 拒绝动作时返回的错误类型
 //
-// 本阶段只实现到 LIANG_A_RESOLVED；其它阶段为占位常量，不允许进入。
+// 全部阶段均已实现（§3 状态机）；具体入口由 transition.dispatch 校验。
 
 // === 阶段（§3） ===
-// 本阶段实现：
+// 各阶段含义：
 //   GAME_START         1. 对局开始
+//   DEALING            发牌中（逐轮发牌，期间持有可亮A的玩家可以亮A）
 //   LIANG_A            5. 亮A阶段（含 §4.1 主动亮A + §4.2 强制排查）
 //   LIANG_A_RESOLVED   主A花色已确立，等待反A
 //   FAN_A              7. 反A阶段（ADVANCE 从 LIANG_A_RESOLVED 进来）
 //   FAN_A_RESOLVED     反A 结束（成功 / 无人反A 都进这里）
-// 本阶段不实现（占位，禁止进入）：
 //   REVEAL_BOTTOM      8. 底牌翻开
 //   IDENTITY_CHOICE    9. 次方身份选择
 //   PLAY               11. 出牌阶段

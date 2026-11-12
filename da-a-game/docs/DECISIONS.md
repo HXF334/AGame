@@ -205,3 +205,10 @@
 - 删除 `skills/git-safe-workflow`、`skills/windows-cn-batch-encoding`；现仅 3 份：`da-a-game-rules`（规则）、`senior-dev-standard`（工作流）、`audit-rules-vs-impl`（对账）。
 - `da-a-game-rules/SKILL.md` 重排：增加术语速查与阅读路径，合并重复段落；**章节号 §1–§15 与 §13 的 20 条必测用例保持不变**（代码注释与审计脚本依赖），规则语义未变。
 - 相关：`da-a-game/skills/*/SKILL.md`、`docs/PROJECT_STATUS.md`
+
+## D-063 preflight 第 8 项改为仓库内技能结构检查（2026-11-12）
+
+- 原第 8 项读 `~/.openclaw/openclaw.json` 的 `dada-dev` 白名单，是 OpenClaw 工作流残留：换机、删配置或不再用 OpenClaw 后恒红，但对 DSH 下的技能发现没有影响。
+- 改为检查仓库自身：`skills/<dir>/SKILL.md` 必须存在、frontmatter 含 `name` 与 `description`、`name` 与目录名一致；不依赖任何外部配置。
+- 变异验证：临时放一个缺 `SKILL.md`、再放一个缺 `description` 的目录，preflight 均准确 FAIL；删除后恢复 12/12。
+- 相关：`scripts/preflight.js`、`skills/*/SKILL.md`、`PROJECT_STATUS.md` §6、`ARCHITECTURE.md` §13

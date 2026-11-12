@@ -1520,7 +1520,6 @@ function _uiSyncTrick() {
 //   -> 每条**新出现**的 CAPTURE -> uiTakenPlay[beat] = true -> 渲染层在他座位前那手牌的
 //      **最后一张**右下角标「取」(AI_POLICY 14)。
 //   -> 受害者自己再出一手时 _uiRecordPlay 会清掉这个标志(只证明「当时那手被取走了」)。
-//   -> 受害者自己再出一手时 _uiRecordPlay 会清掉这个标志(只证明「当时那手被取走了」)。
 var uiCaptureScanned = 0;   // 已处理过的 CAPTURE 流水条数
 function _uiScanCaptured() {
   var plays = (gameState && gameState.plays) || [];
@@ -2024,12 +2023,17 @@ function doPushWind() {
   if (r && r.ok) {
     var _before = currentPlayer;
     gameState = r.state;
+    // [2026-11-12 修正文案] 次方未公开时 §9.4 的目标是「顺时针最近的非主A」，
+    //   不保证同阵营；旧日志写死「同阵营=…」，实测推给抓方时文案会误导。
+    //   保留「同阵营=阵营[名单]」段仅用于 §9.3，§9.4 改打「依据=§9.4」，两分支都可判读。
+    var _triggerCamp = (gameState['主方'] && gameState['主方'].indexOf(trigger) >= 0) ? '主方' : '抓方';
+    var _pushByCamp = (gameState['次方公开'] === true || gameState['mode'] === '2V3_明打');
+    var _campList = _triggerCamp === '主方' ? (gameState['主方'] || []) : (gameState['抓方'] || []);
     log('推风完成: 触发=' + pn(trigger)
-      + ' 同阵营=' + (gameState['主方'] && gameState['主方'].indexOf(trigger) >= 0
-          ? '主方[' + gameState['主方'].map(pn).join(',') + ']'
-          : '抓方[' + (gameState['抓方'] || []).map(pn).join(',') + ']')
-      + ' 目标=' + pn(r.state.currentPlayer)
-      + ' (§9.3 同阵营最近未出完者)');
+      + (_pushByCamp
+          ? ' 依据=§9.3 同阵营=' + _triggerCamp + '[' + _campList.map(pn).join(',') + ']'
+          : ' 依据=§9.4 顺序=顺时针跳主A')
+      + ' 目标=' + pn(r.state.currentPlayer));
     // [P1 修复] 必须把引擎算出的推风目标同步回模块级 currentPlayer。
     //   push-wind.js 会在 newState 里设 currentPlayer = target (§9 目标选择结果),
     //   但本函数原先只更新 gameState, 遗漏了 currentPlayer —— 于是 runAI()
@@ -2554,6 +2558,13 @@ if (typeof module !== 'undefined' && module.exports) {
       selectedCards = [];
       handCardHitboxes = [];
       if (o.human) humanPlayer = o.human;
+      // [2026-11-12 修 flaky] 注入局面必须重置「取」标志的扫描游标：
+      //   模块初始化时会随机跑一局，可能已经留下 uiCaptureScanned>0；
+      //   否则新 state 里 CAPTURE 条数更少 -> 游标回拨却不重扫 -> uiTakenPlay 漏标。
+      //   测试 test-ui-observer-camp §3.5 曾因此约 1/4 概率随机失败。
+      uiTakenPlay = {};
+      uiCaptureScanned = 0;
+      _uiScanCaptured();
       if (ctx) draw();
       return { phase: gameState.phase, currentPlayer: currentPlayer };
     },
