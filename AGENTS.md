@@ -117,9 +117,9 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 ## 11. 当前状态（摘要，详见 PROJECT_STATUS.md）
 
 - 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **97 套件 / 0 失败**。
-- 2026-11-12 已修：托管出完牌推风丢失（P0）、QKAA 优先普通 A 失效（P1）、`doPlay` 约 80 行死代码 + `isRoundOver` 口径不一致（P2）；轮次归属已按 D-059 让引擎持有并校验，基础库统一为 3.17.6（D-060）。
+- 2026-11-12 已修：托管出完牌推风丢失（P0）、QKAA 优先普通 A 失效（P1）、`doPlay` 约 80 行死代码 + `isRoundOver` 口径不一致（P2）；轮次归属先由 D-059 让引擎持有并校验，再由 **D-061（方案 A）完全接管推进**（`src/turn.js` + `transition` 写入 `state.currentPlayer`，game.js 只镜像）；基础库统一为 3.17.6（D-060）。
 - 开发者工具可 `open` 并进入 PLAY（2026-11-12 截图冒烟通过）。
-- 未完成：真机验证、轮次推进完全收归引擎（方案 A）、文档后续维护。
+- 未完成：真机验证、UI 镜像收敛、文档后续维护、其它 skills 合并精简。
 
 ## 12. 与 OpenClaw 历史的关系
 

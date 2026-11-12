@@ -189,3 +189,19 @@
 - `project.config.json` 与本地 `project.private.config.json` 的 `libVersion` 统一为 `3.17.6`（此前 2.19.4 / 3.17.6 不一致，模拟器实际跑后者）。
 - 说明：`libVersion` 只影响开发者工具编译/模拟；真机用的是用户微信自带基础库，最低支持版本需在微信公众平台后台设置，仓库字段不是真机依据。
 - 相关：`project.config.json`
+
+## D-061 引擎完全接管轮次推进（方案 A，2026-11-12）
+
+- 用户批准按方案 A 实施：新增 `src/turn.js`（`nextAliveId` / `advanceAfterPlay` / `advanceAfterPass`），由 `transition.handlePlayAction` / `handlePassAction` 在成功后调用。
+- 规则：行动者之后按座次找下一个有手牌者（跳过已出完）；全员过牌清桌后由 `lastPlayer` 重新领出（已出完则顺延）；终局无人有牌时保持 `currentPlayer` 不变，交给 `checkGameEnd`。
+- `game.js.advanceCurrentPlayer()` 改为纯镜像 + UI 清理：读取 `gameState.currentPlayer`，只在「轮转真正跳过某个已出完玩家」时清其 `uiPlays/uiPlaysTrick`；兜底扫描仅用于外部直接调用（老测试/工具）。
+- 兼容：`play.handlePlay/handlePass` 仍只做轮次校验，不写轮次；直接调用它们的测试不受影响。
+- 相关：`src/turn.js`（新增）、`src/transition.js`、`game.js`、`tests/test-turn-ownership.js`（12 断言）、`tests/test-pack-manifest.js`（入包清单 +turn.js）
+
+## D-062 skills 精简为 3 份，规则 SKILL 可读性整理（2026-11-12）
+
+- 用户要求合并其余 skills，并单独优化 `da-a-game-rules`。
+- 合并：`git-safe-workflow`、`windows-cn-batch-encoding` 并入 `senior-dev-standard`（保留目录名，避免改 OpenClaw 白名单），后者重写为「开发工作流总纲」（代码纪律 / 测试 / Git / 中文 Windows 编码）。
+- 删除 `skills/git-safe-workflow`、`skills/windows-cn-batch-encoding`；现仅 3 份：`da-a-game-rules`（规则）、`senior-dev-standard`（工作流）、`audit-rules-vs-impl`（对账）。
+- `da-a-game-rules/SKILL.md` 重排：增加术语速查与阅读路径，合并重复段落；**章节号 §1–§15 与 §13 的 20 条必测用例保持不变**（代码注释与审计脚本依赖），规则语义未变。
+- 相关：`da-a-game/skills/*/SKILL.md`、`docs/PROJECT_STATUS.md`

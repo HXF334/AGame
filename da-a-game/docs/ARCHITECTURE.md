@@ -20,7 +20,7 @@
 
 依赖方向：`game.js → ui-render.js / src/*`；`src/*` 之间只允许单向依赖（`transition → play/capture/push-wind/hand-types`），`src/` **绝不** `require('game.js')` 或 `wx.*`。
 
-## 2. 模块清单（`da-a-game/src/`，18 个）
+## 2. 模块清单（`da-a-game/src/`，19 个）
 
 | 模块 | 职责 | 关键导出 |
 |---|---|---|
@@ -33,6 +33,7 @@
 | `combos.js` | 手牌可出组合枚举（AI/提示用） | `candidateCombos(hand)` |
 | `capture.js` | 4 取牌 | `canCapture`、`executeCapture` |
 | `play.js` | 出牌/过牌/轮末 | `handlePlay`、`handlePass`、`isRoundOver` |
+| `turn.js` | 轮次推进（D-061） | `nextAliveId`、`advanceAfterPlay`、`advanceAfterPass` |
 | `push-wind.js` | 推风 | `pushWind` |
 | `win-loss.js` | 胜负判定 | `getCamp`、`isAllOut`、`getFirstOutPlayer`、`checkGameEnd` |
 | `scoring.js` | 计分 | `autoDeriveN`、`calculateScore` |
@@ -154,7 +155,8 @@ PLAY --PLAY/PASS/PUSH_WIND--> ... --checkGameEnd--> GAME_END --> SCORING
 1. 校验 payload/玩家/手牌/cardIds 均存在且属于该玩家。
 2. 若选的全是 4 → 先试 `executeCapture`；成功则记 `plays {kind:'CAPTURE', useFours, beat}` 并返回。
 3. 否则 `identifyHand` + `canBeat(state.table)`；成功则覆盖 `table`、旧桌面进 `discarded`、`lastPlayer`、清 `passedPlayers/passCount`、追加 `plays {kind:'PLAY', beat}`。
-4. **轮次校验**（D-059）：`state.currentPlayer` 非空时，`playerId` 必须等于它，否则 `NOT_YOUR_TURN`；为 null 时保持兼容（老测试/直接构造局面）。推进仍由 `game.js.advanceCurrentPlayer()` 完成，并镜像回 `state.currentPlayer`。
+4. **轮次校验**（D-059）：`state.currentPlayer` 非空时，`playerId` 必须等于它，否则 `NOT_YOUR_TURN`；为 null 时保持兼容（老测试/直接构造局面）。
+5. **轮次推进**（D-061）：`transition.handlePlayAction/handlePassAction` 成功后调用 `src/turn.js` 把下一行动者写入 `state.currentPlayer`（跳过已出完者；全员过牌清桌时 `lastPlayer` 重新领出）。`game.js.advanceCurrentPlayer()` 只做镜像与 UI 清理，不再自己推座位。
 
 ### 6.2 4 取牌（`capture.js`）
 
@@ -253,14 +255,14 @@ chooseAction(state, playerId)
 
 - `project.config.json`：`appid=wx99808147273cdea1`、`libVersion=3.17.6`、`minigameRoot=./`、`packOptions.ignore=[scripts,tests,docs,skills,tools]`。
 - `project.private.config.json`（git 忽略，仅本地）：`libVersion` 同为 3.17.6。
-- `tests/test-pack-manifest.js` 锁定最终入包文件集合（当前 18 个文件），新增目录忘加 ignore 会被这条测试拦住。
+- `tests/test-pack-manifest.js` 锁定最终入包文件集合（当前 23 个文件），新增目录忘加 ignore 会被这条测试拦住。
 - 无 `package.json`、无 lockfile；不要引入依赖。
 
 ## 13. 已知取舍与技术债
 
 | # | 问题 | 影响 | 建议 |
 |---|---|---|---|
-| 1 | **轮次推进仍在 game.js**：`state.currentPlayer` 已由引擎持有并校验（D-059），但推进/跳过空手/清 UI 仍由 `game.js.advanceCurrentPlayer()` 驱动 | 引擎只能拒绝越序，不能自己推进；状态回放仍需 game.js 的推进逻辑 | 方案 A：把推进收进 `transition`（含空手跳过、推风归属），game.js 只渲染；需再评估 |
+| 1 | ~~**轮次推进仍在 game.js**~~（D-061 已解决）：引擎在 `transition` 出牌/过牌成功后写入 `state.currentPlayer`，`game.js.advanceCurrentPlayer()` 只镜像并清 UI | 引擎可独立推进，状态可回放；`game.js` 的兜底扫描仅服务老测试/直接注入 | 保持；新增出牌入口必须走 `transition`，不得绕过 |
 | 2 | UI 镜像状态与 `gameState` 双份（`uiPlays`、`uiTableIds`、`uiTakenPlay`…） | 手工同步，漏同步会画面滞后 | 逐步改为从 state 派生；短期保持现状 |
 | 3 | `transition` 出口 merge + `plays` 保护是补丁式设计 | 新 handler 容易忘记返回字段 | 新 handler 明确列出所有变更字段；补测试锁 `plays` 不丢 |
 | 4 | `game.js` 约 2.6k 行，混驱动/闸门/触摸/托管/日志 | 可读性下降，改动易牵连 | 只做低风险拆分（如日志/闸门），不重写 |

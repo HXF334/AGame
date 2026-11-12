@@ -10,9 +10,9 @@
 | 项 | 值 |
 |---|---|
 | 分支 | `main` |
-| HEAD | 本轮 `D-059/D-060` 提交（`git log -1`；上一提交 `091bae1 docs: 重组接手文档`） |
-| 与远端 | 已同步（`main...origin/main` 无差异，2026-11-12 已 push），远端 `https://github.com/HXF334/AGame.git` |
-| 工作区 | 干净（本轮改动已提交） |
+| HEAD | 本轮 `D-061/D-062` 提交（`git log -1`；上一提交 `d26b814 feat(engine): 轮次推进收归引擎（D-061）`） |
+| 与远端 | 本地领先 2 个提交，待本轮结束 push（策略：每任务推一次，失败即停） |
+| 工作区 | 干净 |
 | 技术栈 | 原生微信小游戏，CommonJS + `wx.*` + Canvas，无构建、无 npm 依赖 |
 | 基础库 | 3.17.6（`project.config.json` 与本地 `project.private.config.json` 已统一；真机最低版本由 MP 后台决定） |
 | 微信开发者工具 | 已登录，CLI 可用；`da-a-game` 项目已打开并能进 PLAY（2026-11-12 截图） |
@@ -41,27 +41,29 @@
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
 - **测试**：97 个无头套件（规则/AI/UI/E2E/审计）。
 
-## 4. 本轮变更（2026-11-12，D-059/D-060）
+## 4. 本轮变更（2026-11-12，D-059/D-060/D-061）
 
 ### 代码
 
 | 文件 | 变更 |
 |---|---|
-| `da-a-game/game.js` | **P0**：删除 `_autoPlayDoPlay` 里无条件的 `lastEmptiedPlayer = null;`，托管出完牌不再丢推风；新增 `__lastEmptiedPlayer()` 钩子。**P2**：删除 `doPlay` 中约 80 行不可达的「逐张回退 + 组合回退」死代码（行为不变，未选牌仍只提示）。 |
+| `da-a-game/game.js` | **P0**：删除 `_autoPlayDoPlay` 里无条件的 `lastEmptiedPlayer = null;`，托管出完牌不再丢推风；新增 `__lastEmptiedPlayer()` 钩子。**P2**：删除 `doPlay` 中约 80 行不可达的「逐张回退 + 组合回退」死代码（行为不变，未选牌仍只提示）。**D-059**：新增 `_setTurn()` 镜像引擎轮次。**D-061**：`advanceCurrentPlayer()` 改为镜像 `gameState.currentPlayer` + 按「被跳过的空手玩家」清 UI，不再自己推座位（保留外部直接调用的兜底扫描）。 |
 | `da-a-game/src/combos.js` | **P1**：对 A 池按 **card 对象**统一排序（普通 A 在前、主方大A 在后），高端 QKAA 与低端 A23 同时生效；删除对 card id 字符串的无效排序与重复 `var _groupsA`。 |
 | `da-a-game/src/play.js` | **P2**：`isRoundOver` 改为与 `handlePass` 同口径（已出完者不计入「还需过牌」人数）；**D-059**：`handlePlay`/`handlePass` 增加轮次校验（`state.currentPlayer` 非空时必须匹配，否则 `NOT_YOUR_TURN`）。 |
-| `da-a-game/src/transition.js` | **D-059**：`newGameState()` 与 `STATE_DEFAULTS` 增加 `currentPlayer: null`。 |
-| `da-a-game/game.js` | **P0**：删除 `_autoPlayDoPlay` 里无条件的 `lastEmptiedPlayer = null;`，托管出完牌不再丢推风；新增 `__lastEmptiedPlayer()` 钩子。**P2**：删除 `doPlay` 中约 80 行不可达的「逐张回退 + 组合回退」死代码（行为不变，未选牌仍只提示）。**D-059**：新增 `_setTurn()`，所有轮次变更（进入 PLAY、出牌/过牌推进、推风、newGame、测试注入）同时写模块变量与 `gameState.currentPlayer`。 |
+| `da-a-game/src/turn.js` | **新增（D-061）**：`nextAliveId` / `advanceAfterPlay` / `advanceAfterPass`，引擎侧的轮次推进（跳过已出完；清桌后 `lastPlayer` 领出）。 |
+| `da-a-game/src/transition.js` | **D-059**：`newGameState()` 与 `STATE_DEFAULTS` 增加 `currentPlayer: null`。**D-061**：`handlePlayAction` / `handlePassAction` 成功后调用 `turn.advanceAfterPlay/Pass` 写入下一行动者。 |
 | `da-a-game/project.config.json` | **D-060**：`libVersion` 2.19.4 → 3.17.6（与本地 `project.private.config.json` 统一）。 |
 | `da-a-game/tests/test-play.js` | 更新 2 个 `isRoundOver` 用例（补足手牌、新增「已出完不计数」）。 |
 | `da-a-game/tests/test-autoplay-pushwind.js` | **新增**（7 断言）：托管出完最后一手 → `lastEmptiedPlayer` 保留 → 轮末推风成功。 |
 | `da-a-game/tests/test-combos-qkaa.js` | **新增**（7 断言）：QKAA/A23 优先普通 A，只有大A 时仍能组龙。 |
-| `da-a-game/tests/test-turn-ownership.js` | **新增**（7 断言）：引擎拒绝越序出/过、未设轮次时兼容、game.js 轮次镜像一致。 |
+| `da-a-game/tests/test-turn-ownership.js` | **新增（12 断言）**：越序拒绝、未设轮次兼容、game.js 镜像、引擎推进（含跳空手 / 清桌后 lastPlayer 领出 / lastPlayer 已出完顺延）。 |
+| `da-a-game/tests/test-pack-manifest.js` | 入包清单增加 `src/turn.js`（现 23 个文件）。 |
 
-### 文档
+### 文档与 skills
 
 - 新增 `AGENTS.md`（仓库根）、`docs/PROJECT_CONTEXT.md`、`docs/ARCHITECTURE.md`、`docs/DECISIONS.md`、`docs/PROJECT_STATUS.md`（本文件）。
 - `docs/history/OPENCLAW_HANDOFF.md` 保留，但已标注为历史资料（见文件头）。
+- **D-062**：`git-safe-workflow`、`windows-cn-batch-encoding` 合并进 `senior-dev-standard`（重写为开发工作流总纲），删除原目录；skills 由 5 份精简为 3 份。`da-a-game-rules/SKILL.md` 重排（术语速查、去重），章节号与 §13 用例不变。
 
 ## 5. 冒烟记录（开发者工具）
 
@@ -75,7 +77,7 @@
 | 级别 | 问题 | 影响 | 计划 |
 |---|---|---|---|
 | 高 | **真机未验证**（仅模拟器冒烟） | 真机字体/安全区/性能/触摸命中可能与模拟器不同 | 发布前至少各跑 1 局 2V3、1V4、反A |
-| 中 | **轮次推进仍在 game.js**（引擎已持有并校验 `state.currentPlayer`，D-059） | 引擎能拒绝越序，但不能自行推进/回放 | 方案 A（推进收进 transition）待评估，见 D-059/ARCHITECTURE §13 |
+| 中 | ~~轮次推进仍在 game.js~~（D-061 已解决：引擎在 `transition` 写入 `state.currentPlayer`，`game.js` 只镜像 + 清 UI） | — | 已实施；新增出牌入口必须走 `transition` |
 | 中 | preflight 第 8 项读 `~/.openclaw/openclaw.json` | 换机/删 OpenClaw 配置后该项会红 | 改 DSH 检查或删除（待确认） |
 | 低 | 基础库版本 | 仓库内字段不等于真机实际版本 | 已统一 3.17.6；真机最低版本在 MP 后台设置并回归 |
 | 低 | 推风日志写死「同阵营=…」 | 次方未公开、实际推给抓方时文案误导 | 文案改为按实际阵营输出 |
@@ -87,8 +89,8 @@
 
 1. **P0**：真机验证（2V3 / 1V4 / 反A 各一局），核对结算分数与贡字顺序。
 2. **P1**：preflight 去掉 OpenClaw 依赖；推风文案修正。
-3. **P2**：推进完全收归引擎（方案 A，见 D-059/`ARCHITECTURE.md` §13）；UI 镜像收敛。
-4. **P3**：其它 skills 合并精简（`da-a-game-rules` 保持独立）。
+3. **P2**：UI 镜像收敛（`uiPlays`/`uiTableIds`/`uiTakenPlay` 从 state 派生）；发牌/闸门仍是 `game.js` 的驱动代码。
+4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
 5. **持续**：改动后更新本文件；保持 97+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）

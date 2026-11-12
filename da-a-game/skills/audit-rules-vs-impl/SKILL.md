@@ -87,5 +87,4 @@ node skills/audit-rules-vs-impl/scripts/audit.js
 ## 7. 相关 SKILL
 
 - `da-a-game-rules` — 规则唯一来源（对账的**基准**）
-- `senior-dev-standard` — 最小改动 + 自动测试纪律
-- `git-safe-workflow` — 提交与回滚纪律
+- `senior-dev-standard` — 开发工作流总纲：最小改动、自动测试、Git 纪律、中文 Windows/PowerShell 坑
