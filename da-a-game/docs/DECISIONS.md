@@ -225,8 +225,25 @@
 ## D-065 提示候选：大A 单独成组，按「不含大A → 双大A → 混出」排序（2026-11-12）
 
 - 用户反馈：1V4 明打、手牌 双大A + 3 普通A 时，点提示依次选中「双大A → 5张A → 双大A」，且 AAA 根本不出现；期望「先 AAA（不含大A）→ 双大A → 5张A」。
-- 根因两处：① combos.js 同点组只取前 n 张前缀，双大A 排在组首，永远枚举不出三张普通A；② i.js 按 rank 分组，大A 与普通A 同组，出 AAA 被判为拆了 5 张 A 的组。
-- 改法：i.js 新增 groupKeyOf(c)（主方大A → BIG_A），handGroups/splitsSameRankGroup/splitEggCount 统一用它；combos.js 同点组按「普通A 在前、大A 在后」排序后用 _subsets 枚举全部子集；game.js uiHintCandidates 增加 igTier（0/1/2）并排在 isFirst 之前。
-- 结果：候选顺序为 3张A(首发) → 4张K → 2张A(双大A) → 5张A → 假八组合。
-- 测试：	ests/test-hint-big-a-order.js（5 断言）。
-- 相关：src/ai.js、src/combos.js、game.js、docs/ai/AI_POLICY.md §3.1、ARCHITECTURE.md §8
+- 根因两处：① `combos.js` 同点组只取前 n 张前缀，双大A 排在组首，永远枚举不出三张普通A；② `ai.js` 按 rank 分组，大A 与普通A 同组，出 AAA 被判为拆了 5 张 A 的组。
+- 改法：`ai.js` 新增 `groupKeyOf(c)`（主方大A → `BIG_A`），`handGroups`/`splitsSameRankGroup`/`splitEggCount` 统一用它；`combos.js` 同点组按「普通A 在前、大A 在后」排序后用 `_subsets` 枚举全部子集；`game.js uiHintCandidates` 增加 `bigTier`（0/1/2）并排在 `isFirst` 之前。
+- 结果：候选顺序为 `3张A`(首发) → `4张K` → `2张A`(双大A) → `5张A` → 假八组合。
+- 测试：`tests/test-hint-big-a-order.js`（5 断言）。
+- 相关：`src/ai.js`、`src/combos.js`、`game.js`、`docs/ai/AI_POLICY.md` §3.1、`ARCHITECTURE.md` §8
+
+## D-066 提示排序补「拆同点组」键，与托管同口径（2026-11-12）
+
+- 用户反馈：手牌 JJQ2、上家出单 9，点提示依次 Q → J → 2；期望 Q → 2 → J（托管不会拆 JJ 出 J）。
+- 根因：提示排序只用了 `ai.splitPenalty`（只管同点家族），缺托管排序里的 `split` 键（拿对子里的 1 张也算拆组）。J 与 2 都不罚，于是按 `value` 升序 J(11) 排在 2(18) 前。
+- 改法：`game.js uiHintCandidates` 增加 `splitGroup` 字段（按 `groupKeyOf` 分组，候选用了某组的一部分就 +1），排序放在 `typeRank` 之后、`len` 之前——先保「同牌型优先」，再比拆组。
+- 结果：JJQ2 打 9 → Q（托管首选）→ 2 → J；J333 打单 10 仍保持「单张优先于蛋子」。
+- 测试：`tests/test-hint-order-split.js`（7 断言）。
+- 相关：`game.js`（`uiHintCandidates`/`_hintSplitGroups`）、`tests/test-req-20261108.js` §2.2
+
+## D-067 AI 座位头像加「AI」标志（2026-11-12）
+
+- 用户要求：AI 玩家的头像中间加 AI 标志，便于区分真人/AI。
+- 改法：`ui-render.js drawSeats` 在每个非真人座位（该函数不画真人座位）的头像圆心绘制白色加粗「AI」，字号约 `rr * 0.62`；真人座位在 `drawMeSeat` 中绘制，不加标志。
+- 观察者模式：`humanPlayer` 被改写为观察者本人，其余座位仍显示 AI 标志，符合「切换到 AI 玩家视角」的语义。
+- 测试：`tests/test-ui-ai-badge.js`（3 断言，用 `__renderTexts()` 统计「AI」出现 4 次）。
+- 相关：`ui-render.js` §9、`tests/test-ui-ai-badge.js`

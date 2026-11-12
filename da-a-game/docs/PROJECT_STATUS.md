@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **99 个套件 / 执行 99 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **101 个套件 / 执行 101 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 99/99 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 101/101 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,9 +39,9 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：99 个无头套件（规则/AI/UI/E2E/审计）。
+- **测试**：101 个无头套件（规则/AI/UI/E2E/审计）。
 
-## 4. 本轮变更（2026-11-12，D-059～D-064）
+## 4. 本轮变更（2026-11-12，D-059～D-067）
 
 ### 代码
 
@@ -65,6 +65,10 @@
 | `da-a-game/src/play.js`（D-064） | 出牌流水补齐：PLAY / CAPTURE 记录带 `cards`；`handlePass` 追加 `kind:'PASS'`；轮末清桌追加 `kind:'CLEAR'`（记 `lastPlayer`）。 |
 | `da-a-game/game.js`（D-064） | 删除 `_uiSyncTrick`/`_uiScanCaptured`/`_uiSyncPassState`/`_uiCurrentPlays` 与 `uiCaptureScanned`；新增 `_uiProjectPlays()` 从 `gameState.plays` 派生 `uiPlays`/`uiPlaysTrick`/`uiTrickId`/`uiPassed`/`uiTakenPlay`；「隐藏某手牌」用 `uiHiddenAt`、`uiPassHidden`、`uiPassResetAt` 表达。 |
 | `da-a-game/tests/test-ui-derived-play.js` | **新增（10 断言）**：PLAY→uiPlays、PASS→清牌+不出、CAPTURE→取标志、CLEAR→轮次+1 且未出完者保留、空流水重置。 |
+| `da-a-game/game.js`（D-066） | 提示排序补 `splitGroup`（拆同点组、含对子，与托管 `split` 键同口径），排在 `typeRank` 之后、`len` 之前；JJQ2 打 9 的顺序由 Q→J→2 修正为 Q→2→J。 |
+| `da-a-game/ui-render.js`（D-067） | `drawSeats` 在 AI 座位头像中心绘制「AI」标志；真人座位（`drawMeSeat`）不画。 |
+| `da-a-game/tests/test-hint-order-split.js` | **新增（7 断言）**：JJQ2 打 9 的顺序为 Q→2→J、托管同样出 Q、单张 J 记为拆组。 |
+| `da-a-game/tests/test-ui-ai-badge.js` | **新增（3 断言）**：5 人局恰好 4 个「AI」标志，换真人座位仍为 4。 |
 
 ### 文档与 skills
 
@@ -100,7 +104,7 @@
 2. **P1**：~~preflight 去掉 OpenClaw 依赖；推风文案修正~~（2026-11-12 已完成，见 D-063；phases 过时注释一并清理）。
 3. **P2**：~~UI 镜像收敛（`uiPlays`/`uiTakenPlay` 从 state 派生）~~（D-064 已完成，见 §4）；发牌/闸门仍是 `game.js` 的驱动代码。
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
-5. **持续**：改动后更新本文件；保持 99+ 套件全绿。
+5. **持续**：改动后更新本文件；保持 101+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）
 

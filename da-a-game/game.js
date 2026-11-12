@@ -1006,6 +1006,7 @@ function uiHintCandidates(mode) {
       sameType: (tableType && h && h.type === tableType) ? 0 : 1,   // 同牌型优先
       typeRank: pwr,                                               // 牌型从小到大
       len: cards.length, value: _uiComboPower(cards),
+      splitGroup: _hintSplitGroups(cards),
       bigTier: _bigTier,
       isFirst: !!isFirst
     });
@@ -1046,6 +1047,22 @@ function uiHintCandidates(mode) {
     });
     return out2;
   }
+  function _hintSplitGroups(cards) {
+    // [2026-11-12 用户] 提示顺序必须与托管一致: 拿了对子里的 1 张也算拆组(托管 split 键会罚),
+    //   否则 JJQ2 打 9 会出现「Q → J → 2」: J 明明拆了对子却排在 2 前面。
+    var groups = {}, used = {};
+    me.hand.forEach(function (c) {
+      var k = c['is主方大A'] ? 'BIG_A' : String(c.rank);
+      groups[k] = (groups[k] || 0) + 1;
+    });
+    cards.forEach(function (c) {
+      var k = c['is主方大A'] ? 'BIG_A' : String(c.rank);
+      used[k] = (used[k] || 0) + 1;
+    });
+    var n = 0;
+    for (var k2 in used) { if (groups[k2] > used[k2]) n++; }
+    return n;
+  }
   out.sort(function (a, b) {
     // [2026-11-12 用户] 含大A 的一律靠后: 0=不含大A, 1=双大A, 2=大A 混出。
     if (a.bigTier !== b.bigTier) return a.bigTier - b.bigTier;
@@ -1057,6 +1074,9 @@ function uiHintCandidates(mode) {
     if (_spa !== _spb) return _spa - _spb;
     if (a.sameType !== b.sameType) return a.sameType - b.sameType;
     if (a.typeRank !== b.typeRank) return a.typeRank - b.typeRank;
+    // [2026-11-12 用户] 拆同点组(含对子)与托管 split 键同口径: 先保住「同牌型优先」, 再比拆组,
+    //   否则 J333 打单 10 会把 333 排到单 3 前面。
+    if (a.splitGroup !== b.splitGroup) return a.splitGroup - b.splitGroup;
     if (a.len !== b.len) return a.len - b.len;
     if (a.value !== b.value) return a.value - b.value;
     return a.label < b.label ? -1 : (a.label > b.label ? 1 : 0);
