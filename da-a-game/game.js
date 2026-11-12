@@ -2244,47 +2244,63 @@ function _setTurn(pid) {
 //      在**轮转到他(被跳过)的这一刻**清掉他桌面上那手牌 -> 渲染层改显示 大贡/二贡/已出完。
 //      注意: 别人**压过他**时**不清**(那手牌还留在桌上), 等轮到他才清。
 //      同一轮多个人都出完: 轮转时逐个跳过、逐个清; 贡字按引擎的「出完顺序」分配, 互不影响。
+// 从 fromId 起按座位顺序找下一个有手牌的人（仅用于兜底补推；正常由 src/turn.js 决定）
+function _nextAliveId(state, fromId) {
+  var players = (state && state.players) || [];
+  var idx = -1;
+  for (var i = 0; i < players.length; i++) {
+    if (players[i].id === fromId) { idx = i; break; }
+  }
+  for (var step = 1; step <= players.length; step++) {
+    var p = players[(idx + step + players.length) % players.length];
+    if (p && p.hand && p.hand.length > 0) return p.id;
+  }
+  return null;
+}
+
 function advanceCurrentPlayer() {
   if (!gameState || !gameState.players) return;
-  var ids = ['A', 'B', 'C', 'D', 'E'];
-  var idx = ids.indexOf(currentPlayer);
-  if (idx < 0) return;
-  for (var step = 1; step <= 5; step++) {
-    var next = ids[(idx + step) % 5];
-    var nextPlayer = gameState.players.find(function (p) { return p.id === next; });
-      if (nextPlayer && (!nextPlayer.hand || nextPlayer.hand.length === 0)) {
-        delete uiPlays[next];
-        delete uiPlaysTrick[next];
+  // [D-061 2026-11-12] 方案 A：下一行动者已由引擎（src/turn.js）写入
+  //   gameState.currentPlayer；这里只做镜像 + UI 清理，不再自己推座位。
+  var next = gameState.currentPlayer;
+  // 兼容直接调用（测试/工具会先 __setState 再调本函数）：引擎尚未推进时补推一步。
+  if (!next || next === currentPlayer) {
+    next = _nextAliveId(gameState, currentPlayer);
+  }
+  if (!next) return;
+  var players = gameState.players;
+  var ids = players.map(function (p) { return p.id; });
+  var fromIdx = ids.indexOf(currentPlayer);
+  var toIdx = ids.indexOf(next);
+  // 出完牌的人：只在「轮转真正跳过他的那一刻」清掉他桌面那手牌，
+  // 让渲染层改显示 大贡/二贡/已出完（别人压过他时不清）。
+  if (fromIdx >= 0 && toIdx >= 0) {
+    for (var step = 1; step <= ids.length; step++) {
+      var i = (fromIdx + step) % ids.length;
+      if (i === toIdx) break;
+      var skipped = players[i];
+      if (!skipped.hand || skipped.hand.length === 0) {
+        delete uiPlays[skipped.id];
+        delete uiPlaysTrick[skipped.id];
       }
-    if (nextPlayer && nextPlayer.hand && nextPlayer.hand.length > 0) {
-      var _prevCur = currentPlayer;   // [2026-11-03] 记下换手前是谁 -> 决定要不要清真人的预选
-      _setTurn(next);
-      // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
-      uiTurnTick();
-      // [2026-11-03 用户] 轮到真人出牌 -> **清掉自己上一手牌的显示**
-      //   真人出的牌现在画在**原来按钮的位置**(ui-render layout().humanPlay),
-      //   不清掉就会和【出牌/不出/提示】三个按钮叠在一起。
-      //   用户原话「正常轮到自己出牌时上一手牌应该清掉显示按钮」。
-      //   [2026-11-02 旧行为] 当时是「不清掉」(那套方案下牌画在牌桌中央, 不冲突) ——
-      //   2026-11-03 牌位改到按钮行后, 必须清掉。
-      // [2026-11-03 用户] 「轮到AI玩家出牌时, 闹钟显示的时候要把他上一轮出的牌或者不出文字清掉」
-      //   -> 轮到谁就清掉他上一轮留下的出牌显示 / 「不出」标记:
-      //      真人回合 -> 按钮位让出来(旧行为); AI 回合 -> 座位前方的闹钟不跟旧牌/「不出」打架。
-      _uiClearTurnDisplay(next);
-      // [2026-11-06 用户] 托管: 轮到真人 -> 排一个 AI 代打动作(本局持续, 直到取消)
-      if (next === humanPlayer) uiHintIdx = 0;   // [2026-11-08 23:59] 新一轮提示从第一个候选开始
-      if (next === humanPlayer && uiAutoPlay) _autoPlaySchedule(700);
-      // [2026-11-03 用户] 别人出牌时真人**可以提前选牌**(只是不能打出)
-      //   -> 换手时**不能**无条件清空选中: 只有「刚才是真人在行动」才清
-      //      (真人出牌/过牌时清; AI 行动时保留真人的预选)。
-      if (_prevCur === humanPlayer) selectedCards = [];
-      // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
-      //   这样「出大A → 次方公开」「反A → mode 变 1V4」这类身份/阵营变化
-      //   无需逐个手写日志点, 也不会因未变化而刷屏。
-      logStateIfChanged('换手');
-      return;
     }
   }
+  var nextPlayer = gameState.players.find(function (p) { return p.id === next; });
+  if (!nextPlayer || !nextPlayer.hand || nextPlayer.hand.length === 0) return;
+  var _prevCur = currentPlayer;   // [2026-11-03] 记下换手前是谁 -> 决定要不要清真人的预选
+  _setTurn(next);
+  // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
+  uiTurnTick();
+  // [2026-11-03 用户] 轮到谁就清掉他上一轮留下的出牌显示 / 「不出」标记
+  _uiClearTurnDisplay(next);
+  // [2026-11-06 用户] 托管: 轮到真人 -> 排一个 AI 代打动作(本局持续, 直到取消)
+  if (next === humanPlayer) uiHintIdx = 0;   // [2026-11-08 23:59] 新一轮提示从第一个候选开始
+  if (next === humanPlayer && uiAutoPlay) _autoPlaySchedule(700);
+  // [2026-11-03 用户] 别人出牌时真人**可以提前选牌**(只是不能打出)
+  //   -> 换手时**不能**无条件清空选中: 只有「刚才是真人在行动」才清
+  if (_prevCur === humanPlayer) selectedCards = [];
+  // [2026-10-23] 每次换手都对比一次关键状态指纹, 只在**变化时**打日志。
+  logStateIfChanged('换手');
 }
 
 // === 触摸事件处理 (WeChat 小游戏) ===

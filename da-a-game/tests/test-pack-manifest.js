@@ -48,6 +48,7 @@ var EXPECTED_PACK = [
   'src/scoring.js',
   'src/sort-cards.js',
   'src/transition.js',
+  'src/turn.js',
   'src/util.js',
   'src/win-loss.js'
 ];

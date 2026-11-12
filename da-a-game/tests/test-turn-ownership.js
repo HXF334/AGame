@@ -7,6 +7,8 @@
 //   3) game.js 注入状态后把快变量镜像到 gameState.currentPlayer，出牌后仍保持一致
 const assert = require('assert');
 const { handlePlay, handlePass } = require('../src/play.js');
+const { transition } = require('../src/transition.js');
+const { ACTIONS } = require('../src/phases.js');
 const SB = require('./lib/state-builder.js');
 const GAME = require('../game.js');
 
@@ -82,7 +84,6 @@ test('1.5 轮到 A 时 A 正常过牌成功', function () {
 });
 
 section('2. game.js 镜像');
-
 test('2.1 __setState 把当前玩家写回 gameState.currentPlayer', function () {
   var st = SB.build({});
   GAME.__setState(st, { currentPlayer: 'A', human: 'A', clearLog: true });
@@ -98,6 +99,57 @@ test('2.2 真人出牌后快变量与 gameState.currentPlayer 一致且已换手
   GAME.doPlay();
   assert.strictEqual(GAME.currentPlayer(), 'B', 'A 之后应轮到 B');
   assert.strictEqual(GAME.gameState().currentPlayer, GAME.currentPlayer(), '镜像必须一致');
+});
+
+section('3. 引擎接管推进（D-061 方案 A）');
+
+test('3.1 A 出牌后引擎把 currentPlayer 设为 B', function () {
+  var st = SB.build({});
+  st.currentPlayer = 'A';
+  var r = transition(st, { type: ACTIONS.PLAY, payload: single(st, 'A') });
+  assert.strictEqual(r.ok, true, JSON.stringify(r.error));
+  assert.strictEqual(r.state.currentPlayer, 'B');
+});
+
+test('3.2 已出完的 B 被跳过，轮到 C', function () {
+  var st = SB.build({ emptyPlayers: ['B'] });
+  st.currentPlayer = 'A';
+  var r = transition(st, { type: ACTIONS.PLAY, payload: single(st, 'A') });
+  assert.strictEqual(r.ok, true, JSON.stringify(r.error));
+  assert.strictEqual(r.state.currentPlayer, 'C');
+});
+
+test('3.3 过牌但未清桌：轮到下一位', function () {
+  var st = SB.build({});
+  st.currentPlayer = 'A';
+  st.table = [handOf(st, 'B')[0]];
+  st.lastPlayer = 'B';
+  var r = transition(st, { type: ACTIONS.PASS, payload: { playerId: 'A' } });
+  assert.strictEqual(r.ok, true, JSON.stringify(r.error));
+  assert.strictEqual(r.state.table.length, 1, '未全员过牌，桌面牌应保留');
+  assert.strictEqual(r.state.currentPlayer, 'B');
+});
+
+test('3.4 全员过牌清桌：lastPlayer 重新领出', function () {
+  var st = SB.build({ passedPlayers: ['C', 'D', 'E'] });
+  st.currentPlayer = 'A';
+  st.table = [handOf(st, 'B')[0]];
+  st.lastPlayer = 'B';
+  var r = transition(st, { type: ACTIONS.PASS, payload: { playerId: 'A' } });
+  assert.strictEqual(r.ok, true, JSON.stringify(r.error));
+  assert.strictEqual(r.state.table.length, 0, '全员过牌后桌面应清空');
+  assert.strictEqual(r.state.currentPlayer, 'B', '清桌后应由 lastPlayer 领出');
+});
+
+test('3.5 lastPlayer 已出完时，清桌后顺延给下一位', function () {
+  var st = SB.build({ emptyPlayers: ['B'], passedPlayers: ['C', 'D', 'E'] });
+  st.currentPlayer = 'A';
+  st.table = [handOf(st, 'C')[0]];
+  st.lastPlayer = 'B';
+  var r = transition(st, { type: ACTIONS.PASS, payload: { playerId: 'A' } });
+  assert.strictEqual(r.ok, true, JSON.stringify(r.error));
+  assert.strictEqual(r.state.table.length, 0);
+  assert.strictEqual(r.state.currentPlayer, 'C', 'B 已出完，应顺延给 C');
 });
 
 section('结果');

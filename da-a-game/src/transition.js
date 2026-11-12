@@ -26,6 +26,7 @@ const { dealGame, shuffle, createPlayer, buildDealOrder,
         dealRoundsCount, dealRound } = require('./deal.js');
 const { createDeck } = require('./card.js');
 const playModule = require('./play.js');
+const turn = require('./turn.js');
 const { pushWind } = require('./push-wind.js');
 const { PHASES, ACTIONS, ERR } = require('./phases.js');
 
@@ -856,6 +857,9 @@ function handlePlayAction(state, payload) {
   if (result.state.头名 === undefined && state.头名 !== undefined) {
     result.state.头名 = state.头名;
   }
+
+  // [D-061 2026-11-12] 方案 A：出牌/取牌成功后由引擎推进轮次（跳过已出完者）。
+  result.state = turn.advanceAfterPlay(result.state, payload.playerId);
   return result;
 }
 
@@ -865,7 +869,11 @@ function handlePassAction(state, payload) {
     return err(ERR.NOT_PLAY_PHASE,
       'PASS only allowed in PLAY phase, current=' + state.phase, state);
   }
-  return playModule.handlePass(state, payload);
+  var result = playModule.handlePass(state, payload);
+  if (!result.ok) return result;
+  // [D-061] 方案 A：过牌后由引擎推进；全员过牌清桌时回到 lastPlayer 领出。
+  result.state = turn.advanceAfterPass(result.state, payload.playerId);
+  return result;
 }
 
 // === handler: PUSH_WIND（§9 委托给 push-wind.js） ===
