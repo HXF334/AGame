@@ -52,7 +52,8 @@ check('2.2 提示首手 = 托管那一手', cands[0].ids.join(',') === act.cardI
 console.log('\n=== 3. 拆组标记 ===');
 var singleJ = cands.filter(function (c) { return c.cards.length === 1 && c.cards[0].rank === 11; })[0];
 var single2 = cands.filter(function (c) { return c.cards.length === 1 && c.cards[0].rank === 2; })[0];
-check('3.1 单张 J 标记为拆组', singleJ && singleJ.splitGroup === 1, singleJ && String(singleJ.splitGroup));
+// [2026-11-12 用户] 拆对子权重 2(拆龙权重 1), 这里 J 拆的是对子 -> 2
+check('3.1 单张 J 标记为拆组', singleJ && singleJ.splitGroup === 2, singleJ && String(singleJ.splitGroup));
 check('3.2 单张 2 不算拆组', single2 && single2.splitGroup === 0, single2 && String(single2.splitGroup));
 
 console.log('\ntest-hint-order-split: ' + pass + ' passed, ' + fail + ' failed');

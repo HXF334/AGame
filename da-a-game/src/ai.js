@@ -165,6 +165,61 @@ function splitPenalty(cards, hand) {
   return splitEggCount(cards, hand);
 }
 
+// [2026-11-12 用户] 龙(连续单张)也是完整牌型, 拆龙应排在拆对子**之后**:
+//   手牌 678JJQ 打单 -> 出 Q(孤立), 而不是 6(拆龙) 或 J(拆对子);
+//   只有 678JJ 这种没别的选择时, 才拆龙出 6。
+//   实现: 找出手里所有的极大连续段(>=3 个不同点数, A 可当 1 或 14),
+//         候选只动了其中一部分、且动完剩下的不再成段 -> 记一次拆龙。
+function chainSplitCount(cards, hand) {
+  if (!cards || !cards.length) return 0;
+  var cnt = {}, used = {};
+  var isJoker = function (c) { return !!(c.isBigJoker || c.isSmallJoker); };
+  hand.forEach(function (c) { if (isJoker(c)) return; cnt[c.rank] = (cnt[c.rank] || 0) + 1; });
+  cards.forEach(function (c) { if (isJoker(c)) return; used[c.rank] = (used[c.rank] || 0) + 1; });
+  // 两套映射: 高 A(2..14) / 低 A(A,2..13); 值 1 表示低端的 A
+  var MAPS = [];
+  (function () {
+    var hi = []; for (var r = 2; r <= 14; r++) hi.push(r);
+    MAPS.push(hi);
+    var lo = [1]; for (var r2 = 2; r2 <= 13; r2++) lo.push(r2);
+    MAPS.push(lo);
+  })();
+  var real = function (r) { return r === 1 ? 14 : r; };
+  var presentOf = function (r) { return (cnt[real(r)] || 0) > 0; };
+  var seen = {}, n = 0;
+  MAPS.forEach(function (seq) {
+    var i = 0;
+    while (i < seq.length) {
+      if (!presentOf(seq[i])) { i++; continue; }
+      var j = i;
+      while (j + 1 < seq.length && presentOf(seq[j + 1])) j++;
+      var run = seq.slice(i, j + 1);
+      i = j + 1;
+      if (run.length < 3) continue;
+      var sig = run.map(real).join(',');
+      if (seen[sig]) continue;
+      var usedAny = false, usedRanks = 0;
+      run.forEach(function (r) {
+        if ((used[real(r)] || 0) > 0) { usedAny = true; usedRanks++; }
+      });
+      if (!usedAny) continue;
+      if (usedRanks === run.length) continue;       // 整条龙都被用上 -> 不算拆
+      // 剩下的还能不能成段(>=3)
+      var remain = [];
+      run.forEach(function (r) {
+        if ((cnt[real(r)] || 0) - (used[real(r)] || 0) > 0) remain.push(r);
+      });
+      var best = 0, cur = 1;
+      for (var k = 1; k <= remain.length; k++) {
+        if (k < remain.length && remain[k] === remain[k - 1] + 1) cur++;
+        else { if (cur > best) best = cur; cur = 1; }
+      }
+      if (best < 3) { seen[sig] = true; n++; }
+    }
+  });
+  return n;
+}
+
 function chooseAction(state, playerId, opts) {
   opts = opts || {};
   // [2026-11-07 用户 C] AI 决策日志: 记下候选集 + 排序键, 目视报障时直接看「为什么选这手」
@@ -289,17 +344,22 @@ function chooseAction(state, playerId, opts) {
     var key = c.slice().sort().join('|');
     if (!uniq[key]) { uniq[key] = true; dedup.push(c); }
   });
-  // 手牌里的同点组(判断「拆其他牌」)
+  // 手牌里的同点组(按 groupKeyOf 区分大A, 判断「拆其他牌」)
   var _hgroups = {};
-  hand.forEach(function (c) { (_hgroups[c.rank] = _hgroups[c.rank] || []).push(c); });
+  hand.forEach(function (c) {
+    var _gk = groupKeyOf(c);
+    (_hgroups[_gk] = _hgroups[_gk] || []).push(c);
+  });
   function _splitCount(cards) {
     var used = {};
-    cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+    cards.forEach(function (c) { var _gk2 = groupKeyOf(c); used[_gk2] = (used[_gk2] || 0) + 1; });
     var n = 0;
     for (var rk in _hgroups) {
       if (used[rk] && used[rk] < _hgroups[rk].length) n++;   // 拿了组里的一部分 = 拆牌
     }
-    return n;
+    // [2026-11-12 用户] 拆对子(同点组)比拆龙更伤: 权重 2; 拆龙权重 1。
+    //   678JJQ 打单 -> Q(0) < 6(拆龙 1) < J(拆对子 2)。
+    return n * 2 + chainSplitCount(cards, hand);
   }
   // [2026-11-08 13:59 用户] 「正常拆组只针对组合牌型(龙/双龙/连珠蛋/假八等),
   //   同点数的牌尽量不拆(对子/蛋子/大蛋子/真七/真八等)」
@@ -468,6 +528,8 @@ module.exports = {
   // [2026-11-09 用户] 提示与托管共用的拆组判定
   splitsRejected: splitsRejected,
   splitPenalty: splitPenalty,
+  // [2026-11-12 用户] 提示与托管共用: 拆了几条龙
+  chainSplitCount: chainSplitCount,
   chooseAction: chooseAction,
   // [2026-11-07 用户 C] 最近一次决策轨迹(候选集 + 排序键 + 阵营三态)
   getLastTrace: function () { return _lastTrace; },

@@ -452,10 +452,14 @@ function drawSeats(ctx, st, m) {
     ctx.lineWidth = isCur ? Math.max(3, m.vh * 0.009) : 1.5;
     circle(ctx, cx, cy, rr_); ctx.stroke();
     // [2026-11-12 用户] AI 玩家头像中间加「AI」标志(真人座位在 drawMeSeat 里画, 不经过这里)
-    ctx.save();
-    ctx.globalAlpha = 0.92;
-    text(ctx, 'AI', cx, cy, Math.max(9, Math.round(rr_ * 0.62)), '#ffffff', 'center', true);
-    ctx.restore();
+    //   [2026-11-12 用户] 「切换视角后真人要跟着走」: 标志跟**真实真人**走,
+    //   观察者视角下被观察的 AI 在底部也要显示 AI(realHumanPlayer 见 game.js 渲染态)。
+    if (pid !== (st.realHumanPlayer || st.humanPlayer)) {
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      text(ctx, 'AI', cx, cy, Math.max(9, Math.round(rr_ * 0.62)), '#ffffff', 'center', true);
+      ctx.restore();
+    }
     var fs = Math.max(10, Math.round(m.vh * 0.034));
     var nm = st.names[SEAT_IDS.indexOf(pid)];
     var cnt = p && p.hand ? p.hand.length : 0;
@@ -888,6 +892,13 @@ function drawMeSeat(ctx, st, m) {
   ctx.strokeStyle = st.currentPlayer === st.humanPlayer ? '#ffd700' : 'rgba(255,255,255,0.55)';
   ctx.lineWidth = st.currentPlayer === st.humanPlayer ? Math.max(3, m.vh * 0.009) : 1.5;
   circle(ctx, cx, cy, rr_); ctx.stroke();
+  // [2026-11-12 用户] 切到 AI 视角时, 底部这个被观察的 AI 也要显示「AI」; 真人自己不加。
+  if (st.humanPlayer !== (st.realHumanPlayer || st.humanPlayer)) {
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    text(ctx, 'AI', cx, cy, Math.max(9, Math.round(rr_ * 0.62)), '#ffffff', 'center', true);
+    ctx.restore();
+  }
   var fs = Math.max(10, Math.round(m.vh * 0.034));
   var bw = Math.round(r * 0.92), bh = Math.round(r * 0.60);
   var colX = cx - rr_ - 8 - fs * 0.5;

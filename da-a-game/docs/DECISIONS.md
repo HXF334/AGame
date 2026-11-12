@@ -247,3 +247,20 @@
 - 观察者模式：`humanPlayer` 被改写为观察者本人，其余座位仍显示 AI 标志，符合「切换到 AI 玩家视角」的语义。
 - 测试：`tests/test-ui-ai-badge.js`（3 断言，用 `__renderTexts()` 统计「AI」出现 4 次）。
 - 相关：`ui-render.js` §9、`tests/test-ui-ai-badge.js`
+
+## D-068 AI 标志跟随真实真人，不跟随观察视角（2026-11-12）
+
+- 用户反馈：切换顶部 5 按钮观察 AI 时，底部被观察的 AI 头像没有「AI」标志，而真人座位反而显示 AI；期望「真人跟着走」。
+- 根因：渲染态把 `humanPlayer` 改写成观察者，UI 用 `pid !== st.humanPlayer` 判断 AI，于是底部被观察者永远被当成真人。
+- 改法：渲染态新增 `realHumanPlayer`（始终是真正拿手机的玩家）；`drawSeats` 用 `pid !== (st.realHumanPlayer || st.humanPlayer)` 画 AI；`drawMeSeat` 在 `st.humanPlayer !== realHumanPlayer` 时也画「AI」。
+- 测试：`tests/test-ui-ai-badge.js` 增 3 条观察者断言（新增 `__setObserver` / `__renderTextsAt` 钩子）。
+- 相关：`game.js`（渲染态）、`ui-render.js`（`drawSeats`/`drawMeSeat`）
+
+## D-069 拆组权重：拆同点组 2、拆龙 1（2026-11-12）
+
+- 用户反馈：上家出单 5，手牌 678JJQ，现逻辑出 6（拆龙），期望出 Q；只有 678JJ 这种没别的选择时才拆龙出 6。
+- 口径：拆对子/同点组比拆龙更伤，权重 2 : 1；孤立单张 0。
+- 改法：`src/ai.js` 新增 `chainSplitCount(cards, hand)`（极大连续段 ≥3 个不同点数，A 可高可低；候选只动一段的一部分、且剩余不再成段 → 记 1）；`_splitCount` 改为 `同点组拆组数 * 2 + 拆龙数`；`game.js _hintSplitGroups` 同口径（`splitGroup` 权重同样 ×2 加拆龙）。
+- 结果：678JJQ 打单 → Q；678JJ 打单 → 6；整条龙照常出；6789 拿 6（剩 789 仍成段）不罚。
+- 测试：`tests/test-split-chain.js`（10 断言，AI/托管/提示三处一致）；`tests/test-hint-order-split.js` 3.1 期望值随权重改为 2。
+- 相关：`src/ai.js`、`game.js`（`_hintSplitGroups`）、`tests/test-split-chain.js`

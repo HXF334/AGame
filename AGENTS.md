@@ -56,7 +56,7 @@
 ## 5. 常用命令（都在 `da-a-game/` 下执行）
 
 ```powershell
-node tests/_runall.js            # 全量套件（当前 101 个，失败 0）
+node tests/_runall.js            # 全量套件（当前 102 个，失败 0）
 node tests/_runall.js 10 20      # 只跑第 10~20 个
 node tests/test-xxx.js           # 单套件
 node scripts/preflight.js --fast # 12 项静态体检（不含全量测试）
@@ -88,7 +88,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 提交前至少满足：
 
-- `node tests/_runall.js` → `失败 0 次`（当前 **101 个套件**）。
+- `node tests/_runall.js` → `失败 0 次`（当前 **102 个套件**）。
 - `node scripts/preflight.js --fast` → 12/12。
 - 触及 UI / 流程：用开发者工具 `open` 后截图确认能进 PLAY、无运行时报错（见 `PROJECT_STATUS.md` 冒烟记录）。
 - 触及规则：跑 `audit-rules-vs-impl`。
@@ -116,7 +116,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 ## 11. 当前状态（摘要，详见 PROJECT_STATUS.md）
 
-- 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **101 套件 / 0 失败**。
+- 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **102 套件 / 0 失败**。
 - 2026-11-12 已修：托管出完牌推风丢失（P0）、QKAA 优先普通 A 失效（P1）、`doPlay` 约 80 行死代码 + `isRoundOver` 口径不一致（P2）；轮次归属先由 D-059 让引擎持有并校验，再由 **D-061（方案 A）完全接管推进**（`src/turn.js` + `transition` 写入 `state.currentPlayer`，game.js 只镜像）；基础库统一为 3.17.6（D-060）；UI 镜像（`uiPlays`/`uiTakenPlay`/`uiPassed`/`uiTrickId`）改由引擎出牌流水派生（D-064）；点提示的候选枚举改为「不含大A → 双大A → 大A混出」（D-065）。
 - 开发者工具可 `open` 并进入 PLAY（2026-11-12 截图冒烟通过）；真机已由用户跑过 2V3，正常。
 - 未完成：文档后续维护。

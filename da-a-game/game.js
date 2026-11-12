@@ -14,6 +14,7 @@ var chooseAction = require('./src/ai.js').chooseAction;
 // [2026-11-09 用户] 提示池复用托管的拆组判定(同点数牌型不许拆组)
 var _aiSplitsRejected = require('./src/ai.js').splitsRejected;
 var _aiSplitPenalty = require('./src/ai.js').splitPenalty;
+var _aiChainSplit = require('./src/ai.js').chainSplitCount;
 // [2026-11-07 用户 C] AI 决策轨迹(候选集 + 排序键 + 阵营三态) -> 打日志
 var getAiTrace = require('./src/ai.js').getLastTrace;
 // [2026-11-08 22:40] 提示用 AI 的**同一套**选牌逻辑(排序一致), 只是不考虑阵营
@@ -1050,6 +1051,8 @@ function uiHintCandidates(mode) {
   function _hintSplitGroups(cards) {
     // [2026-11-12 用户] 提示顺序必须与托管一致: 拿了对子里的 1 张也算拆组(托管 split 键会罚),
     //   否则 JJQ2 打 9 会出现「Q → J → 2」: J 明明拆了对子却排在 2 前面。
+    //   [2026-11-12 用户] 另外拆龙比拆对子轻: 678JJQ 打单应出 Q -> 6 -> J,
+    //   所以同点组权重 2、拆龙权重 1(与托管 _splitCount 同口径)。
     var groups = {}, used = {};
     me.hand.forEach(function (c) {
       var k = c['is主方大A'] ? 'BIG_A' : String(c.rank);
@@ -1061,7 +1064,7 @@ function uiHintCandidates(mode) {
     });
     var n = 0;
     for (var k2 in used) { if (groups[k2] > used[k2]) n++; }
-    return n;
+    return n * 2 + _aiChainSplit(cards, me.hand);
   }
   out.sort(function (a, b) {
     // [2026-11-12 用户] 含大A 的一律靠后: 0=不含大A, 1=双大A, 2=大A 混出。
@@ -1765,6 +1768,9 @@ function draw() {
     gameState: gameState,
     currentPlayer: currentPlayer,
     humanPlayer: uiObserver || humanPlayer,   // [2026-11-10] 观察者视角: 整屏切到该玩家
+    // [2026-11-12 用户] 「切换视角后真人要跟着走」: 观察者视角下 humanPlayer 已变成被观察者,
+    //   这里保留**真正拿手机的人**, 让 AI 标志跟着真实真人走(切到 AI 视角时被观察的 AI 也显示 AI)。
+    realHumanPlayer: humanPlayer,
     readOnly: !!(uiObserver && uiObserver !== humanPlayer),
     selectedCards: selectedCards,
     names: names,
@@ -2475,6 +2481,27 @@ if (typeof module !== 'undefined' && module.exports) {
       try { draw(); } finally { ctx = old; }
       return texts;
     },
+    // [2026-11-12 用户] 测试钩子: 需要知道「AI」画在哪个座位(切换观察者时跟随真人)
+    __renderTextsAt: function () {
+      var out = [];
+      var old = ctx;
+      ctx = {
+        canvas: { width: W || 844, height: H || 390 },
+        measureText: function (t) { return { width: String(t || '').length * 8 }; },
+        fillText: function (t, x, y) { out.push({ text: String(t), x: x, y: y }); },
+        save: function () {}, restore: function () {}, beginPath: function () {},
+        closePath: function () {}, moveTo: function () {}, lineTo: function () {}, arcTo: function () {},
+        arc: function () {}, fill: function () {}, stroke: function () {},
+        fillRect: function () {}, clearRect: function () {}, translate: function () {},
+        rotate: function () {}, scale: function () {}, setLineDash: function () {},
+        createLinearGradient: function () { return { addColorStop: function () {} }; },
+        fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', textBaseline: '', globalAlpha: 1
+      };
+      try { draw(); } finally { ctx = old; }
+      return out;
+    },
+    // [2026-11-12 用户] 测试钩子: 模拟顶部 5 按钮切换观察视角(null = 回到自己)
+    __setObserver: function (pid) { uiObserver = pid || null; },
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
