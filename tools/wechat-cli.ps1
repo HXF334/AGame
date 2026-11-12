@@ -50,6 +50,36 @@ try {
 $stdoutFile = [System.IO.Path]::GetTempFileName()
 $stderrFile = [System.IO.Path]::GetTempFileName()
 
+# [2026-11-12] devtools 打开项目时会改写 project.config.json（键序/行尾/末尾换行），
+# 污染 git 工作区。这里在 open 前记下哈希，若打开前该文件是干净的、打开后被改写，
+# 就自动按 git 版本还原；打开前本来就有改动则不碰，只提示。
+$openProject = $null
+if ($Arguments.Count -ge 2 -and $Arguments[0] -eq 'open') {
+    for ($i = 1; $i -lt $Arguments.Count - 1; $i++) {
+        if ($Arguments[$i] -eq '--project') { $openProject = $Arguments[$i + 1]; break }
+    }
+}
+$cfgPath = $null
+$cfgHashBefore = $null
+$cfgRepo = $null
+$cfgRel = $null
+$cfgCleanBefore = $false
+if ($openProject) {
+    $cfgPath = Join-Path $openProject 'project.config.json'
+    if (Test-Path -LiteralPath $cfgPath) {
+        $cfgHashBefore = (Get-FileHash -LiteralPath $cfgPath -Algorithm SHA256).Hash
+        try {
+            $cfgRepo = (& git -C $openProject rev-parse --show-toplevel 2>$null)
+            if ($cfgRepo) {
+                $cfgRepo = $cfgRepo.Trim()
+                $cfgRel = [System.IO.Path]::GetRelativePath($cfgRepo, $cfgPath) -replace '\\', '/'
+                $dirty = (& git -C $cfgRepo status --porcelain -- $cfgRel 2>$null)
+                $cfgCleanBefore = -not ($dirty -and $dirty.Trim().Length -gt 0)
+            }
+        } catch { }
+    }
+}
+
 try {
     # Start-Process -FilePath $cli: Windows resolves .bat via cmd.exe automatically.
     # Redirecting to TWO DIFFERENT files avoids the
@@ -72,6 +102,20 @@ try {
 
     if ($stdout.Length -gt 0) { Write-Output $stdout }
     if ($stderr.Length -gt 0) { [Console]::Error.WriteLine($stderr) }
+
+    if ($cfgPath -and $cfgHashBefore -and (Test-Path -LiteralPath $cfgPath)) {
+        $cfgHashAfter = (Get-FileHash -LiteralPath $cfgPath -Algorithm SHA256).Hash
+        if ($cfgHashAfter -ne $cfgHashBefore) {
+            if ($cfgCleanBefore -and $cfgRepo -and $cfgRel) {
+                & git -C $cfgRepo checkout -- $cfgRel 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    [Console]::Error.WriteLine("[wechat-cli] devtools 改写了 $cfgRel，已按 git 版本还原")
+                }
+            } else {
+                [Console]::Error.WriteLine("[wechat-cli] devtools 改写了 $cfgRel（打开前已有未提交改动，未自动还原）")
+            }
+        }
+    }
 
     exit $proc.ExitCode
 }

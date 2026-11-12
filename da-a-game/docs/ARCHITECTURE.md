@@ -34,6 +34,7 @@
 | `capture.js` | 4 取牌 | `canCapture`、`executeCapture` |
 | `play.js` | 出牌/过牌/轮末 | `handlePlay`、`handlePass`、`isRoundOver` |
 | `turn.js` | 轮次推进（D-061） | `nextAliveId`、`advanceAfterPlay`、`advanceAfterPass` |
+| `ui-mirror.js` | UI 镜像派生（D-072） | 纯函数 `project(plays, opts)`：`uiPlays`/`uiPassed`/`uiTakenPlay`/`uiTrickId` |
 | `push-wind.js` | 推风 | `pushWind` |
 | `win-loss.js` | 胜负判定 | `getCamp`、`isAllOut`、`getFirstOutPlayer`、`checkGameEnd` |
 | `scoring.js` | 计分 | `autoDeriveN`、`calculateScore` |
@@ -248,7 +249,7 @@ chooseAction(state, playerId)
 ## 11. 测试架构
 
 - 无测试框架：每个 `tests/test-*.js` 自带 `test()`/`assert`，`node tests/test-xxx.js` 直接跑，退出码非 0 即失败。
-- `tests/_runall.js`：枚举 `test-*.js`（当前 **103** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
+- `tests/_runall.js`：枚举 `test-*.js`（当前 **104** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
 - `tests/mock-wx.js`：`__isMock=true`、800×400 canvas、`ctx` 方法桩、`onTouchStart` 收集 handler、`fireTouch`；必须在 `require game.js` **之前**安装。
 - `tests/lib/state-builder.js`：`SB.build({...})` 构造确定局面并自动补足 108 张；`SB.countAll` 校验守恒。
 - 断言纪律：锁性质（合法/不合法、状态不变、不崩、日志出现），不写死具体牌；E2E 用固定局面 + 钩子。
@@ -258,7 +259,7 @@ chooseAction(state, playerId)
 
 - `project.config.json`：`appid=wx99808147273cdea1`、`libVersion=3.17.6`、`minigameRoot=./`、`packOptions.ignore=[scripts,tests,docs,skills,tools]`。
 - `project.private.config.json`（git 忽略，仅本地）：`libVersion` 同为 3.17.6。
-- `tests/test-pack-manifest.js` 锁定最终入包文件集合（当前 23 个文件），新增目录忘加 ignore 会被这条测试拦住。
+- `tests/test-pack-manifest.js` 锁定最终入包文件集合（当前 24 个文件），新增目录忘加 ignore 会被这条测试拦住。
 - 无 `package.json`、无 lockfile；不要引入依赖。
 
 ## 13. 已知取舍与技术债

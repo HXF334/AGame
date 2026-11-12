@@ -126,10 +126,11 @@ check('轮到谁 -> 上一手牌的显示被清掉(闹钟不跟旧牌打架)',
 var _fs = require('fs');
 var _path = require('path');
 var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
+var _mirror = _fs.readFileSync(_path.join(__dirname, '..', 'src', 'ui-mirror.js'), 'utf8');
 check('源码: applyAction 的 PASS 分支置位了「不出」',
   /action\.type === ACTIONS\.PASS[\s\S]{0,600}_uiPassCleanup\(currentPlayer\)/.test(_src));
 check('源码: 过牌后的「不出」由流水派生(D-064)',
-  /function _uiProjectPlays[\s\S]{0,2200}kind === 'PASS'[\s\S]{0,400}passed\[r\.playerId\] = true/.test(_src));
+  /function project[\s\S]{0,2200}kind === 'PASS'[\s\S]{0,400}passed\[r\.playerId\] = true/.test(_mirror));
 
 // ===== 关键: **AI 过牌**路径也必须置位「不出」=====
 // [2026-11-09 修 flaky] 原来这段: g.newGame() 拿**随机手牌** + 跑 AI 链 +

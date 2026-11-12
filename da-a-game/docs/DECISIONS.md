@@ -275,3 +275,23 @@
   - D. 反A：FAN_A 成功 -> mode 变 1V4_明打、主方只有反A者、抓方含原主方+次方+抓方、首出权是反A者，整局跑完并结算。
 - 结果：23 断言全过；全量套件 103 个。
 - 相关：`tests/test-1v4-fan-a-e2e.js`、`src/turn.js`（推进）、`src/scoring.js`
+## D-071 随机整局压测工具（2026-11-12）
+
+- 新增 `tools/stress-games.js`：随机发牌 + 随机 2V3/1V4、明/暗打，从 PLAY 起由 `chooseAction` 驱动到 `checkGameEnd`。
+- 校验：每步 transition 成功、能自然结束、结算零和、牌张守恒（hand + 底牌 + table + discarded = 108）。
+- 首轮 50 局（seed=7）：0 失败，主方 9 / 抓方 20 / 平局 21，平均 106.7 步。
+- 用法：`node tools/stress-games.js 50 [--seed N]`。
+
+## D-072 game.js 拆分第一步：UI 镜像派生抽到 src/ui-mirror.js（2026-11-12）
+
+- 背景：game.js 仍偏大（约 2600 行），其中 `_uiProjectPlays` 是纯计算，适合先外移。
+- 新增 `src/ui-mirror.js`：`project(plays, { hiddenAt, passHidden, passResetAt, handOf })` 返回 `{ plays, playsTrick, trick, passed, taken }`。
+- `game.js._uiProjectPlays` 变为状态装配 + 调用该纯函数；行为与 D-064 一致。
+- 新增 `tests/test-ui-mirror.js`（10 断言）；两条源码守卫改为检查 `src/ui-mirror.js`。
+- 下一步可继续抽「提示候选构造」等纯逻辑，逐步缩小 game.js。
+
+## D-073 devtools 打开项目时自动还原 project.config.json（2026-11-12）
+
+- 问题：开发者工具 `open` 会改写 `project.config.json`（键序/行尾/末尾换行），污染工作区。
+- 改法：`tools/wechat-cli.ps1` 在 `open` 前记录文件 SHA256 与 git 干净状态；若打开后被改写且此前干净，则 `git checkout --` 还原；此前已有改动则不碰，只提示。
+- 注意：该脚本含中文，必须保存为 UTF-8 with BOM，否则 PowerShell 按 GBK 解析会报「字符串缺少终止符」。

@@ -31,6 +31,7 @@ var canLiangA = engine.canLiangA;
 var canFanA = engine.canFanA;
 var canChooseIdentity = engine.canChooseIdentity;
 var calculateScore = require('./src/scoring.js').calculateScore;
+var uiMirror = require('./src/ui-mirror.js');
 // [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
 var uiRender = require('./ui-render.js');
 
@@ -1565,51 +1566,22 @@ function _uiHidePass(pid) {
 }
 
 // 从流水重算 uiPlays / uiPlaysTrick / uiTrickId / uiPassed / uiTakenPlay
+// [架构 2026-11-12] 派生算法已抽到 src/ui-mirror.js（纯函数），这里只做状态装配。
 function _uiProjectPlays() {
-  var plays = (gameState && gameState.plays) || [];
-  var trick = 0;
-  var lastClear = -1;
-  var shows = {}, trickAt = {}, passed = {}, taken = {}, lastIdx = {};
-  for (var i = 0; i < plays.length; i++) {
-    var r = plays[i] || {};
-    if (r.kind === 'CLEAR') { trick++; lastClear = i; continue; }
-    if (r.kind === 'PLAY' || r.kind === 'CAPTURE') {
-      lastIdx[r.playerId] = i;
-      if (r.cards && r.cards.length) {
-        shows[r.playerId] = r.cards;
-        trickAt[r.playerId] = trick;
-      } else {
-        delete shows[r.playerId];
-        delete trickAt[r.playerId];
-      }
-      delete passed[r.playerId];
-      delete taken[r.playerId];
-      if (r.kind === 'CAPTURE' && r.beat) taken[r.beat] = true;
-    } else if (r.kind === 'PASS') {
-      lastIdx[r.playerId] = i;
-      delete shows[r.playerId];
-      delete trickAt[r.playerId];
-      var _ph = uiPassHidden[r.playerId];
-      if (i >= uiPassResetAt && (_ph == null || i >= _ph)) passed[r.playerId] = true;
-    }
-  }
   var players = (gameState && gameState.players) || [];
   var handOf = {};
   players.forEach(function (p) { if (p && p.id) handOf[p.id] = (p.hand || []).length; });
-  var out = {}, outTrick = {};
-  Object.keys(shows).forEach(function (pid) {
-    var idx = lastIdx[pid];
-    if (uiHiddenAt[pid] != null && idx < uiHiddenAt[pid]) return;
-    // 轮末清桌(CLEAR)时, 已出完的人桌面牌清掉 -> 渲染层显示贡字
-    if (lastClear >= 0 && idx < lastClear && handOf[pid] === 0) return;
-    out[pid] = shows[pid];
-    outTrick[pid] = trickAt[pid];
+  var m = uiMirror.project((gameState && gameState.plays) || [], {
+    hiddenAt: uiHiddenAt,
+    passHidden: uiPassHidden,
+    passResetAt: uiPassResetAt,
+    handOf: handOf
   });
-  uiPlays = out;
-  uiPlaysTrick = outTrick;
-  uiTrickId = trick;
-  uiPassed = passed;
-  uiTakenPlay = taken;
+  uiPlays = m.plays;
+  uiPlaysTrick = m.playsTrick;
+  uiTrickId = m.trick;
+  uiPassed = m.passed;
+  uiTakenPlay = m.taken;
 }
 
 // [P2 2026-11-12] 取牌「取」标志 / 「不出」/ 轮次全部由 _uiProjectPlays 派生(D-064),
