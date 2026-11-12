@@ -30,7 +30,7 @@
 | 语言 | 原生 JavaScript，**CommonJS**（`require`/`module.exports`），不转 ESM |
 | 渲染 | Canvas 2D 自绘（`wx.createCanvas` + `getContext('2d')`），无 UI 框架 |
 | 平台 API | 微信小游戏 `wx.*`：`createCanvas` / `getSystemInfoSync` / `onTouchStart` / `onWindowResize` |
-| 基础库 | 2.19.4（`project.config.json`；`project.private.config.json` 里另有 3.17.6，见 PROJECT_STATUS 已知问题） |
+| 基础库 | 3.17.6（`project.config.json` 与本地 `project.private.config.json` 已统一） |
 | 屏幕 | 横屏，`game.json` 固定 `landscape` |
 | 依赖 | **零 npm 依赖**，不引入构建工具 / 框架 / TypeScript |
 | 行尾 | **LF**；UTF-8 |

@@ -36,7 +36,7 @@
 
 ## 3. 技术栈与红线
 
-- 技术栈：原生 JavaScript（CommonJS，**不打包、不转 ESM**）+ 微信小游戏 `wx.*` + Canvas 2D 自绘。基础库 **2.19.4**，横屏，appid `wx99808147273cdea1`。
+- 技术栈：原生 JavaScript（CommonJS，**不打包、不转 ESM**）+ 微信小游戏 `wx.*` + Canvas 2D 自绘。基础库 **3.17.6**，横屏，appid `wx99808147273cdea1`。
 - **不迁 Cocos / 其他引擎**；**不重建项目**；**不换目录结构与模块划分**；**不引入构建工具、框架、TypeScript、npm 依赖**。
 - **行尾必须 LF**，文件 UTF-8。写成 CRLF 会让微信打包器报 `WAGame.js:1 SyntaxError`（`node --check` 查不出来）。`.gitattributes` 已强制 `* text=auto eol=lf`。
 - `src/` **不得依赖 `wx.*`**；`game.js` 不实现规则，只调用引擎；`ui-render.js` 只做几何与绘制。
@@ -56,7 +56,7 @@
 ## 5. 常用命令（都在 `da-a-game/` 下执行）
 
 ```powershell
-node tests/_runall.js            # 全量套件（当前 96 个，失败 0）
+node tests/_runall.js            # 全量套件（当前 97 个，失败 0）
 node tests/_runall.js 10 20      # 只跑第 10~20 个
 node tests/test-xxx.js           # 单套件
 node scripts/preflight.js --fast # 12 项静态体检（不含全量测试）
@@ -88,7 +88,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 提交前至少满足：
 
-- `node tests/_runall.js` → `失败 0 次`（当前 **96 个套件**）。
+- `node tests/_runall.js` → `失败 0 次`（当前 **97 个套件**）。
 - `node scripts/preflight.js --fast` → 12/12。
 - 触及 UI / 流程：用开发者工具 `open` 后截图确认能进 PLAY、无运行时报错（见 `PROJECT_STATUS.md` 冒烟记录）。
 - 触及规则：跑 `audit-rules-vs-impl`。
@@ -115,10 +115,10 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 ## 11. 当前状态（摘要，详见 PROJECT_STATUS.md）
 
-- 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **96 套件 / 0 失败**。
-- 2026-11-12 已修：托管出完牌推风丢失（P0）、QKAA 优先普通 A 失效（P1）、`doPlay` 约 80 行死代码 + `isRoundOver` 口径不一致（P2）。
+- 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **97 套件 / 0 失败**。
+- 2026-11-12 已修：托管出完牌推风丢失（P0）、QKAA 优先普通 A 失效（P1）、`doPlay` 约 80 行死代码 + `isRoundOver` 口径不一致（P2）；轮次归属已按 D-059 让引擎持有并校验，基础库统一为 3.17.6（D-060）。
 - 开发者工具可 `open` 并进入 PLAY（2026-11-12 截图冒烟通过）。
-- 未完成：真机验证、引擎轮次归属重构（需用户批准）、文档后续维护。
+- 未完成：真机验证、轮次推进完全收归引擎（方案 A）、文档后续维护。
 
 ## 12. 与 OpenClaw 历史的关系
 

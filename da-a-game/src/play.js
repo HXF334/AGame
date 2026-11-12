@@ -35,6 +35,14 @@ function handlePlay(state, payload) {
     return { ok: false, error: { type: 'INVALID_HAND', message: 'player hand is not an array' }, state: state };
   }
 
+  // [D-059 2026-11-12] 轮次归属：state.currentPlayer 存在时必须是当前行动者。
+  //   背景：此前引擎不校验轮次，任何调用方都能让任意玩家越序出牌/过牌，
+  //   只靠 game.js 的模块级 currentPlayer 挡着。现在引擎自己也守一道。
+  //   null 表示未设置（老测试直接构造局面），此时跳过以保持兼容。
+  if (state.currentPlayer && state.currentPlayer !== playerId) {
+    return { ok: false, error: { type: 'NOT_YOUR_TURN', message: 'not ' + playerId + "'s turn (current=" + state.currentPlayer + ')' }, state: state };
+  }
+
   // 找到对应的牌
   const playCards = player.hand.filter(c => cardIds.indexOf(c.id) >= 0);
   if (playCards.length !== cardIds.length) {
@@ -128,6 +136,11 @@ function handlePass(state, payload) {
   }
   if (!Array.isArray(player.hand)) {
     return { ok: false, error: { type: 'INVALID_HAND', message: 'player hand is not an array' }, state: state };
+  }
+
+  // [D-059 2026-11-12] 与 handlePlay 同一道轮次校验。
+  if (state.currentPlayer && state.currentPlayer !== playerId) {
+    return { ok: false, error: { type: 'NOT_YOUR_TURN', message: 'not ' + playerId + "'s turn (current=" + state.currentPlayer + ')' }, state: state };
   }
 
   // 无当前手牌

@@ -142,7 +142,7 @@ PLAY --PLAY/PASS/PUSH_WIND--> ... --checkGameEnd--> GAME_END --> SCORING
 3. `_dealOneRound()`：每次 `DEAL_ROUND`；无头 `DEAL_STEP=0` 时 `while` 一次发完 22 轮；真机每轮 200ms。
 4. 发牌中真人可点「亮A」（`_dealLiangA(suit)`），AI 逐轮尝试亮A。
 5. 闸门（`GATE_PLAN = [DEAL, FORCED_CHECK, ADVANCE, REVEAL, IDENTITY, PLAY]`）逐档推进；每档可能停住等真人（`gateChoice`），否则自动。
-6. 进入 PLAY 时 `currentPlayer = determineFirstPlayer(...) || 'A'`，清 `uiPassed`，轮到 AI 则 `runAI()`。
+6. 进入 PLAY 时 `_setTurn(determineFirstPlayer(...) || 'A')`（同时写模块变量与 `gameState.currentPlayer`），清 `uiPassed`，轮到 AI 则 `runAI()`。
 7. 人类出牌 `doPlay()` / 过牌 `doPass()`；AI 由 `runAI()` 循环驱动。
 8. 每次成功出牌后：`advanceCurrentPlayer()` → `checkGameEnd()` → 必要时 `doPushWindIfPending()` → `draw()` → `runAI()`。
 9. 局终：`GAME_END`，展示结算（延迟 1 秒，D-055），「下一局」重新 `newGame()`。
@@ -154,7 +154,7 @@ PLAY --PLAY/PASS/PUSH_WIND--> ... --checkGameEnd--> GAME_END --> SCORING
 1. 校验 payload/玩家/手牌/cardIds 均存在且属于该玩家。
 2. 若选的全是 4 → 先试 `executeCapture`；成功则记 `plays {kind:'CAPTURE', useFours, beat}` 并返回。
 3. 否则 `identifyHand` + `canBeat(state.table)`；成功则覆盖 `table`、旧桌面进 `discarded`、`lastPlayer`、清 `passedPlayers/passCount`、追加 `plays {kind:'PLAY', beat}`。
-4. **不校验轮次/currentPlayer**（见 §13 技术债）。
+4. **轮次校验**（D-059）：`state.currentPlayer` 非空时，`playerId` 必须等于它，否则 `NOT_YOUR_TURN`；为 null 时保持兼容（老测试/直接构造局面）。推进仍由 `game.js.advanceCurrentPlayer()` 完成，并镜像回 `state.currentPlayer`。
 
 ### 6.2 4 取牌（`capture.js`）
 
@@ -243,7 +243,7 @@ chooseAction(state, playerId)
 ## 11. 测试架构
 
 - 无测试框架：每个 `tests/test-*.js` 自带 `test()`/`assert`，`node tests/test-xxx.js` 直接跑，退出码非 0 即失败。
-- `tests/_runall.js`：枚举 `test-*.js`（当前 **96** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
+- `tests/_runall.js`：枚举 `test-*.js`（当前 **97** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
 - `tests/mock-wx.js`：`__isMock=true`、800×400 canvas、`ctx` 方法桩、`onTouchStart` 收集 handler、`fireTouch`；必须在 `require game.js` **之前**安装。
 - `tests/lib/state-builder.js`：`SB.build({...})` 构造确定局面并自动补足 108 张；`SB.countAll` 校验守恒。
 - 断言纪律：锁性质（合法/不合法、状态不变、不崩、日志出现），不写死具体牌；E2E 用固定局面 + 钩子。
@@ -251,8 +251,8 @@ chooseAction(state, playerId)
 
 ## 12. 打包与配置
 
-- `project.config.json`：`appid=wx99808147273cdea1`、`libVersion=2.19.4`、`minigameRoot=./`、`packOptions.ignore=[scripts,tests,docs,skills,tools]`。
-- `project.private.config.json` 里 `libVersion=3.17.6`，与主配置不一致（本地覆盖，见技术债）。
+- `project.config.json`：`appid=wx99808147273cdea1`、`libVersion=3.17.6`、`minigameRoot=./`、`packOptions.ignore=[scripts,tests,docs,skills,tools]`。
+- `project.private.config.json`（git 忽略，仅本地）：`libVersion` 同为 3.17.6。
 - `tests/test-pack-manifest.js` 锁定最终入包文件集合（当前 18 个文件），新增目录忘加 ignore 会被这条测试拦住。
 - 无 `package.json`、无 lockfile；不要引入依赖。
 
@@ -260,11 +260,11 @@ chooseAction(state, playerId)
 
 | # | 问题 | 影响 | 建议 |
 |---|---|---|---|
-| 1 | **轮次归属只在 game.js**：`state.currentPlayer` 仅 `push-wind.js` 写入，PLAY 期间引擎不校验谁该出牌 | 引擎单独用可越序出牌；状态不能完整序列化/回放；测试只能靠 game.js 守 | 若要改：在 state 增加 `turn`（或派生函数），`transition` 统一校验；属核心架构改动，**需用户批准** |
+| 1 | **轮次推进仍在 game.js**：`state.currentPlayer` 已由引擎持有并校验（D-059），但推进/跳过空手/清 UI 仍由 `game.js.advanceCurrentPlayer()` 驱动 | 引擎只能拒绝越序，不能自己推进；状态回放仍需 game.js 的推进逻辑 | 方案 A：把推进收进 `transition`（含空手跳过、推风归属），game.js 只渲染；需再评估 |
 | 2 | UI 镜像状态与 `gameState` 双份（`uiPlays`、`uiTableIds`、`uiTakenPlay`…） | 手工同步，漏同步会画面滞后 | 逐步改为从 state 派生；短期保持现状 |
 | 3 | `transition` 出口 merge + `plays` 保护是补丁式设计 | 新 handler 容易忘记返回字段 | 新 handler 明确列出所有变更字段；补测试锁 `plays` 不丢 |
 | 4 | `game.js` 约 2.6k 行，混驱动/闸门/触摸/托管/日志 | 可读性下降，改动易牵连 | 只做低风险拆分（如日志/闸门），不重写 |
 | 5 | preflight 第 8 项仍读 `~/.openclaw/openclaw.json` 的 dada-dev 白名单 | OpenClaw 已迁移，换机/删配置后该项会红 | 改成 DSH 环境检查或删除该项（需确认） |
-| 6 | `project.config.json` 2.19.4 vs `project.private.config.json` 3.17.6 | 真机基础库版本可能与预期不符 | 由用户确认目标基础库后统一 |
+| 6 | 基础库：仓库字段只影响开发者工具，真机由用户微信决定 | 模拟器与真机行为可能有差异 | 统一 3.17.6；MP 后台最低版本另行设置 |
 | 7 | 推风日志文案写死「同阵营=…」 | 次方未公开、目标其实是抓方时文案误导 | 文案改为「推给下一位」或按实际阵营输出 |
 | 8 | `src/phases.js` 顶部注释称「只实现到 LIANG_A_RESOLVED」 | 过时，误导新人 | 已在新文档纠正；源码注释可顺手清理 |

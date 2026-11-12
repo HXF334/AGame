@@ -169,9 +169,23 @@
 - 其它 skills 允许后续合并精简，但 `da-a-game-rules` 必须保持独立、权威。
 - 相关：`AGENTS.md`、`docs/` 下 4 份新文档
 
-## D-058 引擎轮次归属：暂不改，先记录（2026-11-12）
+## D-058 引擎轮次归属：暂不改，先记录（2026-11-12；同日由 D-059 取代）
 
 - 现状：`state.currentPlayer` 只在 `push-wind.js` 写入；PLAY 期间轮次只存在于 `game.js` 的模块级 `currentPlayer`，`transition/play` 不校验谁该出牌。
 - 决定：**本轮不改**。改它会动状态结构与所有出牌调用链，属核心架构改动，需用户在看到影响评估后单独批准。
 - 约束：在改动前，所有出牌入口必须继续由 `game.js` 守轮次；测试不得假设引擎能独立校验越序。
 - 相关：`ARCHITECTURE.md` §13 技术债 #1
+
+## D-059 引擎轮次归属：state.currentPlayer 为权威副本（2026-11-12，取代 D-058）
+
+- 用户批准按「方案 B（先低风险）」实施：`state.currentPlayer` 由引擎持有，出牌/过牌入口在字段非空时校验 `payload.playerId === state.currentPlayer`，越序返回 `NOT_YOUR_TURN`。
+- `game.js` 的模块级 `currentPlayer` 保留为 UI/流程快变量，但每次换手/注入都通过 `_setTurn()` 镜像回 `gameState.currentPlayer`；两者不允许分叉。
+- 推进权本轮仍留在 `game.js.advanceCurrentPlayer`（空手跳过、清出牌显示等 UI 副作用也在这里）；「引擎完全接管推进（方案 A）」作为后续项，需再评估。
+- 兼容：`state.currentPlayer` 为 null 时不做轮次校验，老测试/直接构造局面不受影响。
+- 相关：`src/transition.js`（`STATE_DEFAULTS`/`newGameState`）、`src/play.js`、`game.js _setTurn/__setState`、`tests/test-turn-ownership.js`
+
+## D-060 基础库版本统一为 3.17.6（2026-11-12）
+
+- `project.config.json` 与本地 `project.private.config.json` 的 `libVersion` 统一为 `3.17.6`（此前 2.19.4 / 3.17.6 不一致，模拟器实际跑后者）。
+- 说明：`libVersion` 只影响开发者工具编译/模拟；真机用的是用户微信自带基础库，最低支持版本需在微信公众平台后台设置，仓库字段不是真机依据。
+- 相关：`project.config.json`

@@ -664,7 +664,7 @@ function runGateStage() {
       if (gameState.phase === PHASES.PLAY) {
   uiPassed = {};                 // [2026-10-27] 开局清「不出」
   uiLastPhase = '';              // [2026-11-09] 新局 -> 阶段重新记(下次进 PLAY 要清一次)
-        currentPlayer = determineFirstPlayer(gameState) || 'A';
+        _setTurn(determineFirstPlayer(gameState) || 'A');
         log('  首出权 → ' + pn(currentPlayer) + ' (§5)');
         logState('开局');
         log('  正式出牌阶段开始');
@@ -880,8 +880,8 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   selectedCards = [];
   handCardHitboxes = [];
   lastEmptiedPlayer = null;
-  currentPlayer = null;
   gameState = engine.newGameState();
+  _setTurn(null);
   logHistory = [];                   // 新局重置日志(契约: 新局后第一条必须是「对局初始化」)
   initGame();                        // 重新走阶段闸门(内部会重置 gateIdx/gateChoice)
 log('新局已开始, 真人=' + pn(humanPlayer) + '(随机座位)');
@@ -2035,7 +2035,7 @@ function doPushWind() {
     //   但本函数原先只更新 gameState, 遗漏了 currentPlayer —— 于是 runAI()
     //   拿着**过期**的 currentPlayer 行动, 推风目标被丢弃。
     //   doPlay/doPass 不受影响: 它们走 advanceCurrentPlayer() 自行维护。
-    if (r.state.currentPlayer) currentPlayer = r.state.currentPlayer;
+    if (r.state.currentPlayer) _setTurn(r.state.currentPlayer);
     // [2026-11-04 用户] 推风把回合交给谁 -> 谁就清掉上一轮留下的出牌显示 /「不出」标记
     //   (推风不走 advanceCurrentPlayer -> 真人自己的「不出」留着 -> 按钮被藏起来, 只剩闹钟)
     if (currentPlayer) {
@@ -2230,6 +2230,14 @@ function _uiClearTurnDisplay(pid, opts) {
   }
 }
 
+// === 当前回合同步 (D-059 2026-11-12) ===
+//   模块级 currentPlayer 是 UI/流程的快变量; 引擎 state.currentPlayer 是权威副本。
+//   每次换手都必须镜像, 否则引擎的轮次校验会读到过期值。
+function _setTurn(pid) {
+  currentPlayer = pid || null;
+  if (gameState) gameState.currentPlayer = currentPlayer;
+}
+
 // === 推进到下一玩家 ===
 // [2026-11-09 用户] 「丁出了一个3后全部手牌出完了... 丙过牌, 这时到了丁, 就该把丁前面的3清掉, 换成大贡二贡等文字」
 //   -> 出完牌的人会被**跳过**(他不能再行动) -> 桌面上那手旧牌一直挂到轮末, 期间还压住了「大贡」字。
@@ -2250,7 +2258,7 @@ function advanceCurrentPlayer() {
       }
     if (nextPlayer && nextPlayer.hand && nextPlayer.hand.length > 0) {
       var _prevCur = currentPlayer;   // [2026-11-03] 记下换手前是谁 -> 决定要不要清真人的预选
-      currentPlayer = next;
+      _setTurn(next);
       // [2026-10-24] 倒计时跟着回合走: 轮到真人就计时, 离开就清零
       uiTurnTick();
       // [2026-11-03 用户] 轮到真人出牌 -> **清掉自己上一手牌的显示**
@@ -2522,6 +2530,8 @@ if (typeof module !== 'undefined' && module.exports) {
       var o = opts || {};
       currentPlayer = o.currentPlayer !== undefined ? o.currentPlayer
                     : (determineFirstPlayer(st) || 'A');
+      // [D-059] 引擎的权威副本必须与快变量一致, 否则轮次校验读到旧值。
+      st.currentPlayer = currentPlayer;
       lastEmptiedPlayer = o.lastEmptiedPlayer || null;
       // [2026-10-26] 只有**显式**要求才清日志(原来默认每次都清 -> 用户看到日志一直被清空)
       if (o.clearLog === true) logHistory = [];
@@ -2581,7 +2591,7 @@ steps.push('advance:' + (moved ? 'ok' : 'wait'));
       }
       // 闸门跑完但 PLAY 还没就绪(理论不该发生) -> 兜底再推一次, 避免留下 null 首出权
       if (gateIdx >= GATE_PLAN.length && !currentPlayer && gameState.phase === PHASES.PLAY) {
-        currentPlayer = determineFirstPlayer(gameState) || currentPlayer;
+        _setTurn(determineFirstPlayer(gameState) || currentPlayer);
       }
       return { steps: steps, phase: gameState.phase, currentPlayer: currentPlayer };
     },

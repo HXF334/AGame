@@ -30,7 +30,7 @@
     }
   },
   "compileType": "game",
-  "libVersion": "2.19.4",
+  "libVersion": "3.17.6",
   "condition": {},
   "simulatorPluginLibVersion": {},
   "packOptions": {

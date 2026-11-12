@@ -48,6 +48,7 @@ function newGameState() {
     次方: null,        // §4.5：null 1V4 或未到本阶段；否则 = 'B'|'C'|'D'|'E'
     mode: null,        // 1V4_明打 / 1V4_暗打 / 2V3_明打 / 2V3_暗打 / null 未定
     底牌公开: false,   // §4.5：false 未翻开；true 底牌翻开后
+    currentPlayer: null, // [D-059 2026-11-12] 引擎内的当前行动者；null=未进入 PLAY
     actions: [],
     discarded: []  // P0 修复: 已出完不再参与的牌 (旧 table / 取牌用掉的 4) - 牌张守恒 = hand + 底牌 + table + discarded = 108
   };
@@ -92,6 +93,9 @@ var STATE_DEFAULTS = {
   主方: [], 抓方: [], 头名: null, 推风触发者: null,
   出完顺序: [],                   // [2026-11-08] 出完牌的顺序(大贡/二贡/三贡/四贡)
   底牌公开: false, 次方公开: false,
+  // [D-059 2026-11-12] 轮次归属: 引擎持有当前行动者, game.js 每次换手镜像回写。
+  //   出牌/过牌入口据此校验; 未设置(null)时保持向后兼容(老测试直接构造的局面)。
+  currentPlayer: null,
   table: [], discarded: [], passedPlayers: [], passCount: 0, lastPlayer: null,
   plays: [],                       // [2026-11-07] 出牌流水(公开): [{playerId, type, count, beat}]
   actions: []
