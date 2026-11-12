@@ -264,3 +264,14 @@
 - 结果：678JJQ 打单 → Q；678JJ 打单 → 6；整条龙照常出；6789 拿 6（剩 789 仍成段）不罚。
 - 测试：`tests/test-split-chain.js`（10 断言，AI/托管/提示三处一致）；`tests/test-hint-order-split.js` 3.1 期望值随权重改为 2。
 - 相关：`src/ai.js`、`game.js`（`_hintSplitGroups`）、`tests/test-split-chain.js`
+
+## D-070 1V4 / 反A 整局无头 E2E（2026-11-12）
+
+- 背景：1V4 与反A 只有规则单测，没有「定身份 -> 整局 -> 结算」的端到端覆盖。
+- 新增 `tests/test-1v4-fan-a-e2e.js`，按 `state.currentPlayer` 驱动（D-061 后引擎接管推进），AI 每步用 `chooseAction`，`checkGameEnd` 收尾：
+  - A. 底牌揭示：同一人两张同花色 A -> 1V4，主方只有该玩家、抓方其余 4 人、选完身份进 PLAY；
+  - B. 1V4 明打整局：能打到 GAME_END，分数 ±64 / ∓16 且零和；
+  - C. 1V4 暗打整局：分数只能 ±16 / ±4（平局 0），零和；
+  - D. 反A：FAN_A 成功 -> mode 变 1V4_明打、主方只有反A者、抓方含原主方+次方+抓方、首出权是反A者，整局跑完并结算。
+- 结果：23 断言全过；全量套件 103 个。
+- 相关：`tests/test-1v4-fan-a-e2e.js`、`src/turn.js`（推进）、`src/scoring.js`
