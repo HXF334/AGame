@@ -108,9 +108,14 @@ function _isSameCamp(state, a, b) {
 // 提示候选池直接复用这里的判定 -> 提示 = 托管 口径一致。
 var SAME_RANK_FAMILY = { PAIR: 1, TRIPLE: 1, BIG_TRIPLE: 1, TRUE_SEVEN: 1, TRUE_EIGHT: 1 };
 
+// [2026-11-12 用户] 「枚举时应该先把大A排除在外选择合适的牌, 然后再考虑只有大A和包含大A的情况」
+//   大A(主方大A)与同点数的普通A 不是同一组: 否则手里「双大A + 三张普通A」时,
+//   出三张普通A(AAA)会被误判成「拆了 5 张 A 的同点组」而进不了候选。
+function groupKeyOf(c) { return (c && c['is主方大A']) ? 'BIG_A' : String(c.rank); }
+
 function handGroups(hand) {
   var g = {};
-  (hand || []).forEach(function (c) { (g[c.rank] = g[c.rank] || []).push(c); });
+  (hand || []).forEach(function (c) { var k = groupKeyOf(c); (g[k] = g[k] || []).push(c); });
   return g;
 }
 
@@ -119,7 +124,7 @@ function splitsSameRankGroup(cards, type, hand) {
   if (!SAME_RANK_FAMILY[type]) return false;
   var groups = handGroups(hand);
   var used = {};
-  (cards || []).forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+  (cards || []).forEach(function (c) { var k = groupKeyOf(c); used[k] = (used[k] || 0) + 1; });
   for (var rk in groups) {
     var total = groups[rk].length;
     var u = used[rk] || 0;
@@ -133,7 +138,7 @@ function splitEggCount(cards, hand) {
   if (!cards || cards.length < 2) return 0;          // 单张拆组 -> 不罚
   var groups = handGroups(hand);
   var used = {};
-  cards.forEach(function (c) { used[c.rank] = (used[c.rank] || 0) + 1; });
+  cards.forEach(function (c) { var k = groupKeyOf(c); used[k] = (used[k] || 0) + 1; });
   var n = 0, touched = 0;
   for (var rk in groups) {
     var total = groups[rk].length;

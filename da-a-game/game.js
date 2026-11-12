@@ -997,12 +997,16 @@ function uiHintCandidates(mode) {
     //   -> 提示池直接复用**托管的拆组判定**(ai.splitsRejected); 真人手动点选(engine 池)仍自由拼牌。
     if (!_isEnginePool && !allowSplit && _aiSplitsRejected(cards, h ? h.type : 'INVALID', me.hand)) return false;
     var pwr = (h && aiPolicy.HINT_TYPE_RANK[h.type] !== undefined) ? aiPolicy.HINT_TYPE_RANK[h.type] : 0;
+    // [2026-11-12 用户] 提示顺序: 先「不含大A」的牌, 再「双大A」, 最后「大A 与别的牌混出」。
+    var _nBig = cards.filter(function (c) { return !!c['is主方大A']; }).length;
+    var _bigTier = _nBig === 0 ? 0 : ((h && h.type === handTypes.HAND_TYPES.DOUBLE_BIG_A) ? 1 : 2);
     out.push({
       ids: ids.slice(), cards: cards, label: _uiComboLabel(cards),
       type: h ? h.type : 'INVALID',
       sameType: (tableType && h && h.type === tableType) ? 0 : 1,   // 同牌型优先
       typeRank: pwr,                                               // 牌型从小到大
       len: cards.length, value: _uiComboPower(cards),
+      bigTier: _bigTier,
       isFirst: !!isFirst
     });
     return true;
@@ -1043,6 +1047,8 @@ function uiHintCandidates(mode) {
     return out2;
   }
   out.sort(function (a, b) {
+    // [2026-11-12 用户] 含大A 的一律靠后: 0=不含大A, 1=双大A, 2=大A 混出。
+    if (a.bigTier !== b.bigTier) return a.bigTier - b.bigTier;
     if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
     // [2026-11-09 用户] 「上家出456, 我有5677, 点提示为什么不出567」-> 组合牌型拆组只是**罚**, 不禁选:
     //   拆组罚分小的排前(与托管的 splitEgg 同口径)。

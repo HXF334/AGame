@@ -215,6 +215,9 @@ chooseAction(state, playerId)
         → 第一个合法候选；无则 PASS
 ```
 
+- 同点分组按 `groupKeyOf` 取键：**大A 单列 `BIG_A`**，不与普通 A 同组（D-065）。否则「拆组」会把 AAA 误判为拆了 5 张 A 的组而过滤掉。
+- 「提示」候选池是全量合法组合，排序时先按 `bigTier`（不含大A=0 / 双大A=1 / 混出=2）再按 `isFirst`（D-065）。
+
 - `camp.js campOf` 返回 `SELF/ALLY/ENEMY/UNKNOWN`：手动标记优先；公开阵营按真表；暗打主A 看别人一律 UNKNOWN；推定信号来自 `state.plays`（D-028/D-048）。
 - 推定只影响 AI 自己的判断，**不改真人 UI 的敌友标记**（D-048）。
 - `ai-policy.js` 是排序键/牌力/「蛋子+」集合的唯一来源，`tests/test-ai-policy.js` + `docs/ai/AI_POLICY.md` 机检块锁死。
@@ -245,7 +248,7 @@ chooseAction(state, playerId)
 ## 11. 测试架构
 
 - 无测试框架：每个 `tests/test-*.js` 自带 `test()`/`assert`，`node tests/test-xxx.js` 直接跑，退出码非 0 即失败。
-- `tests/_runall.js`：枚举 `test-*.js`（当前 **98** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
+- `tests/_runall.js`：枚举 `test-*.js`（当前 **99** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
 - `tests/mock-wx.js`：`__isMock=true`、800×400 canvas、`ctx` 方法桩、`onTouchStart` 收集 handler、`fireTouch`；必须在 `require game.js` **之前**安装。
 - `tests/lib/state-builder.js`：`SB.build({...})` 构造确定局面并自动补足 108 张；`SB.countAll` 校验守恒。
 - 断言纪律：锁性质（合法/不合法、状态不变、不崩、日志出现），不写死具体牌；E2E 用固定局面 + 钩子。

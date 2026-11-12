@@ -32,18 +32,36 @@ function candidateCombos(hand) {
 
   // ---- (a) 同点数组 ----
   var groups = {};
+  var sameRankById = {};
   for (i = 0; i < hand.length; i++) {
     var c = hand[i];
     if (c.isBigJoker || c.isSmallJoker) continue;   // 王不参与同点数组
+    sameRankById[c.id] = c;
     var k = c.rank;
     if (!groups[k]) groups[k] = [];
     groups[k].push(c.id);
   }
   var ranks = Object.keys(groups);
+  // [2026-11-12 用户] 「枚举时先把大A排除在外选择合适的牌, 然后考虑只有大A和包含大A的情况」
+  //   原实现每个点数只取 `g.slice(0, n2)` 前缀: 手里「双大A + 三张普通A」时,
+  //   枚举出来的永远是先带大A的组合, **三张普通A(AAA) 根本进不了候选**。
+  //   改为: 组内普通 A 在前、大A 在后, 再枚举该点数的**全部子集**(点数最多 8 张, 规模可控),
+  //   让「不含大A」「只含大A」「混合」三类都出现在候选池里, 由排序决定先后。
+  function _subsets(arr, k) {
+    var res = [];
+    (function rec(start, cur) {
+      if (cur.length === k) { res.push(cur.slice()); return; }
+      for (var t = start; t < arr.length; t++) { cur.push(arr[t]); rec(t + 1, cur); cur.pop(); }
+    })(0, []);
+    return res;
+  }
   for (i = 0; i < ranks.length; i++) {
-    var g = groups[ranks[i]];
+    var g = groups[ranks[i]].slice().sort(function (id1, id2) {
+      var c1 = sameRankById[id1], c2 = sameRankById[id2];
+      return (c1 && c1['is主方大A'] ? 1 : 0) - (c2 && c2['is主方大A'] ? 1 : 0);
+    });
     for (var n2 = MIN_SAME_RANK; n2 <= MAX_SAME_RANK && n2 <= g.length; n2++) {
-      out.push(g.slice(0, n2));
+      _subsets(g, n2).forEach(function (sub) { out.push(sub); });
     }
   }
 

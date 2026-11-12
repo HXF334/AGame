@@ -221,3 +221,12 @@
 - UI 意图单独存放：`uiHiddenAt`（暂时藏起某家某一手，如出完后被压过、轮到他被跳过才清）、`uiPassHidden`（暂时藏起「不出」）、`uiPassResetAt`（新轮开始后旧的「不出」不再显示）。这些只影响显示，不写回引擎状态。
 - 代价：新增流水事件类型时必须同步 `_uiProjectPlays` 分支；直接注入 `uiPlays` 的测试改为注入 `state.plays` 并 `draw()`。
 - 相关：`src/play.js`、`game.js`（`_uiProjectPlays`/`_uiHidePlay`/`_uiHidePass`，删除 `_uiSyncTrick`/`_uiScanCaptured`/`_uiSyncPassState`/`_uiCurrentPlays`）、`tests/test-ui-derived-play.js`、`ARCHITECTURE.md` §9、§13 技术债 #2
+
+## D-065 提示候选：大A 单独成组，按「不含大A → 双大A → 混出」排序（2026-11-12）
+
+- 用户反馈：1V4 明打、手牌 双大A + 3 普通A 时，点提示依次选中「双大A → 5张A → 双大A」，且 AAA 根本不出现；期望「先 AAA（不含大A）→ 双大A → 5张A」。
+- 根因两处：① combos.js 同点组只取前 n 张前缀，双大A 排在组首，永远枚举不出三张普通A；② i.js 按 rank 分组，大A 与普通A 同组，出 AAA 被判为拆了 5 张 A 的组。
+- 改法：i.js 新增 groupKeyOf(c)（主方大A → BIG_A），handGroups/splitsSameRankGroup/splitEggCount 统一用它；combos.js 同点组按「普通A 在前、大A 在后」排序后用 _subsets 枚举全部子集；game.js uiHintCandidates 增加 igTier（0/1/2）并排在 isFirst 之前。
+- 结果：候选顺序为 3张A(首发) → 4张K → 2张A(双大A) → 5张A → 假八组合。
+- 测试：	ests/test-hint-big-a-order.js（5 断言）。
+- 相关：src/ai.js、src/combos.js、game.js、docs/ai/AI_POLICY.md §3.1、ARCHITECTURE.md §8
