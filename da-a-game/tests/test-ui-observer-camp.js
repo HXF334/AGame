@@ -127,7 +127,9 @@ section('§3. 4取牌: 被取走的那手牌标「取」');
     check('§3.5 UI 标记了被取走那手牌的主人', marks.E === true, JSON.stringify(marks));
     check('§3.6 取牌者自己没被标', !marks.A, JSON.stringify(marks));
 
-    g.uiPlays().E = nines;
+    // [P2 2026-11-12] 镜像从流水派生: 被取那手牌也要有对应的 PLAY 记录才能显示
+    g.gameState().plays.unshift({ playerId: 'E', kind: 'PLAY', type: 'TRIPLE', count: 3, cards: nines });
+    g.draw();
     var styles = g.__renderTextStyles();
     var taken = styles.filter(function (s) { return s.text === '取'; });
     check('§3.7 画面上被取那手牌标了「取」', taken.length === 1, 'n=' + taken.length);

@@ -65,7 +65,10 @@ function handlePlay(state, payload) {
           count: playCards.length,
           beat: (state.table && state.table.length > 0) ? (state.lastPlayer || null) : null,
           kind: 'CAPTURE',
-          useFours: playCards.length
+          useFours: playCards.length,
+          // [P2 2026-11-12] 带上牌对象: UI 的「各家最新出牌」改为从流水派生(D-064),
+          //   不再由 game.js 在出牌瞬间单独记一份镜像。
+          cards: playCards.slice()
         }])
       });
       return Object.assign({}, captureResult, { state: _cs });
@@ -113,7 +116,9 @@ function handlePlay(state, payload) {
         type: hand.type,
         count: playCards.length,
         beat: (state.table && state.table.length > 0) ? (state.lastPlayer || null) : null,
-        kind: 'PLAY'
+        kind: 'PLAY',
+        // [P2 2026-11-12] 牌对象随流水保存, 供 UI 派生(D-064)。
+        cards: playCards.slice()
       }])
     })
   };
@@ -170,6 +175,8 @@ function handlePass(state, payload) {
 
   if (allPassed) {
     // 轮结束: 清桌, 清 passedPlayers, 旧 table 牌 → discarded
+    // [P2 2026-11-12] 流水补 PASS + CLEAR: UI 的「不出」「轮次」改为从这里派生(D-064)。
+    //   CLEAR 是唯一「一轮结束」的权威信号; 之前的 trick 号由 game.js 自己猜桌牌变化, 已删除。
     const newDiscarded = (state.discarded || []).concat(state.table || []);
     return {
       ok: true,
@@ -178,7 +185,11 @@ function handlePass(state, payload) {
         discarded: newDiscarded,
         lastPlayer: state.lastPlayer,
         passedPlayers: [],
-        passCount: 0
+        passCount: 0,
+        plays: (state.plays || []).concat([
+          { playerId: playerId, kind: 'PASS', type: 'PASS', count: 0, beat: null },
+          { playerId: state.lastPlayer, kind: 'CLEAR', type: 'CLEAR', count: 0, beat: null }
+        ])
       })
     };
   }
@@ -189,7 +200,10 @@ function handlePass(state, payload) {
       table: state.table,
       lastPlayer: state.lastPlayer,
       passedPlayers: newPassedPlayers,
-      passCount: newPassCount
+      passCount: newPassCount,
+      plays: (state.plays || []).concat([
+        { playerId: playerId, kind: 'PASS', type: 'PASS', count: 0, beat: null }
+      ])
     })
   };
 }

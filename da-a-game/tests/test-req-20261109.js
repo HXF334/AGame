@@ -38,10 +38,12 @@ function idsOf(a) { return a.slice().sort().join(','); }
 section('① 「不出」不再随机丢失');
 {
   var st = mkState([card.createNormalCard('S',5,'h1'), card.createNormalCard('H',5,'h2')], []);
+  // [P2 2026-11-12] 镜像从流水派生: 同一轮先出牌、后过牌
+  st.plays = [
+    { playerId: 'A', kind: 'PLAY', type: 'SINGLE', count: 1, cards: [card.createNormalCard('S', 9, 'p1')] },
+    { playerId: 'A', kind: 'PASS', type: 'PASS', count: 0 }
+  ];
   g.__setState(st, { human: 'A', currentPlayer: 'A' });
-  var ui = g.__uiState();
-  ui.uiPassed['A'] = true;                // 他过了牌
-  ui.uiPlaysTrick['A'] = ui.uiTrickId;   // 同一轮(uiTrickId 相同)里他**出过牌**
   var texts = g.__renderTexts();
   check('① 同一轮出过牌又过牌 -> 仍然画「不出」', texts.indexOf('不出') >= 0,
     JSON.stringify(texts.slice(0, 25)));
@@ -50,7 +52,7 @@ section('① 「不出」不再随机丢失');
   var st = mkState([card.createNormalCard('S',5,'h1'), card.createNormalCard('H',5,'h2'), card.createNormalCard('D',6,'h3')], []);
   g.__setState(st, { human: 'A', currentPlayer: 'A' });
   g.draw();                               // 先画一帧 -> 记下当前手牌数
-  g.uiPassed()['A'] = true;               // 他刚过牌
+  g.gameState().plays.push({ playerId: 'A', kind: 'PASS', type: 'PASS', count: 0 });   // 他刚过牌
   var me = st.players.filter(function (p) { return p.id === 'A'; })[0];
   me.hand.pop();                          // 托管连走多个动作: 中间没重画, 手牌变少
   g.draw();
@@ -139,7 +141,8 @@ section('⑥ 托管动作不清掉「不出」标记');
   var _fs = require('fs'), _path = require('path');
   var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
   check('⑥ enterPlayIfNeeded 只在进入 PLAY 时清「不出」',
-    _src.indexOf('if (uiLastPhase !== PHASES.PLAY) uiPassed = {};') >= 0, '');
+    _src.indexOf('if (uiLastPhase !== PHASES.PLAY) {') >= 0 &&
+    _src.indexOf('uiPassResetAt = (gameState.plays || []).length;') >= 0, '');
   var st = mkState([card.createNormalCard('S',2,'g1'), card.createNormalCard('H',2,'g2')],
                    [card.createNormalCard('C',9,'tg1'), card.createNormalCard('D',9,'tg2'), card.createNormalCard('S',9,'tg3')]);
   st.players.forEach(function (p) {
@@ -147,7 +150,7 @@ section('⑥ 托管动作不清掉「不出」标记');
   });
   g.__setState(st, { human: 'A', currentPlayer: 'A' });
   g.__enterPlay();
-  g.uiPassed()['B'] = true;         // 模拟: 上家过了牌
+  g.gameState().plays.push({ playerId: 'B', kind: 'PASS', type: 'PASS', count: 0 });   // 模拟: 上家过了牌
   g.__setAutoPlay(true);
   g.__autoPlayStep();               // 托管接管: AI 替真人过牌
   g.__setAutoPlay(false);
@@ -197,8 +200,9 @@ section('⑨ 出完牌的人: 轮到他时才清桌面牌, 换成大贡');
   d.hand = [];                         // 丁已出完
   st['出完顺序'] = ['D'];
   g.__setState(st, { human: 'A', currentPlayer: 'C' });
-  g.uiPlays()['D'] = [card.createNormalCard('S',3,'i3')];
-  g.uiPlaysTrick()['D'] = g.__uiState().uiTrickId;
+  // [P2 2026-11-12] 镜像从流水派生: 丁最后出的一手牌记进 plays
+  g.gameState().plays = [{ playerId: 'D', kind: 'PLAY', type: 'SINGLE', count: 1,
+                            cards: [card.createNormalCard('S',3,'i3')] }];
   st.lastPlayer = 'D';                 // 他刚出完, 还是当前墩的出牌人
   g.draw();
   check('⑨ 出完牌的人: 他最后那手牌先留在桌上', !!(g.uiPlays()['D'] && g.uiPlays()['D'].length),
@@ -220,10 +224,10 @@ section('⑩ 同一轮多个人都出完牌');
   d.hand = []; e.hand = [];            // 丁、戊都出完了
   st['出完顺序'] = ['D','E'];
   g.__setState(st, { human: 'A', currentPlayer: 'C' });
-  g.uiPlays()['D'] = [card.createNormalCard('S',3,'m3')];
-  g.uiPlaysTrick()['D'] = g.__uiState().uiTrickId;
-  g.uiPlays()['E'] = [card.createNormalCard('H',4,'m4')];
-  g.uiPlaysTrick()['E'] = g.__uiState().uiTrickId;
+  g.gameState().plays = [
+    { playerId: 'D', kind: 'PLAY', type: 'SINGLE', count: 1, cards: [card.createNormalCard('S',3,'m3')] },
+    { playerId: 'E', kind: 'PLAY', type: 'SINGLE', count: 1, cards: [card.createNormalCard('H',4,'m4')] }
+  ];
   g.draw();
   check('⑩ 两人出完: 桌面牌都先留着', !!(g.uiPlays()['D'] && g.uiPlays()['D'].length) && !!(g.uiPlays()['E'] && g.uiPlays()['E'].length),
     JSON.stringify(Object.keys(g.uiPlays())));
@@ -269,7 +273,8 @@ section('⑫ 出牌流水(plays)不能被过牌清空(推定次方/抓方的依�
   };
   var r = engine.transition(st, { type: 'PASS', payload: { playerId: 'B' } });
   check('⑫ 过牌后出牌流水仍在(推定依据不能丢)',
-    !!(r && r.ok && r.state && r.state.plays && r.state.plays.length === 1),
+    !!(r && r.ok && r.state && r.state.plays && r.state.plays.length >= 1 &&
+       r.state.plays[0].playerId === 'A' && r.state.plays[0].type === 'BIG_TRIPLE'),
     JSON.stringify(r && r.state && r.state.plays));
 }
 

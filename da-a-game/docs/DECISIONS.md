@@ -212,3 +212,12 @@
 - 改为检查仓库自身：`skills/<dir>/SKILL.md` 必须存在、frontmatter 含 `name` 与 `description`、`name` 与目录名一致；不依赖任何外部配置。
 - 变异验证：临时放一个缺 `SKILL.md`、再放一个缺 `description` 的目录，preflight 均准确 FAIL；删除后恢复 12/12。
 - 相关：`scripts/preflight.js`、`skills/*/SKILL.md`、`PROJECT_STATUS.md` §6、`ARCHITECTURE.md` §13
+
+## D-064 UI 出牌显示改为流水派生（2026-11-12）
+
+- 用户批准 P2「UI 镜像收敛」：`uiPlays` / `uiPlaysTrick` / `uiTrickId` / `uiPassed` / `uiTakenPlay` 不再由 `game.js` 各函数手工增删，改为从 `gameState.plays` 派生。
+- 引擎补齐流水：PLAY / CAPTURE 记录带 `cards`；每次过牌追加 `kind:'PASS'`；轮末清桌追加 `kind:'CLEAR'`（记 `lastPlayer`）。流水仍是只增日志，`transition` 出口 merge 保旧值的逻辑不变。
+- 派生：`_uiProjectPlays()` 一趟扫描重建视图——CLEAR 递增轮次；PLAY/CAPTURE 记「最新一手」与轮次；PASS 清该家显示并置「不出」；CAPTURE 的 `beat` 给被取者打「取」标记。
+- UI 意图单独存放：`uiHiddenAt`（暂时藏起某家某一手，如出完后被压过、轮到他被跳过才清）、`uiPassHidden`（暂时藏起「不出」）、`uiPassResetAt`（新轮开始后旧的「不出」不再显示）。这些只影响显示，不写回引擎状态。
+- 代价：新增流水事件类型时必须同步 `_uiProjectPlays` 分支；直接注入 `uiPlays` 的测试改为注入 `state.plays` 并 `draw()`。
+- 相关：`src/play.js`、`game.js`（`_uiProjectPlays`/`_uiHidePlay`/`_uiHidePass`，删除 `_uiSyncTrick`/`_uiScanCaptured`/`_uiSyncPassState`/`_uiCurrentPlays`）、`tests/test-ui-derived-play.js`、`ARCHITECTURE.md` §9、§13 技术债 #2

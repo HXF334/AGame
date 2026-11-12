@@ -226,7 +226,7 @@ chooseAction(state, playerId)
 - `ui-render.js` 负责：桌面、顶栏（模式/主A/次方/记牌器）、5 个座位、每人桌面牌、手牌、按钮、toast、结算面板；`render()` 返回 hitboxes 供 `game.js` 命中检测。
 - 顶部 5 个圆形按钮 = 切换 `uiObserver`（只读观察视角，可看 5 家手牌），不是玩家。
 - 手牌点击 → 选中/取消；`_uiExpandSelection` 会自动补成合法牌型（点一张 5 自动带成对子/蛋子）。
-- `uiPlays` / `uiTableIds` / `uiTakenPlay` / `uiPassed` 等是 `gameState` 的**UI 镜像**，由 `_uiRecordPlay` 等手工同步；改规则状态后必须同步这些镜像，否则画面滞后。
+- `uiPlays` / `uiPlaysTrick` / `uiTrickId` / `uiPassed` / `uiTakenPlay` 是**从 `gameState.plays` 派生的视图**（D-064）：`_uiProjectPlays()` 遍历流水重建；PLAY/CAPTURE 记录带 `cards`，PASS 追加 PASS 记录，轮末清桌追加 CLEAR 记录。「暂时藏起某手牌」「暂时藏起不出」用 `uiHiddenAt`、`uiPassHidden`、`uiPassResetAt` 表达，不再手工增删这些视图。
 
 ## 10. 定时器与异步
 
@@ -245,7 +245,7 @@ chooseAction(state, playerId)
 ## 11. 测试架构
 
 - 无测试框架：每个 `tests/test-*.js` 自带 `test()`/`assert`，`node tests/test-xxx.js` 直接跑，退出码非 0 即失败。
-- `tests/_runall.js`：枚举 `test-*.js`（当前 **97** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
+- `tests/_runall.js`：枚举 `test-*.js`（当前 **98** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
 - `tests/mock-wx.js`：`__isMock=true`、800×400 canvas、`ctx` 方法桩、`onTouchStart` 收集 handler、`fireTouch`；必须在 `require game.js` **之前**安装。
 - `tests/lib/state-builder.js`：`SB.build({...})` 构造确定局面并自动补足 108 张；`SB.countAll` 校验守恒。
 - 断言纪律：锁性质（合法/不合法、状态不变、不崩、日志出现），不写死具体牌；E2E 用固定局面 + 钩子。
@@ -263,7 +263,7 @@ chooseAction(state, playerId)
 | # | 问题 | 影响 | 建议 |
 |---|---|---|---|
 | 1 | ~~**轮次推进仍在 game.js**~~（D-061 已解决）：引擎在 `transition` 出牌/过牌成功后写入 `state.currentPlayer`，`game.js.advanceCurrentPlayer()` 只镜像并清 UI | 引擎可独立推进，状态可回放；`game.js` 的兜底扫描仅服务老测试/直接注入 | 保持；新增出牌入口必须走 `transition`，不得绕过 |
-| 2 | UI 镜像状态与 `gameState` 双份（`uiPlays`、`uiTableIds`、`uiTakenPlay`…） | 手工同步，漏同步会画面滞后 | 逐步改为从 state 派生；短期保持现状 |
+| 2 | ~~UI 镜像状态与 `gameState` 双份~~（D-064 已解决）：`uiPlays`/`uiTakenPlay`/`uiPassed`/`uiTrickId` 由 `gameState.plays` 派生 | 派生结果只取决于流水；遗留的 `uiHiddenAt`/`uiPassHidden` 仅表达「暂时藏起」的 UI 意图 | 新增流水事件时必须补 `_uiProjectPlays` 分支与测试 |
 | 3 | `transition` 出口 merge + `plays` 保护是补丁式设计 | 新 handler 容易忘记返回字段 | 新 handler 明确列出所有变更字段；补测试锁 `plays` 不丢 |
 | 4 | `game.js` 约 2.6k 行，混驱动/闸门/触摸/托管/日志 | 可读性下降，改动易牵连 | 只做低风险拆分（如日志/闸门），不重写 |
 | 5 | ~~preflight 第 8 项仍读 `~/.openclaw/openclaw.json` 的 dada-dev 白名单~~（D-063 已解决） | 原为 OpenClaw 残留，换机/删配置会恒红；现改为仓库内 skills 结构检查（SKILL.md + name/description） | 保持；新增技能只需保证目录名与 frontmatter 一致 |

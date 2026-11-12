@@ -118,10 +118,11 @@ check('渲染画面里不再有 3 个 Q(乙的旧牌已消失)', qHits.length < 
 var _fs = require('fs');
 var _path = require('path');
 var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
-check('源码: _uiPassCleanup 无条件 delete uiPlays[pid]',
-  /function _uiPassCleanup[\s\S]{0,500}delete uiPlays\[pid\]/.test(_src));
-check('源码: _uiPassCleanup 里置位 uiPassed[pid]',
-  /function _uiPassCleanup[\s\S]{0,400}uiPassed\[pid\] = true/.test(_src));
+check('源码: PASS 记录由引擎写入流水, UI 从流水派生不出/清牌(D-064)',
+  /kind: 'PASS'/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'play.js'), 'utf8'))
+  && /function _uiPassCleanup[\s\S]{0,400}_uiProjectPlays\(\)/.test(_src));
+check('源码: _uiProjectPlays 里 PASS 分支清掉该玩家的出牌显示',
+  /kind === 'PASS'[\s\S]{0,300}delete shows\[r\.playerId\]/.test(_src));
 check('源码: AI 过牌路径(applyAction)也走 _uiPassCleanup',
   /action\.type === ACTIONS\.PASS[\s\S]{0,600}_uiPassCleanup\(currentPlayer\)/.test(_src));
 

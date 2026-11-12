@@ -131,10 +131,11 @@ section('2. AI 回合清掉上一轮的出牌显示');
   st['主A'] = { suit: 'D', establishedBy: 'A', viaMethod: 'LIANG_A' };
   st['反A'] = null; st['次方'] = null; st['次方公开'] = true; st['底牌公开'] = true;
   st.table = []; st.discarded = []; st.passedPlayers = []; st.lastPlayer = null;
+  // [P2 2026-11-12] 镜像改为从流水派生: 直接往 plays 里放一条 A 的出牌记录
+  //   (旧的 `g.uiPlays().A = ...` 写法在派生架构下会被下一次投影覆盖)
+  st.plays = [{ playerId: 'A', kind: 'PLAY', type: 'SINGLE', count: 2,
+                cards: [C('S', 9, 'old1'), C('H', 10, 'old2')] }];
   g.__setState(st, { currentPlayer: 'A', human: 'D', clearLog: true });
-  // 人为塞上「A 上一轮出的牌」和「A 上一轮说了不出」
-  g.uiPlays().A = [C('S', 9, 'old1'), C('H', 10, 'old2')];
-  g.uiPassed().A = true;
   g.advanceCurrentPlayer();     // A -> B(AI)
   check('2.1 轮到 AI(B) -> B 自己的旧牌显示被清掉', !g.uiPlays().B, JSON.stringify(Object.keys(g.uiPlays() || {})));
   check('2.2 轮到 AI(B) -> B 的「不出」被清掉', !g.uiPassed().B, JSON.stringify(g.uiPassed()));

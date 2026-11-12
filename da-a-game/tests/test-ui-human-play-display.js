@@ -135,11 +135,11 @@ check('3.2 清掉上一手牌后按钮重新出现', stage.length > 0, 'n=' + st
 var _fs = require('fs');
 var _path = require('path');
 var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
-// [2026-11-03/04 用户] 「轮到谁(真人或AI)都清掉他上一轮的出牌显示 /「不出」」
-//   -> 清理逻辑抽在 _uiClearTurnDisplay(推风路径也共用), 两处都要在。
-check('4.1 源码: _uiClearTurnDisplay 清 uiPlays/uiPassed, 且 advanceCurrentPlayer 调用它',
-  /function _uiClearTurnDisplay[\s\S]{0,400}delete uiPlays\[pid\]/.test(_src)
-  && /function _uiClearTurnDisplay[\s\S]{0,400}delete uiPassed\[pid\]/.test(_src)
+// [P2 2026-11-12] 镜像改为从流水派生(D-064): 清理动作变成「记隐藏意图」_uiHidePlay/_uiHidePass,
+//   实际显示由 _uiProjectPlays 重算; 不再直接 delete uiPlays/uiPassed。
+check('4.1 源码: _uiClearTurnDisplay 记隐藏意图, 且 advanceCurrentPlayer 调用它',
+  /function _uiClearTurnDisplay[\s\S]{0,400}_uiHidePlay\(pid\)/.test(_src)
+  && /function _uiClearTurnDisplay[\s\S]{0,400}_uiHidePass\(pid\)/.test(_src)
   && /function advanceCurrentPlayer[\s\S]{0,1400}_uiClearTurnDisplay\(next\)/.test(_src));
 var _usrc = _fs.readFileSync(_path.join(__dirname, '..', 'ui-render.js'), 'utf8');
 check('4.2 源码: 渲染层给真人分了出牌显示位',

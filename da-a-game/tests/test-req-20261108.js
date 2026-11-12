@@ -76,14 +76,17 @@ section('1. 「不出」标记: 别人出牌/换手不能把它带走');
 {
   var st = mkState([C('S', 5, 'h1'), C('H', 5, 'h2')], [C('S', 4, 't1'), C('H', 4, 't2')]);
   g.__setState(st, { human: 'A', currentPlayer: 'B', clearLog: true });
-  g.uiPassed()['B'] = true;
+  // [P2 2026-11-12] 镜像从流水派生: 用 PASS 记录表达「B 过了牌」
+  g.gameState().plays.push({ playerId: 'B', kind: 'PASS', type: 'PASS', count: 0 });
+  g.draw();
   check('1.1 过牌的人有「不出」标记', !!g.uiPassed()['B']);
   // 轮转 5 步 -> 回到 B(上家过牌后, 别人出牌, 轮子转回他)
   for (var i = 0; i < 5; i++) g.advanceCurrentPlayer();
   check('1.2 轮转一圈回到他本人时, 「不出」仍在(只在他自己出牌时才清)',
     !!g.uiPassed()['B'], JSON.stringify(g.uiPassed()) + ' cur=' + g.currentPlayer());
   // 真人自己的: 轮到自己时标记要清(否则【出牌/不出/提示】被藏起来)
-  g.uiPassed()['A'] = true;
+  g.gameState().plays.push({ playerId: 'A', kind: 'PASS', type: 'PASS', count: 0 });
+  g.draw();
   for (var j = 0; j < 4; j++) g.advanceCurrentPlayer();
   check('1.3 轮到真人本人时清掉自己的「不出」(按钮要让位)',
     !g.uiPassed()['A'], JSON.stringify(g.uiPassed()) + ' cur=' + g.currentPlayer());

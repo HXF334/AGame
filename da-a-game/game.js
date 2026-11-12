@@ -43,7 +43,7 @@ var uiPassed = {};          // pid -> true (该玩家点了「不出」)
 //      在**每次托管动作之后**调用 -> 刚设好的「不出」当场被清, 别人过牌的也一起没了。
 //      用它记住当前阶段: 只有**真的从别的阶段进入 PLAY** 时才清一次。
 var uiLastPhase = '';
-// [2026-11-11] 取牌「取」标志改由**引擎出牌流水**判定(见 _uiScanCaptured) -> 不再需要
+// [2026-11-11] 取牌「取」标志改由**引擎出牌流水**判定(见 _uiProjectPlays) -> 不再需要
 //   「按牌 id 记已取过」那张表(它会让同一张牌被取第二次时漏标)。
 var uiCaptureFx = null;      // { cards:[cardId], toPid, at }
 var uiCaptureTimer = null;   // 动画重绘定时器
@@ -551,7 +551,11 @@ function enterPlayIfNeeded() {
   //   -> 原来这里**每次调用**都清空 uiPassed, 而 _autoPlayDoPlay/_autoPlayDoPass 在
   //      **每次托管动作之后**都会调它 -> 刚设好的「不出」当场被清, 别人过牌的也一起没了。
   //   改成: 只在**真的从别的阶段进入 PLAY** 时清一次(进 PLAY 之后不再清)。
-  if (uiLastPhase !== PHASES.PLAY) uiPassed = {};
+  if (uiLastPhase !== PHASES.PLAY) {
+    uiPassed = {};
+    // [P2 2026-11-12] 进入 PLAY 时清「不出」: 用流水起点表达, 之后由派生维持(D-064)
+    uiPassResetAt = (gameState.plays || []).length;
+  }
   uiLastPhase = PHASES.PLAY;
   if (!currentPlayer) {
     // 补跑 PLAY 档(设首出权)。PLAY 档跑完 currentPlayer 已有值, 递归会终止。
@@ -663,6 +667,8 @@ function runGateStage() {
     case 'PLAY':
       if (gameState.phase === PHASES.PLAY) {
   uiPassed = {};                 // [2026-10-27] 开局清「不出」
+  uiPassHidden = {};             // [P2 2026-11-12] 派生状态(D-064)
+  uiHiddenAt = {};
   uiLastPhase = '';              // [2026-11-09] 新局 -> 阶段重新记(下次进 PLAY 要清一次)
         _setTurn(determineFirstPlayer(gameState) || 'A');
         log('  首出权 → ' + pn(currentPlayer) + ' (§5)');
@@ -871,8 +877,11 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
   uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
   uiPlays = {};                     // 清掉各家出牌显示
-  uiTakenPlay = {};                 // [2026-11-11] 清掉上一局的「取」标志(否则新局同座位误标)
-  uiCaptureScanned = 0;             // [2026-11-11] 新局 -> 取牌流水重新数
+  uiPlaysTrick = {};
+  uiTrickId = 0;
+  uiTakenPlay = {};                 // [P2 2026-11-12] 新局重置派生状态
+  uiHiddenAt = {};
+  uiPassResetAt = 0;
   uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
   uiLastPhase = '';                 // [2026-11-09] 新局 -> 阶段重新记
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
@@ -1498,42 +1507,84 @@ function _uiIsMainAce(card) { return !!(card && card['is主方大A'] === true); 
 //   桌牌上的牌被**整体换掉**(和上一帧没有任何一张重叠) = 引擎收走了旧桌牌 = 新的一轮
 //   -> 清掉**旧一轮**各家的出牌显示(否则桌面显示陈牌, 且「不出」被抑制)
 //   引擎侧的推风整轮清空由 _uiRoundEnded 负责
-function _uiSyncTrick() {
-  var g = gameState;
-  var cur = {};
-  (g.table || []).forEach(function (c) { cur[c.id] = 1; });
-  var had = Object.keys(uiPrevTableIds).length > 0;
-  var overlap = false;
-  for (var oid in uiPrevTableIds) { if (cur[oid]) { overlap = true; break; } }
-  if (had && !overlap && Object.keys(cur).length > 0) {
-    // [2026-10-26] **这里不递增 uiTrickId** ——
-    //   「换点数」**不是**「新一轮」(一轮里可以连着换点数跟牌)。
-    //   之前这里和 _uiRoundEnded **两个地方都递增** -> trick 翻倍跳变 ->
-    //   某人刚出的牌被判成「上一轮的」-> 他一过牌就被清掉(用户: 清牌不对)。
-    //   轮次**只**由 _uiRoundEnded(引擎清空桌牌 = 轮末)推进。
-  }
-  uiPrevTableIds = cur;
+// [P2 2026-11-12] UI 镜像收敛(D-064): 「各家最新出牌 / 不出 / 取 / 轮次」不再各自维护,
+//   统一由引擎出牌流水(gameState.plays)派生。流水条目:
+//     PLAY/CAPTURE -> { playerId, cards, kind }   (有牌, 要显示)
+//     PASS         -> { playerId, kind }          (显示「不出」, 清掉旧牌)
+//     CLEAR        -> { kind }                    (一轮结束, trick +1)
+//   UI 只额外保留两个「显示意图」:
+//     uiHiddenAt[pid]  = 流水长度, 表示在此时刻之前他最后一手不显示(轮到他/被跳过/推风目标)
+//     uiPassResetAt    = 流水长度, 推风后用它把之前的 PASS 一并隐藏
+var uiHiddenAt = {};     // pid -> 流水长度阈值
+var uiPassHidden = {};   // pid -> 流水长度阈值(此前的 PASS 不再显示「不出」)
+var uiPassResetAt = 0;   // 推风后重置「不出」的流水起点
+
+// 把某个玩家的旧出牌从「桌面显示」里移除(轮到他 / 他出完被跳过 / 推风目标)
+function _uiHidePlay(pid) {
+  if (!pid) return;
+  var n = (gameState && gameState.plays) ? gameState.plays.length : 0;
+  uiHiddenAt[pid] = n;
+  _uiProjectPlays();
 }
 
-// [2026-11-11 用户] 取牌「取」标志: 引擎每次取牌成功都会在**出牌流水**(plays)里追加一条
-//   kind==='CAPTURE' 的记录(src/play.js), 其 beat = 被取走那手牌的主人(取牌前的 state.lastPlayer)。
-//   -> 每条**新出现**的 CAPTURE -> uiTakenPlay[beat] = true -> 渲染层在他座位前那手牌的
-//      **最后一张**右下角标「取」(AI_POLICY 14)。
-//   -> 受害者自己再出一手时 _uiRecordPlay 会清掉这个标志(只证明「当时那手被取走了」)。
-var uiCaptureScanned = 0;   // 已处理过的 CAPTURE 流水条数
-function _uiScanCaptured() {
-  var plays = (gameState && gameState.plays) || [];
-  var caps = [];
-  for (var i = 0; i < plays.length; i++) {
-    if (plays[i] && plays[i].kind === 'CAPTURE') caps.push(plays[i]);
-  }
-  if (caps.length < uiCaptureScanned) uiCaptureScanned = caps.length;   // 新一局 -> 流水重来
-  for (var k = uiCaptureScanned; k < caps.length; k++) {
-    var victim = caps[k].beat;
-    if (victim) uiTakenPlay[victim] = true;
-  }
-  uiCaptureScanned = caps.length;
+// 清掉某个玩家的「不出」显示(轮到他且未托管时)
+function _uiHidePass(pid) {
+  if (!pid) return;
+  var n = (gameState && gameState.plays) ? gameState.plays.length : 0;
+  uiPassHidden[pid] = n;
+  _uiProjectPlays();
 }
+
+// 从流水重算 uiPlays / uiPlaysTrick / uiTrickId / uiPassed / uiTakenPlay
+function _uiProjectPlays() {
+  var plays = (gameState && gameState.plays) || [];
+  var trick = 0;
+  var lastClear = -1;
+  var shows = {}, trickAt = {}, passed = {}, taken = {}, lastIdx = {};
+  for (var i = 0; i < plays.length; i++) {
+    var r = plays[i] || {};
+    if (r.kind === 'CLEAR') { trick++; lastClear = i; continue; }
+    if (r.kind === 'PLAY' || r.kind === 'CAPTURE') {
+      lastIdx[r.playerId] = i;
+      if (r.cards && r.cards.length) {
+        shows[r.playerId] = r.cards;
+        trickAt[r.playerId] = trick;
+      } else {
+        delete shows[r.playerId];
+        delete trickAt[r.playerId];
+      }
+      delete passed[r.playerId];
+      delete taken[r.playerId];
+      if (r.kind === 'CAPTURE' && r.beat) taken[r.beat] = true;
+    } else if (r.kind === 'PASS') {
+      lastIdx[r.playerId] = i;
+      delete shows[r.playerId];
+      delete trickAt[r.playerId];
+      var _ph = uiPassHidden[r.playerId];
+      if (i >= uiPassResetAt && (_ph == null || i >= _ph)) passed[r.playerId] = true;
+    }
+  }
+  var players = (gameState && gameState.players) || [];
+  var handOf = {};
+  players.forEach(function (p) { if (p && p.id) handOf[p.id] = (p.hand || []).length; });
+  var out = {}, outTrick = {};
+  Object.keys(shows).forEach(function (pid) {
+    var idx = lastIdx[pid];
+    if (uiHiddenAt[pid] != null && idx < uiHiddenAt[pid]) return;
+    // 轮末清桌(CLEAR)时, 已出完的人桌面牌清掉 -> 渲染层显示贡字
+    if (lastClear >= 0 && idx < lastClear && handOf[pid] === 0) return;
+    out[pid] = shows[pid];
+    outTrick[pid] = trickAt[pid];
+  });
+  uiPlays = out;
+  uiPlaysTrick = outTrick;
+  uiTrickId = trick;
+  uiPassed = passed;
+  uiTakenPlay = taken;
+}
+
+// [P2 2026-11-12] 取牌「取」标志 / 「不出」/ 轮次全部由 _uiProjectPlays 派生(D-064),
+//   原先的 _uiScanCaptured / _uiSyncPassState / _uiCurrentPlays 已删除。
 
 function _uiCaptureAnimStart() {
   if (!ctx) return;                 // 无渲染环境(测试) -> 不起定时器, 免得进程挂住
@@ -1549,79 +1600,16 @@ function _uiCaptureAnimStart() {
   }, 32);
 }
 
-function _uiSyncPassState() {
-  var g = gameState;
-  if (!g || !g.players) return;
-  // 只清**他自己**的「不出」(他出牌了)
-  // [2026-10-26] 这里**绝对不要碰 uiPlays**: 我之前加的"旧桌牌一张都不在了就清空"会误判 ——
-  //   打大A 里**每个点数变化都会收走桌牌** -> 每次都触发 -> 各家刚出的牌被清掉
-  //   -> 桌面上的牌一直看不见(用户报的 bug)。一轮结束的清理由 _uiRoundEnded 负责
-  //   (那才是引擎给出的准确信号)。
-  g.players.forEach(function (p) {
-    var prev = uiPrevHandLens[p.id];
-    // [2026-11-09 用户] 「托管后不出还会**随机**丢失」-> 原来靠「手牌变少」猜「他出牌了」并清掉「不出」;
-    //   托管会连着走多个动作, 两次 draw() 之间手牌早就变少 -> 刚设的过牌标记被误清(随机丢失)。
-    //   现在改成**只有他自己出牌时**才清(在 _uiRecordPlay 里), 这里不再猜。
-    uiPrevHandLens[p.id] = p.hand.length;
-  // [2026-11-09 用户] 出完牌的人: 桌面上那手旧牌**轮到他时**才清 -> 换成 大贡/二贡 文字。
-  //   (清的动作在 advanceCurrentPlayer: 出完牌的人会被跳过 -> 在跳过他的那一刻清)
-  //   注意: 别人**压过他**时**不清**(那手牌还留在桌上, 等轮到丁才清)。
-  });
-  // [2026-10-26] **推风成功** -> 「不出」全清(引擎这时会清空桌牌)
-  var _pw = g['推风触发者'] || null;
-  if (_pw && _pw !== uiPrevPushWind) uiPassed = {};
-  uiPrevPushWind = _pw;
-  // [2026-10-26] **轮末检测统一放这里**(不再分散在各 action 路径):
-  //   引擎 src/play.js handlePass 的 allPassed 分支 -> 轮末时**桌牌被清空**
-  //   -> 「上一帧桌牌非空, 这一帧空了」= 轮末。
-  //   (之前只有真人 doPass 路径调 _uiRoundEnded -> **AI 过牌结束一轮时轮次不推进**,
-  //    轮末的清牌 / 「已出完」也就都不触发。)
-  var _tLen = (g.table || []).length;
-  if (uiPrevTableLen > 0 && _tLen === 0) _uiRoundEnded();
-  uiPrevTableLen = _tLen;
-}
+// [P2 2026-11-12] 轮次/不出/桌牌检测已并入 _uiProjectPlays(D-064)
 
-// [2026-10-26] **当前轮**各家的出牌显示(只传当前轮的!)
-//   根因: uiPlays 里存的是「历史所有出牌」, 渲染层用 hasPlay 决定要不要显示「不出」
-//   -> 上一轮出过牌的人, 这一轮 PASS 了, 记录还在 -> 「不出」被抑制 -> 用户永远看不到
-//   -> 只把**当前轮**的给他, 上一轮出过的牌自然不挡着「不出」
-function _uiCurrentPlays() {
-  var out = {};
-  Object.keys(uiPlays).forEach(function (pid) {
-    if (uiPlaysTrick[pid] === uiTrickId) out[pid] = uiPlays[pid];
-  });
-  return out;
-}
-
-// [2026-10-26] 记录一次出牌到 UI 的「各家最新出牌」
-//   **根因**: doPlay 走自己的 transition 路径(多张/逐张两条), **不经过 applyAction**,
-//   而 uiPlays 只在 applyAction 里被更新 -> 真人/引擎出牌后桌面上看不到他出的牌
-//   (用户: 别人出的牌看不见)。applyAction 那边也改成走这个函数, 保证两条路径一致。
+// [P2 2026-11-12] 出牌/过牌后的 UI 收尾: 只触发一次流水派生(D-064)。
+//   函数名保留, 调用点不改; 真正的数据来源是 src/play.js 写进 state.plays 的记录。
 function _uiRecordPlay(pid, cards) {
-  // [2026-11-09 用户] 「托管后不出还会随机丢失」-> 出牌就清「不出」(确定性, 不再靠手牌变少猜)
-  delete uiPassed[pid];
-  delete uiTakenPlay[pid];   // [2026-11-09] 他新出了一手 -> 之前那手被取走的标志不再适用
-  if (!cards || !cards.length) return;
-  _uiSyncTrick();                       // 可能开了新一轮 -> 先清掉旧一轮的显示
-  uiPlays[pid] = cards;
-  uiPlaysTrick[pid] = uiTrickId;
+  _uiProjectPlays();
 }
 
-// [2026-10-26] 过牌后的收尾(真人和 AI 两条路径共用)
-//   1) 标记「不出」
-//   2) 清掉**上一轮**留下的出牌显示 —— 他这轮不出, 上一轮那手牌不该还挂在桌面上,
-//      而且那手牌会**把「不出」文字挡住**(用户: pass后牌没清, 不出文字被压住了)
-//      **本轮**出的牌要保留(他出了牌, 牌就在桌上)
 function _uiPassCleanup(pid) {
-  uiPassed[pid] = true;
-  // [2026-10-26] **无条件清掉他的出牌显示** ——
-  //   他过牌了 = 这一轮他不出 -> 头像旁边必须显示「不出」, 而不是他上一轮出的牌。
-  //   (用户: 甲出 AAAA, 乙不出、丙不出, 他们画面上应该显示「不出」, 不是之前的 QQQ)
-  //   之前靠 uiPlaysTrick === uiTrickId 判断「是不是本轮出的」, 但 uiTrickId 只在**轮末**递增,
-  //   而一轮里只要有人一直出牌就**永不变** -> 上一轮的牌永远清不掉 -> 一直显示旧牌。
-  //   既然 PASS 就代表这轮不打, 直接清掉最直接, 也不依赖轮次。
-  delete uiPlays[pid];
-  delete uiPlaysTrick[pid];
+  _uiProjectPlays();
 }
 
 function _uiCamps() {
@@ -1717,24 +1705,10 @@ function _uiTestMode() {
   } catch (e) { return true; }
 }
 
-// 一轮结束(有人过牌导致) -> 清掉各家最新出牌
-// [2026-10-26] 一轮结束 -> 「不出」标记也清空, **但保留刚过牌的那个人**
-//   (他确实刚过牌, 「不出」要一直显示到他**自己出牌**为止; 之前连他一起清掉了
-//    -> 用户看到的现象是「其他玩家过牌后都不显示不出文字」)
-//   推风时引擎清空桌牌也走这里 -> 桌牌和「不出」一起清
+// [P2 2026-11-12] 轮末处理已并入 _uiProjectPlays(D-064): CLEAR 记录 = 一轮结束。
+//   保留空函数仅为兼容旧的调用点/测试钩子。
 function _uiRoundEnded() {
-  // [2026-10-26 用户] 1) 轮次 +1(标记「这一轮过去了」)
-  //   2) **「不出」文字保留**(用户: 轮末不清不出文字) -> **不动 uiPassed**
-  //   3) **已经出完牌的人**: 清掉他留在桌面上的牌 -> 渲染层就会显示「已出完」
-  //      (用户: 已出完牌的人的桌面要清干净, 并提示已出完)
-  //   其它没出完的人: 桌面上的牌**保留**(用户: 别人出的牌看不见)
-  uiTrickId++;
-  (gameState.players || []).forEach(function (p) {
-    if (p && p.hand && p.hand.length === 0) {
-      delete uiPlays[p.id];
-      delete uiPlaysTrick[p.id];
-    }
-  });
+  _uiProjectPlays();
 }
 
 // [2026-11-04 用户] 「牌局结束的时候后面的闹钟要清掉」
@@ -1755,11 +1729,8 @@ function _uiMemoOpenNow() {
 }
 
 function draw() {
-  // [2026-10-25] 同步「不出」显示状态(谁出牌了/桌牌被收走了)
-  _uiSyncPassState();
-  // [2026-11-11] 取牌「取」标志: 从引擎出牌流水里挑**新出现**的 CAPTURE 条目 -> 标受害者那手牌
-  //   (AI_POLICY 14)。以前这个扫描从没被调用过 -> 标志永远不出现。
-  _uiScanCaptured();
+  // [P2 2026-11-12] 桌面/不出/取/轮次统一从引擎流水派生(D-064)
+  _uiProjectPlays();
   // [2026-11-03/04 用户] 「牌局结束的时候后面的闹钟要清掉」
   //   -> 结束后不再有任何倒计时(回合 20 秒 / AI 等待 / 闸门 5 秒), 也不该继续倒数。
   if (gameState.phase === PHASES.GAME_END) _uiClearCountdowns();
@@ -1992,7 +1963,7 @@ function doPass() {
     //   旧逻辑(2026-10-24)是为清掉「轮到真人时显示自己的旧牌」, 但过牌时删错了
     // [2026-10-26] 过牌 -> 标记「不出」, 并清掉他的出牌显示
     //   (他这轮不出 -> 头像旁边显示「不出」, 之前那手牌不该还挂着挡住它)
-    //   轮末处理**不在这里**: 统一由 draw() 里的 _uiSyncPassState 检测引擎信号后做,
+    //   轮末处理**不在这里**: 统一由 draw() 里的 _uiProjectPlays() 从流水里检测 CLEAR 后做,
     //   否则只有真人过牌这条路径会推进轮次, AI 过牌结束一轮时就不推进。
     _uiPassCleanup(currentPlayer);
     selectedCards = [];       // [2026-11-03] 真人过牌 -> 预选作废(下一轮要重选)
@@ -2040,6 +2011,8 @@ function doPushWind() {
     //   拿着**过期**的 currentPlayer 行动, 推风目标被丢弃。
     //   doPlay/doPass 不受影响: 它们走 advanceCurrentPlayer() 自行维护。
     if (r.state.currentPlayer) _setTurn(r.state.currentPlayer);
+    // [P2 2026-11-12] 推风成功 = 「不出」全清(引擎这时会清空桌牌) -> 用流水起点表达(D-064)
+    uiPassResetAt = (gameState.plays || []).length;
     // [2026-11-04 用户] 推风把回合交给谁 -> 谁就清掉上一轮留下的出牌显示 /「不出」标记
     //   (推风不走 advanceCurrentPlayer -> 真人自己的「不出」留着 -> 按钮被藏起来, 只剩闹钟)
     if (currentPlayer) {
@@ -2217,13 +2190,13 @@ function runAI() {
 //   真人自己的「不出」标记留着的话, 渲染层的「按钮让位」逻辑会把
 //   【出牌/不出/提示】藏起来(画面上只剩闹钟) —— 用户 2026-11-04 实测报障。
 function _uiClearTurnDisplay(pid, opts) {
-  delete uiPlays[pid];
-  delete uiPlaysTrick[pid];
+  // [P2 2026-11-12] 只记「隐藏意图」, 实际显示由 _uiProjectPlays 从流水派生(D-064)
+  _uiHidePlay(pid);
   // [2026-11-08 23:59 用户] 「上家显示着不出, 下家出完牌后上家的不出文字没了」
   //   -> 「不出」标记要留到**该玩家自己出牌**为止(出牌时手牌变少 -> 手牌长度比较处清)。
   //   例外: 轮到真人且**没有托管**时必须清 —— 否则「不出」占着按钮位,
   //   【出牌/不出/提示】三个按钮被藏起来只剩闹钟(2026-11-04 用户报障)。
-  if ((opts && opts.clearPassed) || (pid === humanPlayer && !uiAutoPlay)) delete uiPassed[pid];
+  if ((opts && opts.clearPassed) || (pid === humanPlayer && !uiAutoPlay)) _uiHidePass(pid);
   if (pid === humanPlayer) {
     uiAiTurnAt = 0;         // 真人回合 -> 不留上一轮的 AI 等待起点(否则下一轮 AI 少等)
     uiAiWaitPlan = 0;      // 真人回合 -> 清掉上一轮 AI 的等待时长
@@ -2284,8 +2257,8 @@ function advanceCurrentPlayer() {
       if (i === toIdx) break;
       var skipped = players[i];
       if (!skipped.hand || skipped.hand.length === 0) {
-        delete uiPlays[skipped.id];
-        delete uiPlaysTrick[skipped.id];
+        // [P2 2026-11-12] 只记隐藏意图; 显示由流水派生(D-064)
+        uiHiddenAt[skipped.id] = (gameState.plays || []).length;
       }
     }
   }
@@ -2558,13 +2531,16 @@ if (typeof module !== 'undefined' && module.exports) {
       selectedCards = [];
       handCardHitboxes = [];
       if (o.human) humanPlayer = o.human;
-      // [2026-11-12 修 flaky] 注入局面必须重置「取」标志的扫描游标：
-      //   模块初始化时会随机跑一局，可能已经留下 uiCaptureScanned>0；
-      //   否则新 state 里 CAPTURE 条数更少 -> 游标回拨却不重扫 -> uiTakenPlay 漏标。
-      //   测试 test-ui-observer-camp §3.5 曾因此约 1/4 概率随机失败。
+      // [P2 2026-11-12] 注入局面 -> 重置派生状态, 再从流水重算(D-064)
       uiTakenPlay = {};
-      uiCaptureScanned = 0;
-      _uiScanCaptured();
+      uiHiddenAt = {};
+      uiPassHidden = {};
+      uiPassResetAt = 0;
+      uiPlays = {};
+      uiPlaysTrick = {};
+      uiTrickId = 0;
+      uiPassed = {};
+      _uiProjectPlays();
       if (ctx) draw();
       return { phase: gameState.phase, currentPlayer: currentPlayer };
     },

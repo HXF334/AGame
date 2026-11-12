@@ -10,8 +10,8 @@
 | 项 | 值 |
 |---|---|
 | 分支 | `main` |
-| HEAD | 本轮 `D-061/D-062` 提交（`git log -1`；上一提交 `d26b814 feat(engine): 轮次推进收归引擎（D-061）`） |
-| 与远端 | 本地领先 2 个提交，待本轮结束 push（策略：每任务推一次，失败即停） |
+| HEAD | 本轮 `D-064` 提交（`git log -1`；上一提交 `a78f8c9 fix(game): 推风日志分 §9.3/§9.4 输出，preflight 去 OpenClaw 依赖（D-063）`） |
+| 与远端 | 本地领先 1 个提交，待本轮结束 push（策略：每任务推一次，失败即停） |
 | 工作区 | 干净 |
 | 技术栈 | 原生微信小游戏，CommonJS + `wx.*` + Canvas，无构建、无 npm 依赖 |
 | 基础库 | 3.17.6（`project.config.json` 与本地 `project.private.config.json` 已统一；真机最低版本由 MP 后台决定） |
@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **97 个套件 / 执行 97 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **98 个套件 / 执行 98 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 97/97 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 98/98 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,9 +39,9 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：97 个无头套件（规则/AI/UI/E2E/审计）。
+- **测试**：98 个无头套件（规则/AI/UI/E2E/审计）。
 
-## 4. 本轮变更（2026-11-12，D-059～D-063）
+## 4. 本轮变更（2026-11-12，D-059～D-064）
 
 ### 代码
 
@@ -62,6 +62,9 @@
 | `da-a-game/game.js`（文案） | 推风日志不再写死「同阵营=…」，改为输出触发者阵营 + 依据（§9.3 同阵营 / §9.4 顺时针非主A）。 |
 | `da-a-game/game.js`（测试钩子） | `__setState` 注入局面时重置 `uiTakenPlay`/`uiCaptureScanned` 并重扫 CAPTURE 流水；修复 `test-ui-observer-camp` §3.5 约 1/4 概率随机失败（初始化随机局的扫描游标污染注入局面）。10 次连跑 0 失败。 |
 | `da-a-game/src/phases.js` | 清理顶部过时注释（原文称「只实现到 LIANG_A_RESOLVED」，实际全部阶段已实现）。 |
+| `da-a-game/src/play.js`（D-064） | 出牌流水补齐：PLAY / CAPTURE 记录带 `cards`；`handlePass` 追加 `kind:'PASS'`；轮末清桌追加 `kind:'CLEAR'`（记 `lastPlayer`）。 |
+| `da-a-game/game.js`（D-064） | 删除 `_uiSyncTrick`/`_uiScanCaptured`/`_uiSyncPassState`/`_uiCurrentPlays` 与 `uiCaptureScanned`；新增 `_uiProjectPlays()` 从 `gameState.plays` 派生 `uiPlays`/`uiPlaysTrick`/`uiTrickId`/`uiPassed`/`uiTakenPlay`；「隐藏某手牌」用 `uiHiddenAt`、`uiPassHidden`、`uiPassResetAt` 表达。 |
+| `da-a-game/tests/test-ui-derived-play.js` | **新增（10 断言）**：PLAY→uiPlays、PASS→清牌+不出、CAPTURE→取标志、CLEAR→轮次+1 且未出完者保留、空流水重置。 |
 
 ### 文档与 skills
 
@@ -86,7 +89,7 @@
 | 中 | ~~preflight 第 8 项读 `~/.openclaw/openclaw.json`~~（D-063 已解决：改为仓库内 skills 结构检查） | — | 已实施，不再依赖外部配置 |
 | 低 | 基础库版本 | 仓库内字段不等于真机实际版本 | 已统一 3.17.6；真机最低版本在 MP 后台设置并回归 |
 | 低 | ~~推风日志写死「同阵营=…」~~（已改为输出触发者阵营 + §9.3/§9.4 依据） | — | 已实施 |
-| 低 | UI 镜像（`uiPlays`/`uiTableIds`/`uiTakenPlay`…）手工同步 | 漏同步会画面滞后 | 长期改为从 state 派生 |
+| 低 | ~~UI 镜像（`uiPlays`/`uiTakenPlay`/`uiPassed`/`uiTrickId`…）手工同步~~（D-064 已解决：改为从 `gameState.plays` 派生，隐藏语义用 `uiHiddenAt`/`uiPassHidden`） | — | 已实施；新增流水事件时必须同步 `_uiProjectPlays` 的分支 |
 | 低 | 微信开发者工具 `open` 项目会**重写 `project.config.json`**（键顺序变化、行尾转 CRLF、末尾无换行） | 产生无关 diff，CRLF 有打包风险 | 提交前 `git diff` 检查；本次已 `git checkout -- project.config.json` 还原 |
 | 低 | ~~`src/phases.js` 顶部注释过时~~（已清理） | — | 已完成 |
 
@@ -94,9 +97,9 @@
 
 1. **P0**：真机验证（2V3 / 1V4 / 反A 各一局），核对结算分数与贡字顺序。
 2. **P1**：~~preflight 去掉 OpenClaw 依赖；推风文案修正~~（2026-11-12 已完成，见 D-063；phases 过时注释一并清理）。
-3. **P2**：UI 镜像收敛（`uiPlays`/`uiTableIds`/`uiTakenPlay` 从 state 派生）；发牌/闸门仍是 `game.js` 的驱动代码。
+3. **P2**：~~UI 镜像收敛（`uiPlays`/`uiTakenPlay` 从 state 派生）~~（D-064 已完成，见 §4）；发牌/闸门仍是 `game.js` 的驱动代码。
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
-5. **持续**：改动后更新本文件；保持 97+ 套件全绿。
+5. **持续**：改动后更新本文件；保持 98+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）
 

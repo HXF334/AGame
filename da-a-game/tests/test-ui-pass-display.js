@@ -128,8 +128,8 @@ var _path = require('path');
 var _src = _fs.readFileSync(_path.join(__dirname, '..', 'game.js'), 'utf8');
 check('源码: applyAction 的 PASS 分支置位了「不出」',
   /action\.type === ACTIONS\.PASS[\s\S]{0,600}_uiPassCleanup\(currentPlayer\)/.test(_src));
-check('源码: _uiPassCleanup 里真正置位了 uiPassed',
-  /function _uiPassCleanup[\s\S]{0,400}uiPassed\[pid\] = true/.test(_src));
+check('源码: 过牌后的「不出」由流水派生(D-064)',
+  /function _uiProjectPlays[\s\S]{0,2200}kind === 'PASS'[\s\S]{0,400}passed\[r\.playerId\] = true/.test(_src));
 
 // ===== 关键: **AI 过牌**路径也必须置位「不出」=====
 // [2026-11-09 修 flaky] 原来这段: g.newGame() 拿**随机手牌** + 跑 AI 链 +
