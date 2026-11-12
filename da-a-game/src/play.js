@@ -182,10 +182,16 @@ function handlePass(state, payload) {
 }
 
 // 判断轮是否结束
+// [P2 2026-11-12] 与 handlePass 的 aliveOthers 口径统一:
+//   只有「还有手牌、且不是最后出牌者」的人才需要过牌; 已出完的人不计入。
+//   旧实现用 players.length - 1, 把已出完的玩家也算进"还需过牌"人数,
+//   导致 2 人出完后仍要等 4 次 PASS 才认轮末 (与 handlePass 清桌时机不一致)。
 function isRoundOver(state) {
   if (!state.table || state.table.length === 0) return true;
-  const otherPlayersCount = state.players.length - 1;
-  return (state.passCount || 0) >= otherPlayersCount;
+  const aliveOthers = state.players.filter(
+    (p) => p.id !== state.lastPlayer && p.hand && p.hand.length > 0
+  );
+  return (state.passCount || 0) >= aliveOthers.length;
 }
 
 module.exports = {

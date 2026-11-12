@@ -430,8 +430,12 @@ function _autoPlayDoPlay(ids) {
     var _hadT1 = (gameState.table || []).length > 0;
     var _roundJustEnded = _hadT0 && !_hadT1;
     var _meAfter = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    // [P0 2026-11-12] 原来这里紧跟一句无条件 `lastEmptiedPlayer = null;`
+    //   把上一行刚记下的「托管出完牌」立刻清掉 -> 托管出完最后一手时轮末推风
+    //   永远不触发(违背 D-013), 手动出完路径正常所以手动测不出来。
+    //   只在真正出完时记录, 不在这里清空; 陈旧值由 doPushWindIfPending 的
+    //   「lastPlayer===trigger + 触发者手牌为空」双重校验兜住。
     if (_meAfter && _meAfter.hand && _meAfter.hand.length === 0) lastEmptiedPlayer = humanPlayer;
-    lastEmptiedPlayer = null;
     advanceCurrentPlayer();
     checkRoundEnd();
     doPushWindIfPending(_roundJustEnded);
@@ -1968,87 +1972,6 @@ function doPlay() {
       return;
     }
   }
-  // [未选] 逐张检查手牌
-  for (var i = 0; i < player.hand.length; i++) {
-    var card = player.hand[i];
-    var r = transition(gameState, {
-      type: ACTIONS.PLAY,
-      payload: { playerId: currentPlayer, cardIds: [card.id] }
-    });
-    if (r && r.ok) {
-      gameState = r.state;
-      _uiRecordPlay(currentPlayer, [card]);   // [2026-10-26] 桌面显示他的牌
-      log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + cardDesc(card));
-      // [P0 修复 2026-10-23] 同上: me3 同样是过期引用, 从新 state 重新取。
-      var _meAfter = gameState.players.find(function (p) { return p.id === currentPlayer; });
-      var wasEmpty = _meAfter && _meAfter.hand.length === 0;
-      if (wasEmpty) {
-        lastEmptiedPlayer = currentPlayer;
-        log('  → ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出完牌 (待轮次结束触发推风)');
-      }
-      advanceCurrentPlayer();
-      var endR = checkGameEnd(gameState);
-      if (endR.ended) {
-        gameState.phase = 'GAME_END'; _uiClearCountdowns();
-        log('牌局结束: ' + fmtResult(endR) + ' reason=' + endR.reason);
-      } else {
-        doPushWindIfPending(false);
-      }
-      if (ctx) draw();
-      runAI();
-      return;
-    }
-    // [fix] 记录逐张尝试的最后一个错误。
-    //   原先 lastError 仅在"已选牌"分支赋值, 未选牌直接点出牌时它始终为 null,
-    //   导致末尾汇总打出 (null && ...) -> 字面量 "null null"。
-    lastError = (r && r.error) || lastError;
-  }
-  // [修复] 3 张及以上组合回退: 调用已测试的 candidateCombos, 合法性交引擎裁决 (§14)
-  //   原因: ai.js 的 chooseAction 不支持连张/蛋子/大蛋子, 会误报“不合法”
-  // [P3 真正修法 2026-10-23 20:19] 原先组合回退的 `return` 写在 IIFE **内部**,
-  //   只退出 IIFE 自己 -> doPlay 继续往下走, 于是组合回退**已经出牌成功**之后,
-  //   仍然会打出「失败: 压不过桌面」。用户实测: 只点一次出牌, 出来两条日志,
-  //   第二条是假的(我一度误判为「两次点击」, 那是错的)。
-  //   改用标志位把成功信号传出 IIFE, 由 doPlay 真正 return。
-  var _comboPlayed = false;
-  (function () {
-    var cands = candidateCombos(player.hand || []);
-    for (var ci = 0; ci < cands.length; ci++) {
-      var r2 = transition(gameState, { type: ACTIONS.PLAY, payload: { playerId: currentPlayer, cardIds: cands[ci].slice() } });
-      if (r2 && r2.ok) {
-        var mm = gameState.players.find(function (p) { return p.id === currentPlayer; });
-        var txt = cands[ci].map(function (cid) {
-          var cc = player.hand.filter(function (x) { return x.id === cid; })[0];
-          return cc ? cardDesc(cc) : '?';
-        }).join(' ');
-        gameState = r2.state;
-        log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + txt + ' (组合回退)');
-        // [P0 修复 2026-10-23] 原来读 mm.hand.length, 而 mm 是在 transition **之前**
-        //   捕获的引用(transition 会克隆 players 与 player 对象) -> 恒读到出牌前的手牌数
-        //   -> ≥3 张组合回退出完最后的手牌时 lastEmptiedPlayer 不被设置 -> 推风不触发。
-        //   与 doPlay 批量/逐张两处同源, 这是第三处。
-        var _mmAfter = gameState.players.find(function (p) { return p.id === currentPlayer; });
-        if (_mmAfter && _mmAfter.hand.length === 0) { lastEmptiedPlayer = currentPlayer; }
-        advanceCurrentPlayer();
-        var e2 = checkGameEnd(gameState);
-        if (e2.ended) { gameState.phase = 'GAME_END'; _uiClearCountdowns(); log('牌局结束: ' + fmtResult(e2)); } else { doPushWindIfPending(false); }
-        if (ctx) draw();
-        runAI();
-        _comboPlayed = true;   // 告诉 doPlay 已完成, 别再落到末尾的失败日志
-        return;
-      }
-      // [fix] 同上: 组合回退也需记录错误, 供末尾汇总使用
-      lastError = (r2 && r2.error) || lastError;
-    }
-  })();
-  if (_comboPlayed) return;
-  log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 失败: 压不过桌面(单张与组合均已尝试). 最后: ' +
-    ((lastError && lastError.type)
-      ? (lastError.type + ' ' + (lastError.message || ''))
-      : '未能出牌 (引擎未返回具体原因)'));
-  // [需求十二] 未选牌但手中没有能大过桌面的牌型 -> 提示, 不再反复尝试。
-  showNoPlayableMsg(lastError);
-  if (ctx) draw();
 }
 
 // === 过牌 ===
@@ -2560,6 +2483,8 @@ if (typeof module !== 'undefined' && module.exports) {
     __enterPlay: function () { return enterPlayIfNeeded(); },
     __setAutoPlay: function (on) { uiAutoPlay = !!on; if (!uiAutoPlay) _autoPlayCancelTimer(); return uiAutoPlay; },
     __autoPlayStep: function () { return _autoPlayTakeover(); },
+    // [P0 2026-11-12] 托管出完牌后「最后出完者」是否被保留 -> 推风回归用
+    __lastEmptiedPlayer: function () { return lastEmptiedPlayer; },
     toggleAutoPlay: _uiToggleAutoPlay,
     uiTrickId: function () { return uiTrickId; },
     uiPlaysTrick: function () { return uiPlaysTrick; },

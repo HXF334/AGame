@@ -50,6 +50,7 @@ function candidateCombos(hand) {
   // ---- (b) 连续点数组 (连张) ----
   // A 不参与连张 (A 仅能作为 A23 / QKA 的端点, 交由引擎判定)
   var byRank = {};
+  var cardById = {};
   for (i = 0; i < hand.length; i++) {
     var cc = hand[i];
     if (cc.isBigJoker || cc.isSmallJoker) continue;
@@ -61,6 +62,18 @@ function candidateCombos(hand) {
     //   A 只能作为**高端点**(2..13 段里 14 只紧跟 13, 不会误组成 A23)。
     if (!byRank[cc.rank]) byRank[cc.rank] = [];
     byRank[cc.rank].push(cc.id);
+    cardById[cc.id] = cc;
+  }
+  // [P1 2026-11-12] 「QKAA(一普通 A 一大 A): QKA 龙优先带普通 A」——
+  //   原实现只在 A 低端分支里对 **card id 字符串**取 .is主方大A 排序, 比较恒为 0,
+  //   而且高端 QKA 根本不走那个分支 -> 规则没生效。这里对 A 池做**唯一一次**
+  //   全局排序(用 card 对象), 高端/低端两条枚举路径都按「普通 A 在前」取牌。
+  //   双大A 不拆由 ai.js 的硬规则另行保证。
+  if (byRank[14] && byRank[14].length > 1) {
+    byRank[14] = byRank[14].slice().sort(function (x, y) {
+      var cx = cardById[x], cy = cardById[y];
+      return (cx && cx.is主方大A ? 1 : 0) - (cy && cy.is主方大A ? 1 : 0);
+    });
   }
   var present = Object.keys(byRank).map(Number).sort(function (a, b) { return a - b; });
   // [2026-11-01 修复] **同一段内每个点数取相同张数 k** ——
@@ -127,15 +140,8 @@ function candidateCombos(hand) {
   //   k=1 连张 / k=2 双龙 / k=3 连珠蛋 / k=4 假八 都要覆盖。
   //   [注] byRank 存的是 **card id 字符串**(不是 card 对象), 别写 .id。
   for (var _ak = 1; _ak <= MAX_K; _ak++) {
-var _aPool = byRank[14];
-  // [2026-11-09 用户] 「QKAA(一个普通A一个大A): QKA龙优先带普通A, 不是大A; 只有QK+一个大A时龙才可以带大A」
-  //   -> A 池里**普通A 排前面**(枚举优先取普通A); 没有普通A 才用大A。
-  //      双大A 永远一起走: ai.js 已有硬规则(拆开双大A的组合直接排除)。
-  if (_aPool && _aPool.length > 1) {
-    _aPool = _aPool.slice().sort(function (x, y) {
-      return (x.is主方大A ? 1 : 0) - (y.is主方大A ? 1 : 0);
-    });
-  }
+    // A 池顺序已在上面统一排好(普通 A 在前), 这里直接取
+    var _aPool = byRank[14];
     if (!_aPool || _aPool.length < _ak) continue;
     var _aOpts = _pickCombos(_aPool, _ak);
     var _accA = _aOpts.slice();          // 先放 A 的 k 张
@@ -150,7 +156,6 @@ var _aPool = byRank[14];
         }
       }
       _accA = _nextA;
-      var _groupsA = _ar;      // A + 2.._ar -> _ar groups total
       var _groupsA = _ar;      // A + 2.._ar -> _ar groups total
       for (var _ae = 0; _ae < _accA.length; _ae++) {
         if (_groupsA >= SEQ_K_MIN_GROUPS[_ak] && _groupsA <= MAX_SEQ) {

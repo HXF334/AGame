@@ -314,7 +314,12 @@ section('6. isRoundOver');
 
 test('无人过牌, table 非空 → 轮未结束', () => {
   const hand = makeSameRank(5, 3);
-  const state = makeState({ handA: hand });
+  // 其余四家都还有牌 -> 他们都还没过牌, 轮次未结束
+  const state = makeState({
+    handA: hand,
+    handB: makeSameRank(6, 1), handC: makeSameRank(7, 1),
+    handD: makeSameRank(8, 1), handE: makeSameRank(9, 1)
+  });
   // 设置 table 非空 (需要先有出牌)
   state.table = hand;
   state.lastPlayer = 'A';
@@ -330,6 +335,20 @@ test('所有非 lastPlayer 都过牌 → 轮结束', () => {
   state = handlePass(state, { playerId: 'C' }).state;
   state = handlePass(state, { playerId: 'D' }).state;
   state = handlePass(state, { playerId: 'E' }).state;
+  assert.strictEqual(isRoundOver(state), true);
+});
+
+// [P2 2026-11-12] 已出完的玩家不再需要过牌: 口径必须与 handlePass 的 aliveOthers 一致。
+test('已出完的玩家不计入"还需过牌"人数', () => {
+  const hand = makeSameRank(5, 3);
+  const state = makeState({
+    handA: hand,
+    handD: makeSameRank(6, 1), handE: makeSameRank(7, 1)
+  });
+  state.table = hand;
+  state.lastPlayer = 'A';
+  state.passCount = 2;
+  // B/C 已出完, 只有 D/E 还有牌 -> 2 次 PASS 就该是轮末
   assert.strictEqual(isRoundOver(state), true);
 });
 
