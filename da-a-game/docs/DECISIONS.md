@@ -295,3 +295,13 @@
 - 问题：开发者工具 `open` 会改写 `project.config.json`（键序/行尾/末尾换行），污染工作区。
 - 改法：`tools/wechat-cli.ps1` 在 `open` 前记录文件 SHA256 与 git 干净状态；若打开后被改写且此前干净，则 `git checkout --` 还原；此前已有改动则不碰，只提示。
 - 注意：该脚本含中文，必须保存为 UTF-8 with BOM，否则 PowerShell 按 GBK 解析会报「字符串缺少终止符」。
+
+## D-074 拆龙口径收紧：龙只由单张点数构成（2026-11-12）
+
+- 用户反馈：上家出单 9，手牌 10 10 J Q K 3，点提示选中 K；期望 3（JQK 是龙，不该拆）。若手牌是 10 10 J Q Q K 3，则期望 J。
+- 新口径：龙只统计**单张点数**（手里该 rank 恰好 1 张）组成的极大连续段（≥3，A 可高可低）；整条龙都用上不算拆；只动一部分记 1；成对的点数不参与龙（避免为了凑龙拆对子）。
+- 效果：10 10 J Q K 3 → 3；10 10 J Q Q K 3 → J（Q 成对，J/K/3 都是自由单张，取牌力最小的 J）；678JJQ → Q；678JJ → 6。
+- 实现：重写 `src/ai.js chainSplitCount`（`isSingle` 判定 + 只对单张段计惩罚）；`_splitCount` 与 `game.js _hintSplitGroups` 共用，托管/提示同口径。
+- 关系：D-069 的权重（拆同点组 2 : 拆龙 1）不变；只收紧「龙」的定义，因此 6789 拿 6 由「不罚」改为记 1（行为不变，仍出 6）。
+- 测试：`tests/test-split-chain.js` 扩到 17 断言（1.4 期望 0→1，新增 1.5–1.7 与提示/托管各 2 条）。
+- 相关：`src/ai.js`、`game.js`、`docs/ai/AI_POLICY.md` §3.1、`tests/test-split-chain.js`

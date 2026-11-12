@@ -165,11 +165,15 @@ function splitPenalty(cards, hand) {
   return splitEggCount(cards, hand);
 }
 
-// [2026-11-12 用户] 龙(连续单张)也是完整牌型, 拆龙应排在拆对子**之后**:
-//   手牌 678JJQ 打单 -> 出 Q(孤立), 而不是 6(拆龙) 或 J(拆对子);
-//   只有 678JJ 这种没别的选择时, 才拆龙出 6。
-//   实现: 找出手里所有的极大连续段(>=3 个不同点数, A 可当 1 或 14),
-//         候选只动了其中一部分、且动完剩下的不再成段 -> 记一次拆龙。
+// [2026-11-12 用户] 龙(连续单张)也是完整牌型, 拆龙应排在拆对子之后。
+//   口径(提示 / 托管 / AI 共用):
+//     - 只统计**单张点数**组成的极大连续段(>=3, A 可高可低);
+//     - 整条龙都用上 -> 不算拆;
+//     - 只动龙的一部分 -> 记 1;
+//     - 从对子/蛋子里拿牌 -> 由同点组规则罚 2, 这里不重复罚。
+//   例子: 678JJQ 打单 -> Q(自由单张);
+//         10 10 J Q K 3 -> 3(JQK 是龙);
+//         10 10 J Q Q K 3 -> J(Q 成对不参与龙, J/K/3 都是自由单张, 取牌力最小的 J)。
 function chainSplitCount(cards, hand) {
   if (!cards || !cards.length) return 0;
   var cnt = {}, used = {};
@@ -185,36 +189,25 @@ function chainSplitCount(cards, hand) {
     MAPS.push(lo);
   })();
   var real = function (r) { return r === 1 ? 14 : r; };
-  var presentOf = function (r) { return (cnt[real(r)] || 0) > 0; };
+  var isSingle = function (r) { return (cnt[real(r)] || 0) === 1; };
   var seen = {}, n = 0;
   MAPS.forEach(function (seq) {
     var i = 0;
     while (i < seq.length) {
-      if (!presentOf(seq[i])) { i++; continue; }
+      if (!isSingle(seq[i])) { i++; continue; }
       var j = i;
-      while (j + 1 < seq.length && presentOf(seq[j + 1])) j++;
+      while (j + 1 < seq.length && isSingle(seq[j + 1])) j++;
       var run = seq.slice(i, j + 1);
       i = j + 1;
       if (run.length < 3) continue;
       var sig = run.map(real).join(',');
       if (seen[sig]) continue;
-      var usedAny = false, usedRanks = 0;
-      run.forEach(function (r) {
-        if ((used[real(r)] || 0) > 0) { usedAny = true; usedRanks++; }
-      });
-      if (!usedAny) continue;
-      if (usedRanks === run.length) continue;       // 整条龙都被用上 -> 不算拆
-      // 剩下的还能不能成段(>=3)
-      var remain = [];
-      run.forEach(function (r) {
-        if ((cnt[real(r)] || 0) - (used[real(r)] || 0) > 0) remain.push(r);
-      });
-      var best = 0, cur = 1;
-      for (var k = 1; k <= remain.length; k++) {
-        if (k < remain.length && remain[k] === remain[k - 1] + 1) cur++;
-        else { if (cur > best) best = cur; cur = 1; }
-      }
-      if (best < 3) { seen[sig] = true; n++; }
+      var usedRanks = 0;
+      run.forEach(function (r) { if ((used[real(r)] || 0) > 0) usedRanks++; });
+      if (usedRanks === 0) continue;
+      if (usedRanks === run.length) continue;   // 整条龙都用上 -> 不算拆
+      seen[sig] = true;
+      n++;
     }
   });
   return n;

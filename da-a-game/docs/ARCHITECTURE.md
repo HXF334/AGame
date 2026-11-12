@@ -217,6 +217,7 @@ chooseAction(state, playerId)
 ```
 
 - 同点分组按 `groupKeyOf` 取键：**大A 单列 `BIG_A`**，不与普通 A 同组（D-065）。否则「拆组」会把 AAA 误判为拆了 5 张 A 的组而过滤掉。
+- 拆组权重按 `chainSplitCount` 计：同点组拆组罚 2、拆龙罚 1（D-069）；「龙」只由**单张点数**构成（成对的点数不参与），整条用上不罚、局部使用罚 1（D-074）。提示与托管共用同一函数。
 - 「提示」候选池是全量合法组合，排序时先按 `bigTier`（不含大A=0 / 双大A=1 / 混出=2）再按 `isFirst`（D-065）。
 
 - `camp.js campOf` 返回 `SELF/ALLY/ENEMY/UNKNOWN`：手动标记优先；公开阵营按真表；暗打主A 看别人一律 UNKNOWN；推定信号来自 `state.plays`（D-028/D-048）。

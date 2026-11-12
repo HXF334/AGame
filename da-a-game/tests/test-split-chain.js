@@ -34,9 +34,22 @@ var hand1 = [c6, c7, c8, cJ1, cJ2, cQ];
 check('1.1 单出 Q 不拆龙', ai.chainSplitCount([cQ], hand1) === 0);
 check('1.2 单出 6 拆了 678', ai.chainSplitCount([c6], hand1) === 1);
 check('1.3 整条 678 一起出不算拆', ai.chainSplitCount([c6, c7, c8], hand1) === 0);
-// 6789 里拿 6, 剩下的 789 仍是龙 -> 不拆
+// [2026-11-12 用户] 口径改为「只看单张点数组成的龙」: 6 属于 6-7-8-9 这条龙,
+//   只动一部分就记 1(即使剩下的 789 仍成段); 同等惩罚下仍按牌力取最小 -> 还是 6。
 var c9 = SB.C('C', 9);
-check('1.4 6789 拿 6 后 789 仍成段 -> 不罚', ai.chainSplitCount([c6], [c6, c7, c8, c9]) === 0);
+check('1.4 6789 拿 6 记拆龙 1(即使剩 789 仍成段)', ai.chainSplitCount([c6], [c6, c7, c8, c9]) === 1);
+check('1.5 6789 整条出不算拆', ai.chainSplitCount([c6, c7, c8, c9], [c6, c7, c8, c9]) === 0);
+// 10 10 J Q K 3: 10 成对不参与龙 -> JQK 是龙, 3 是自由单张
+var c10a = SB.C('S', 10), c10b = SB.C('H', 10), cJ = SB.C('C', 11),
+    cQ2 = SB.C('S', 12), cK = SB.C('H', 13), c3 = SB.C('D', 3);
+var handA = [c10a, c10b, cJ, cQ2, cK, c3];
+check('1.6 1010JQK3: 3 自由, K 拆龙',
+  ai.chainSplitCount([c3], handA) === 0 && ai.chainSplitCount([cK], handA) === 1);
+// 10 10 J Q Q K 3: Q 成对不参与龙, J/K/3 都是自由单张
+var cQb = SB.C('C', 12);
+var handB = [c10a, c10b, cJ, cQ2, cQb, cK, c3];
+check('1.7 1010JQQK3: J/K/3 都不拆龙',
+  [cJ, cK, c3].every(function (c) { return ai.chainSplitCount([c], handB) === 0; }));
 
 // ===== 2. AI/托管出 Q =====
 console.log('\n=== 2. 678JJQ 打单 5 -> 出 Q ===');
@@ -85,6 +98,36 @@ var act4 = ai.chooseAction(st4, 'A');
 check('4.1 领出合法', act4.type === 'PLAY', act4.type);
 check('4.2 领出的牌型不是单张', (act4.cardIds || []).length >= 3,
   'count=' + (act4.cardIds || []).length);
+
+// ===== 5. 提示: 孤立单张优先, 对子不参与龙 =====
+console.log('\n=== 5. 提示顺序(1010JQK3 / 1010JQQK3) ===');
+function hintFirstRank(cards, expectRank, label) {
+  var stx = isolate(SB.build({ handMap: { A: cards },
+    table: [SB.C('S', 5)], lastPlayer: 'E', phase: 'PLAY' }), 'A', cards);
+  g.__setState(stx, { human: 'A', currentPlayer: 'A', clearLog: true });
+  var cs = g.uiHintCandidates();
+  var f = cs[0];
+  var rs = (f.ids || []).map(function (id) {
+    var c = handOf(stx, 'A').filter(function (x) { return x.id === id; })[0];
+    return c ? c.rank : -1;
+  });
+  check(label, rs.length === 1 && rs[0] === expectRank, 'first=' + rs.join(','));
+}
+hintFirstRank(handA, 3, '5.1 1010JQK3 提示首手 = 3');
+hintFirstRank(handB, 11, '5.2 1010JQQK3 提示首手 = J');
+function aiFirstRank(cards) {
+  var sty = isolate(SB.build({ handMap: { A: cards },
+    table: [SB.C('S', 5)], lastPlayer: 'E', phase: 'PLAY' }), 'A', cards);
+  var act = ai.chooseAction(sty, 'A');
+  var rs = (act.cardIds || []).map(function (id) {
+    var c = handOf(sty, 'A').filter(function (x) { return x.id === id; })[0];
+    return c ? c.rank : -1;
+  });
+  return rs.length === 1 ? rs[0] : -1;
+}
+var aiA = aiFirstRank(handA), aiB = aiFirstRank(handB);
+check('5.3 托管同口径: 1010JQK3 出 3', aiA === 3, 'rank=' + aiA);
+check('5.4 托管同口径: 1010JQQK3 出 J', aiB === 11, 'rank=' + aiB);
 
 console.log('\ntest-split-chain: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
