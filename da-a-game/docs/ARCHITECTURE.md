@@ -217,7 +217,9 @@ chooseAction(state, playerId)
 ```
 
 - 同点分组按 `groupKeyOf` 取键：**大A 单列 `BIG_A`**，不与普通 A 同组（D-065）。否则「拆组」会把 AAA 误判为拆了 5 张 A 的组而过滤掉。
-- 拆组权重按 `chainSplitCount` 计：同点组拆组罚 2、拆龙罚 1（D-069）；「龙」只由**单张点数**构成（成对的点数不参与），整条用上不罚、局部使用罚 1（D-074）。提示与托管共用同一函数。
+- 拆组权重按 `chainSplitCount` 计：同点组拆组罚 2、拆龙罚 1（D-069）；「龙」只由**单张点数**构成（成对的点数不参与），整条用上不罚、局部使用罚 1（D-074）。
+- **跟组合牌型时同型优先**（D-075）：桌面是对子/蛋子/龙等时 `_tableIsCombo` 为真，拆组罚（`split` / `splitEgg` / 组合拆组硬过滤）全部跳过，先看能否同型管上；提示排序同样跳过 `splitPenalty` / `splitGroup` 两档。例：上家 567，手里 999JQQK → 出 JQK。拆组偏好只用于跟单张。
+- 提示与托管共用 `chainSplitCount` 与 `groupKeyOf` 口径。
 - 「提示」候选池是全量合法组合，排序时先按 `bigTier`（不含大A=0 / 双大A=1 / 混出=2）再按 `isFirst`（D-065）。
 
 - `camp.js campOf` 返回 `SELF/ALLY/ENEMY/UNKNOWN`：手动标记优先；公开阵营按真表；暗打主A 看别人一律 UNKNOWN；推定信号来自 `state.plays`（D-028/D-048）。
@@ -250,7 +252,7 @@ chooseAction(state, playerId)
 ## 11. 测试架构
 
 - 无测试框架：每个 `tests/test-*.js` 自带 `test()`/`assert`，`node tests/test-xxx.js` 直接跑，退出码非 0 即失败。
-- `tests/_runall.js`：枚举 `test-*.js`（当前 **104** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
+- `tests/_runall.js`：枚举 `test-*.js`（当前 **105** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
 - `tests/mock-wx.js`：`__isMock=true`、800×400 canvas、`ctx` 方法桩、`onTouchStart` 收集 handler、`fireTouch`；必须在 `require game.js` **之前**安装。
 - `tests/lib/state-builder.js`：`SB.build({...})` 构造确定局面并自动补足 108 张；`SB.countAll` 校验守恒。
 - 断言纪律：锁性质（合法/不合法、状态不变、不崩、日志出现），不写死具体牌；E2E 用固定局面 + 钩子。

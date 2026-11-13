@@ -753,7 +753,9 @@ section('T40. 别拆垮同点组去拼龙(用户 16:20: 67888899 出了 6789)');
   p40.forEach(function (c) { uc40[c.rank] = (uc40[c.rank] || 0) + 1; });
   var noSplit40 = true;
   for (var rk40 in uc40) if (uc40[rk40] !== hc40[rk40]) noSplit40 = false;
-  check('T40.1 没拆同点组去拼龙(没出 6789)', noSplit40,
+  // [2026-11-13 用户] 「拆组偏好只用于跟单牌, 不是所有跟牌逻辑」:
+  //   跟龙时同型优先 -> 这里改为断言**出 6789**(拆 99 一张), 不再要求「不拆」。
+  check('T40.1 跟龙同型优先(拆 99 出 6789)', typeOf(p40) === 'STRAIGHT',
     act40.type + ' ' + typeOf(p40) + ' ranks=' + ranksOf(p40));
 }
 console.log('=== 总结 ===');

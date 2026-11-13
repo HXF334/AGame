@@ -1067,20 +1067,25 @@ function uiHintCandidates(mode) {
     for (var k2 in used) { if (groups[k2] > used[k2]) n++; }
     return n * 2 + _aiChainSplit(cards, me.hand);
   }
+  var _tableIsCombo = !!(tableType && tableType !== handTypes.HAND_TYPES.SINGLE);
   out.sort(function (a, b) {
     // [2026-11-12 用户] 含大A 的一律靠后: 0=不含大A, 1=双大A, 2=大A 混出。
     if (a.bigTier !== b.bigTier) return a.bigTier - b.bigTier;
     if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
-    // [2026-11-09 用户] 「上家出456, 我有5677, 点提示为什么不出567」-> 组合牌型拆组只是**罚**, 不禁选:
-    //   拆组罚分小的排前(与托管的 splitEgg 同口径)。
-    var _spa = _aiSplitPenalty(_hintCardsOf(a), me.hand);
-    var _spb = _aiSplitPenalty(_hintCardsOf(b), me.hand);
-    if (_spa !== _spb) return _spa - _spb;
+    // [2026-11-13 用户] 拆组偏好只用于「跟单牌」; 跟组合牌型(龙/对子/蛋子等)时同型优先,
+    //   例: 上家出龙 567, 手里 999JQQK -> 先出 JQK, 不因拆了 QQ 而改出 999。
+    if (!_tableIsCombo) {
+      // [2026-11-09 用户] 「上家出456, 我有5677, 点提示为什么不出567」-> 组合牌型拆组只是**罚**, 不禁选:
+      //   拆组罚分小的排前(与托管的 splitEgg 同口径)。
+      var _spa = _aiSplitPenalty(_hintCardsOf(a), me.hand);
+      var _spb = _aiSplitPenalty(_hintCardsOf(b), me.hand);
+      if (_spa !== _spb) return _spa - _spb;
+    }
     if (a.sameType !== b.sameType) return a.sameType - b.sameType;
     if (a.typeRank !== b.typeRank) return a.typeRank - b.typeRank;
     // [2026-11-12 用户] 拆同点组(含对子)与托管 split 键同口径: 先保住「同牌型优先」, 再比拆组,
     //   否则 J333 打单 10 会把 333 排到单 3 前面。
-    if (a.splitGroup !== b.splitGroup) return a.splitGroup - b.splitGroup;
+    if (!_tableIsCombo && a.splitGroup !== b.splitGroup) return a.splitGroup - b.splitGroup;
     if (a.len !== b.len) return a.len - b.len;
     if (a.value !== b.value) return a.value - b.value;
     return a.label < b.label ? -1 : (a.label > b.label ? 1 : 0);

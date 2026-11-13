@@ -305,3 +305,13 @@
 - 关系：D-069 的权重（拆同点组 2 : 拆龙 1）不变；只收紧「龙」的定义，因此 6789 拿 6 由「不罚」改为记 1（行为不变，仍出 6）。
 - 测试：`tests/test-split-chain.js` 扩到 17 断言（1.4 期望 0→1，新增 1.5–1.7 与提示/托管各 2 条）。
 - 相关：`src/ai.js`、`game.js`、`docs/ai/AI_POLICY.md` §3.1、`tests/test-split-chain.js`
+
+## D-075 拆组偏好只用于跟单牌，跟组合牌型时同型优先（2026-11-13）
+
+- 用户反馈："我上次说的是别人出单牌时AI怎么拆，而不是所有跟牌逻辑，如果上家出龙567，我有999JQQK的话还是要先出JQK的。"
+- 口径：拆组罚则（拆同点组/拆对子/拆龙）只用于**跟单张**时的取舍；上家出对子/蛋子/龙等**组合牌型**时，先看能否同型管上，同型优先，不因拆组改出别的牌型或过牌。
+- 实现：`src/ai.js` 新增 `_tableIsCombo`（`currentHand.type !== 'SINGLE'`）；跟组合时 `_splitCount` 返回 0、排序键 `splitEgg` 置 0、组合拆组硬过滤（`_splitEggCount > 0`）跳过；`game.js uiHintCandidates` 的同型比较器在组合场景跳过 `splitPenalty` 与 `splitGroup` 两档。
+- 效果：上家 567 龙，手里 999JQQK → 托管与提示都先出 JQK（不再过牌或改出 999）。
+- **行为变更（需知悉）**：上家 5678 龙、手里 67888899 时，现在也会拆 99 出 6789（2026-11-06 的旧期望是「不出 6789、宁可过牌」）；`tests/test-req-20261106b.js` T40.1 与 `tests/test-ui-hint-straight.js` 1a 已按新口径改写。
+- 测试：新增 `tests/test-combo-follow-same-type.js`（4 断言：托管出 JQK、不改出 999、提示首候选为同型龙、JQK 排在 999 前）。
+- 相关：`src/ai.js`、`game.js`、`tests/test-combo-follow-same-type.js`、`tests/test-req-20261106b.js`、`tests/test-ui-hint-straight.js`

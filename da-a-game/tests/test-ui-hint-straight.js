@@ -56,11 +56,14 @@ g.__setState(st, { currentPlayer: 'D', human: 'D', clearLog: true });
 //   但**手牌是单张**时(9/10/J), 连张不拆任何组 -> 提示照样要能找到(用户 2026-10-27 的原话)。
 // [2026-11-08 23:36/23:59 用户] 提示**放开拆组**: 手里全是对子时, 提示**给**拆出来的连张;
 //   但**托管(AI)不拆组** -> AI 自己不会出这手(两条线口径不同, 分别锁)。
+// [2026-11-13 用户] 「拆组偏好只用于跟单牌, 不是所有跟牌逻辑」-> 跟龙时同型优先, 托管也会拆组出连张;
+//   提示/托管恢复同口径。此处改为断言托管出这手连张。
 var aiModH = require('../src/ai.js');
 var aiAct1 = aiModH.chooseAction(g.gameState(), 'D', {});
 var okFirst = g.uiHint();
-check('1a 托管不拆同点组 -> AI 不出这手拆组连张',
-  !aiAct1 || aiAct1.type === 'PASS', 'act=' + (aiAct1 ? aiAct1.type : 'null'));
+check('1a 跟龙同型优先 -> 托管也出这手拆组连张',
+  !!aiAct1 && aiAct1.type === 'PLAY' && (aiAct1.cardIds || []).length === 3,
+  'act=' + (aiAct1 ? aiAct1.type + ' n=' + (aiAct1.cardIds || []).length : 'null'));
 var candsH = g.uiHintCandidates();
 check('1b 提示与托管同口径 -> 拆出来的连张也给出(只罚不禁)',
   candsH.some(function (c) { return c.type === 'STRAIGHT'; }),

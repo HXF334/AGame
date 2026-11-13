@@ -237,6 +237,10 @@ function chooseAction(state, playerId, opts) {
   var hand = player.hand;
   var table = Array.isArray(state.table) ? state.table : [];
   var currentHand = table.length > 0 ? identifyHand(table) : null;
+  // [2026-11-13 用户] 「拆组偏好只用于跟单牌, 不是所有跟牌逻辑」:
+  //   上家出龙 567、手里 999JQQK 时应该出 JQK(同型), 不能因为拆了 QQ 就过牌/改出 999。
+  //   -> 跟**组合牌型**时, 拆组罚则(拆蛋组/拆龙/拆对子)不参与取舍, 同型优先。
+  var _tableIsCombo = !!(currentHand && currentHand.type !== 'SINGLE');
   _trace.tableType = currentHand ? currentHand.type : null;
   _trace.tableCount = table.length;
 
@@ -344,6 +348,7 @@ function chooseAction(state, playerId, opts) {
     (_hgroups[_gk] = _hgroups[_gk] || []).push(c);
   });
   function _splitCount(cards) {
+    if (_tableIsCombo) return 0;   // 跟组合牌型: 同型优先, 不按拆组取舍
     var used = {};
     cards.forEach(function (c) { var _gk2 = groupKeyOf(c); used[_gk2] = (used[_gk2] || 0) + 1; });
     var n = 0;
@@ -445,7 +450,7 @@ function chooseAction(state, playerId, opts) {
     //   6789 拿走 99 里的一张 -> 那个对子被拆垮; 而整组的 8888 被「阵营不明不用蛋子+」挡住
     //   -> 两条规则叠起来的结果就是**过牌**(而不是拆组去拼一条龙)。
     //   双大A(两张同花色主A)是**特殊无敌牌型**, 不按拆组论(手里 3 张 A 时出双大A 是正常的)。
-    if (!opts.ignoreSplit && _splitEggCount(comboCards) > 0 && h.type !== HAND_TYPES.DOUBLE_BIG_A) return;
+    if (!opts.ignoreSplit && !_tableIsCombo && _splitEggCount(comboCards) > 0 && h.type !== HAND_TYPES.DOUBLE_BIG_A) return;
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     //   [2026-11-07 23:22 用户] 「如果本次手牌打出后就全部出完, 则队友的牌也要跟」
     //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。
@@ -469,7 +474,7 @@ function chooseAction(state, playerId, opts) {
       bigGroup: _bigGroupTypes[h.type] ? 1 : 0,                        // 大组牌型当最后手段
       split: _splitCount(comboCards),                                  // 不拆牌优先
       // [2026-11-07 21:47] 不拆蛋子级同点组(手里 22222 不该拆出 222)
-      splitEgg: opts.ignoreSplit ? 0 : _splitEggCount(comboCards),
+      splitEgg: (opts.ignoreSplit || _tableIsCombo) ? 0 : _splitEggCount(comboCards),
       // [2026-11-06 用户] 「4 当作蛋子及以上牌型出的时候, 优先度靠后」
       //   (必须出蛋子时, 手上有 444 和别的蛋子 -> 优先出别的蛋子)
       fourEgg: (comboCards.length >= 3 && comboCards.every(function (c) {
