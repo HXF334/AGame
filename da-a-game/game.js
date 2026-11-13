@@ -13,8 +13,9 @@ var checkGameEnd = engine.checkGameEnd;
 var chooseAction = require('./src/ai.js').chooseAction;
 // [2026-11-09 用户] 提示池复用托管的拆组判定(同点数牌型不许拆组)
 var _aiSplitsRejected = require('./src/ai.js').splitsRejected;
-var _aiSplitPenalty = require('./src/ai.js').splitPenalty;
 var _aiChainSplit = require('./src/ai.js').chainSplitCount;
+// [2026-11-13 用户] 提示与托管共用跟牌分层(同型不拆/拆 1 组/蛋子+/拆龙/拆对子)
+var _aiBreakLayer = require('./src/ai.js').breakLayerOf;
 // [2026-11-07 用户 C] AI 决策轨迹(候选集 + 排序键 + 阵营三态) -> 打日志
 var getAiTrace = require('./src/ai.js').getLastTrace;
 // [2026-11-08 22:40] 提示用 AI 的**同一套**选牌逻辑(排序一致), 只是不考虑阵营
@@ -1002,6 +1003,9 @@ function uiHintCandidates(mode) {
     // [2026-11-12 用户] 提示顺序: 先「不含大A」的牌, 再「双大A」, 最后「大A 与别的牌混出」。
     var _nBig = cards.filter(function (c) { return !!c['is主方大A']; }).length;
     var _bigTier = _nBig === 0 ? 0 : ((h && h.type === handTypes.HAND_TYPES.DOUBLE_BIG_A) ? 1 : 2);
+    // [2026-11-13 用户] 跟牌分层与托管同口径: 同型不拆 -> 同型拆 1 组 -> 蛋子+ -> 拆龙 -> 拆对子
+    var _layer = 0;
+    try { _layer = _aiBreakLayer(tableType, h ? h.type : 'INVALID', cards, me.hand); } catch (e) { }
     out.push({
       ids: ids.slice(), cards: cards, label: _uiComboLabel(cards),
       type: h ? h.type : 'INVALID',
@@ -1009,6 +1013,7 @@ function uiHintCandidates(mode) {
       typeRank: pwr,                                               // 牌型从小到大
       len: cards.length, value: _uiComboPower(cards),
       splitGroup: _hintSplitGroups(cards),
+      layer: _layer,
       bigTier: _bigTier,
       isFirst: !!isFirst
     });
@@ -1040,15 +1045,6 @@ function uiHintCandidates(mode) {
     if (_jks.length === 2) add([_jks[0].id, _jks[1].id], false, false);
   } catch (e) { }
   // (3) 全局排序: 托管那一手 -> 同牌型 -> 牌型小->大 -> 张数少 -> 牌力小
-  function _hintCardsOf(cand) {
-    var ids = cand.ids || [];
-    var out2 = [];
-    ids.forEach(function (id) {
-      var c = me.hand.filter(function (x) { return x.id === id; })[0];
-      if (c) out2.push(c);
-    });
-    return out2;
-  }
   function _hintSplitGroups(cards) {
     // [2026-11-12 用户] 提示顺序必须与托管一致: 拿了对子里的 1 张也算拆组(托管 split 键会罚),
     //   否则 JJQ2 打 9 会出现「Q → J → 2」: J 明明拆了对子却排在 2 前面。
@@ -1067,25 +1063,19 @@ function uiHintCandidates(mode) {
     for (var k2 in used) { if (groups[k2] > used[k2]) n++; }
     return n * 2 + _aiChainSplit(cards, me.hand);
   }
-  var _tableIsCombo = !!(tableType && tableType !== handTypes.HAND_TYPES.SINGLE);
   out.sort(function (a, b) {
     // [2026-11-12 用户] 含大A 的一律靠后: 0=不含大A, 1=双大A, 2=大A 混出。
     if (a.bigTier !== b.bigTier) return a.bigTier - b.bigTier;
     if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
-    // [2026-11-13 用户] 拆组偏好只用于「跟单牌」; 跟组合牌型(龙/对子/蛋子等)时同型优先,
-    //   例: 上家出龙 567, 手里 999JQQK -> 先出 JQK, 不因拆了 QQ 而改出 999。
-    if (!_tableIsCombo) {
-      // [2026-11-09 用户] 「上家出456, 我有5677, 点提示为什么不出567」-> 组合牌型拆组只是**罚**, 不禁选:
-      //   拆组罚分小的排前(与托管的 splitEgg 同口径)。
-      var _spa = _aiSplitPenalty(_hintCardsOf(a), me.hand);
-      var _spb = _aiSplitPenalty(_hintCardsOf(b), me.hand);
-      if (_spa !== _spb) return _spa - _spb;
-    }
+    // [2026-11-13 用户] 与托管的 breakLayer 同口径:
+    //   跟单张: 同型不拆 -> 蛋子+ -> 拆全单张龙 -> 拆对子
+    //   跟龙/对子: 同型不拆 -> 同型拆 1 组 -> 蛋子+ (拆 >=2 组由托管硬过滤, 提示只排最后)
+    if (a.layer !== b.layer) return a.layer - b.layer;
     if (a.sameType !== b.sameType) return a.sameType - b.sameType;
     if (a.typeRank !== b.typeRank) return a.typeRank - b.typeRank;
     // [2026-11-12 用户] 拆同点组(含对子)与托管 split 键同口径: 先保住「同牌型优先」, 再比拆组,
     //   否则 J333 打单 10 会把 333 排到单 3 前面。
-    if (!_tableIsCombo && a.splitGroup !== b.splitGroup) return a.splitGroup - b.splitGroup;
+    if (a.splitGroup !== b.splitGroup) return a.splitGroup - b.splitGroup;
     if (a.len !== b.len) return a.len - b.len;
     if (a.value !== b.value) return a.value - b.value;
     return a.label < b.label ? -1 : (a.label > b.label ? 1 : 0);

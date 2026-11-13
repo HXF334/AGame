@@ -218,7 +218,10 @@ chooseAction(state, playerId)
 
 - 同点分组按 `groupKeyOf` 取键：**大A 单列 `BIG_A`**，不与普通 A 同组（D-065）。否则「拆组」会把 AAA 误判为拆了 5 张 A 的组而过滤掉。
 - 拆组权重按 `chainSplitCount` 计：同点组拆组罚 2、拆龙罚 1（D-069）；「龙」只由**单张点数**构成（成对的点数不参与），整条用上不罚、局部使用罚 1（D-074）。
-- **跟组合牌型时同型优先**（D-075）：桌面是对子/蛋子/龙等时 `_tableIsCombo` 为真，拆组罚（`split` / `splitEgg` / 组合拆组硬过滤）全部跳过，先看能否同型管上；提示排序同样跳过 `splitPenalty` / `splitGroup` 两档。例：上家 567，手里 999JQQK → 出 JQK。拆组偏好只用于跟单张。
+- **跟牌分层（D-076）**：`ai.breakLayerOf(tableType, type, cards, hand)` 给出 0..3 的层：
+  跟龙/组合 = 同型不拆 0 / 同型拆 1 组 1 / 蛋子+ 2；跟对子 = 同型 0 / 蛋子+ 1（拆组已在硬过滤里禁）；
+  跟单张 = 同型不拆 0 / 蛋子+ 1 / 拆全单张龙 2 / 拆对子 3。
+  `touched >= 2`（动了 ≥2 个同点组）一律不进候选；提示候选带同名字段 `layer`，比较器先比 `bigTier` 再 `isFirst` 再 `layer`。
 - 提示与托管共用 `chainSplitCount` 与 `groupKeyOf` 口径。
 - 「提示」候选池是全量合法组合，排序时先按 `bigTier`（不含大A=0 / 双大A=1 / 混出=2）再按 `isFirst`（D-065）。
 

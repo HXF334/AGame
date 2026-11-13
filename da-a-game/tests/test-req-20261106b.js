@@ -753,10 +753,12 @@ section('T40. 别拆垮同点组去拼龙(用户 16:20: 67888899 出了 6789)');
   p40.forEach(function (c) { uc40[c.rank] = (uc40[c.rank] || 0) + 1; });
   var noSplit40 = true;
   for (var rk40 in uc40) if (uc40[rk40] !== hc40[rk40]) noSplit40 = false;
-  // [2026-11-13 用户] 「拆组偏好只用于跟单牌, 不是所有跟牌逻辑」:
-  //   跟龙时同型优先 -> 这里改为断言**出 6789**(拆 99 一张), 不再要求「不拆」。
-  check('T40.1 跟龙同型优先(拆 99 出 6789)', typeOf(p40) === 'STRAIGHT',
-    act40.type + ' ' + typeOf(p40) + ' ranks=' + ranksOf(p40));
+  // [2026-11-13 用户] 跟龙也不能拆 >=2 组: 6789 动了 8888 与 99 两组 -> 禁;
+  //   合法出路是过牌(8888 被「阵营不明不用蛋子+」挡住)。断言只锁性质: 动到的组数 < 2。
+  var touched40 = 0;
+  for (var rk41 in uc40) if (uc40[rk41] > 0 && uc40[rk41] < hc40[rk41]) touched40++;
+  check('T40.1 跟龙不拆 >=2 组(67888899 不许 6789)', touched40 < 2,
+    act40.type + ' ' + typeOf(p40) + ' touched=' + touched40 + ' ranks=' + ranksOf(p40));
 }
 console.log('=== 总结 ===');
 console.log('checks: ' + (pass + fail) + ' | passed: ' + pass + ' | failed: ' + fail);

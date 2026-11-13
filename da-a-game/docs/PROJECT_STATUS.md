@@ -41,7 +41,7 @@
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
 - **测试**：105 个无头套件（规则/AI/UI/E2E/审计）。
 
-## 4. 本轮变更（2026-11-12～13，D-059～D-075）
+## 4. 本轮变更（2026-11-12～13，D-059～D-076）
 
 ### 代码
 
@@ -70,11 +70,12 @@
 | `da-a-game/tests/test-hint-order-split.js` | **新增（7 断言）**：JJQ2 打 9 的顺序为 Q→2→J、托管同样出 Q、单张 J 记为拆组。 |
 | `da-a-game/tests/test-ui-ai-badge.js` | **新增（3 断言）**：5 人局恰好 4 个「AI」标志，换真人座位仍为 4。 |
 | `da-a-game/src/ai.js`（D-074） | `chainSplitCount` 收紧：龙只由**单张点数**（该 rank 恰 1 张）组成；整条用上不罚、局部记 1。 |
-| `da-a-game/src/ai.js`（D-075） | 新增 `_tableIsCombo`：跟组合牌型（非单张）时 `_splitCount` 返回 0、`splitEgg` 置 0、组合拆组硬过滤跳过 → 同型优先。 |
-| `da-a-game/game.js`（D-075） | 提示比较器在跟组合牌型时跳过 `splitPenalty` / `splitGroup` 两档，同型候选排前（999JQQK 跟 567 → JQK）。 |
+| `da-a-game/src/ai.js`（D-076） | 新增 `usedGroupCount` / `breakLayerOf`：跟牌先分层（同型不拆 / 同型拆 1 组 / 蛋子+ / 拆龙 / 拆对子）；`touched>=2` 与「跟对子时 `touched>=1`」硬过滤；回退 D-075 的 `_tableIsCombo` 清零。 |
+| `da-a-game/game.js`（D-076） | 提示候选带 `layer`，比较器按 `bigTier → isFirst → layer → sameType → typeRank → splitGroup → len → value` 排序。 |
+| `da-a-game/src/ai-policy.js`（D-076） | `SORT_KEYS` 在 `outAll` 后插入 `breakLayer`（标签「拆分层」）；`test-ai-policy` 顺序断言同步。 |
 | `da-a-game/tests/test-split-chain.js` | 扩到 17 断言（D-074；6789 拿 6 记 1、1010JQK3→3、1010JQQK3→J、提示/托管同口径）。 |
-| `da-a-game/tests/test-combo-follow-same-type.js` | **新增（4 断言）**：跟 567 龙时托管出 JQK、不改出 999、提示首候选为同型龙。 |
-| `da-a-game/tests/test-req-20261106b.js`、`test-ui-hint-straight.js` | T40.1 / 1a 按 D-075 改写（跟龙时同型优先，允许拆 99 出 6789）。 |
+| `da-a-game/tests/test-combo-follow-same-type.js` | **新增（4 断言）**：跟 567 龙时托管出同型龙、只拆 1 组、首候选=托管；断言不写死牌面。 |
+| `da-a-game/tests/test-req-20261106b.js`、`test-ui-hint-straight.js` | T40.1 / 1a 按 **D-076** 恢复「不许拆 ≥2 组」的性质断言（67888899 不许出 6789，宁可过牌）。 |
 
 ### 文档与 skills
 

@@ -16,10 +16,10 @@ function check(name, ok, detail) {
 }
 function section(t) { console.log(''); console.log('=== ' + t + ' ==='); }
 
-section('P1. 排序键顺序(裁定 D/E): 不拆组 > 同类型优先');
+section('P1. 排序键顺序(裁定 D/E, 2026-11-13 跟牌分层): 出完 > 拆分层 > 不拆组 > 同类型优先');
 {
   check('P1.1 排序键顺序固定',
-    policy.SORT_KEYS.join('>') === 'outAll>splitEgg>sameType>power>fourEgg>split>bigGroup>kv>len',
+    policy.SORT_KEYS.join('>') === 'outAll>breakLayer>splitEgg>sameType>power>fourEgg>split>bigGroup>kv>len',
     policy.SORT_KEYS.join('>'));
   check('P1.2 「不拆组」排在「同类型优先」之前',
     policy.SORT_KEYS.indexOf('splitEgg') < policy.SORT_KEYS.indexOf('sameType'),

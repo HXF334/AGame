@@ -151,6 +151,40 @@ function splitEggCount(cards, hand) {
   return n;
 }
 
+// [2026-11-13 用户] 跟牌分层: 先看「拆没拆组 / 拆的是什么」, 再比同型与大小。
+//   龙:   0 同型不拆 -> 1 同型拆 1 组 -> 2 蛋子+ ; 拆 >=2 组 禁
+//   对子: 0 同型不拆 -> 1 蛋子+ ; 拆组 禁
+//   单张: 0 同型不拆 -> 1 蛋子+ -> 2 拆全单张龙 -> 3 拆对子
+function usedGroupCount(cards, hand) {
+  var groups = handGroups(hand);
+  var used = {};
+  (cards || []).forEach(function (c) { var k = groupKeyOf(c); used[k] = (used[k] || 0) + 1; });
+  var n = 0;
+  for (var rk in groups) {
+    var total = groups[rk].length, u = used[rk] || 0;
+    if (u && u < total) n++;                        // 只用了组里一部分 = 动了这组
+  }
+  return n;
+}
+
+function breakLayerOf(tableType, type, cards, hand) {
+  if (!tableType) return 0;                        // 自己领出, 不分层
+  var same = (type === tableType);
+  var touched = usedGroupCount(cards, hand);
+  if (tableType === HAND_TYPES.SINGLE) {
+    if (same) {
+      if (touched > 0) return 3;                   // 拆对子/同点组: 最后手段
+      return chainSplitCount(cards, hand) > 0 ? 2 : 0;  // 拆全单张龙: 次于蛋子+
+    }
+    return 1;                                      // 蛋子+ 压单张
+  }
+  if (tableType === HAND_TYPES.PAIR) {
+    return same ? 0 : 1;                           // 拆组的候选已被硬过滤
+  }
+  // 其它组合(龙/蛋子/大蛋子...): 同型不拆 -> 同型拆 1 组 -> 蛋子+
+  return same ? (touched > 0 ? 1 : 0) : 2;
+}
+
 // 这手牌按「托管」的拆组口径是否被禁掉
 function splitsRejected(cards, type, hand) {
   if (splitsSameRankGroup(cards, type, hand)) return true;
@@ -237,10 +271,6 @@ function chooseAction(state, playerId, opts) {
   var hand = player.hand;
   var table = Array.isArray(state.table) ? state.table : [];
   var currentHand = table.length > 0 ? identifyHand(table) : null;
-  // [2026-11-13 用户] 「拆组偏好只用于跟单牌, 不是所有跟牌逻辑」:
-  //   上家出龙 567、手里 999JQQK 时应该出 JQK(同型), 不能因为拆了 QQ 就过牌/改出 999。
-  //   -> 跟**组合牌型**时, 拆组罚则(拆蛋组/拆龙/拆对子)不参与取舍, 同型优先。
-  var _tableIsCombo = !!(currentHand && currentHand.type !== 'SINGLE');
   _trace.tableType = currentHand ? currentHand.type : null;
   _trace.tableCount = table.length;
 
@@ -348,7 +378,6 @@ function chooseAction(state, playerId, opts) {
     (_hgroups[_gk] = _hgroups[_gk] || []).push(c);
   });
   function _splitCount(cards) {
-    if (_tableIsCombo) return 0;   // 跟组合牌型: 同型优先, 不按拆组取舍
     var used = {};
     cards.forEach(function (c) { var _gk2 = groupKeyOf(c); used[_gk2] = (used[_gk2] || 0) + 1; });
     var n = 0;
@@ -446,11 +475,16 @@ function chooseAction(state, playerId, opts) {
     if (!opts.ignoreCamp && _uncertain && policy.EGG_PLUS[h.type]) return;
     // [2026-11-08 13:59 用户] 同点数的牌不拆: 拆了同点组的对子/蛋子/大蛋子/真七/真八 不进候选
     if (!opts.ignoreSplit && _splitsSameRankGroup(comboCards, h.type)) return;
-    // [2026-11-08 16:20 用户] 「上出 5678, 手牌有 67888899, 为什么会出 6789」-> 组合牌型拆组也不进候选:
-    //   6789 拿走 99 里的一张 -> 那个对子被拆垮; 而整组的 8888 被「阵营不明不用蛋子+」挡住
-    //   -> 两条规则叠起来的结果就是**过牌**(而不是拆组去拼一条龙)。
-    //   双大A(两张同花色主A)是**特殊无敌牌型**, 不按拆组论(手里 3 张 A 时出双大A 是正常的)。
-    if (!opts.ignoreSplit && !_tableIsCombo && _splitEggCount(comboCards) > 0 && h.type !== HAND_TYPES.DOUBLE_BIG_A) return;
+    // [2026-11-13 用户] 跟牌只禁「拆 >=2 组」; 跟对子额外禁「拆 1 组」。
+    //   跟龙: 拆 1 组允许(排在同型不拆之后、蛋子+之前);
+    //   跟对子: 任何拆组都不行;
+    //   跟单张: 拆龙/拆对子允许, 由 breakLayer 排到蛋子+ 之后。
+    //   双大A(两张同花色主A)是特殊无敌牌型, 不按拆组论(手里 3 张 A 时出双大A 是正常的)。
+    if (!opts.ignoreSplit && h.type !== HAND_TYPES.DOUBLE_BIG_A) {
+      var _touched = usedGroupCount(comboCards, hand);
+      if (_touched >= 2) return;
+      if (currentHand && currentHand.type === HAND_TYPES.PAIR && _touched >= 1) return;
+    }
     // 同阵营: 不用 王/大A/蛋子及以上 去压
     //   [2026-11-07 23:22 用户] 「如果本次手牌打出后就全部出完, 则队友的牌也要跟」
     //   -> 这手能一次出完(马上走完)时, 连队友的牌也压。
@@ -473,8 +507,10 @@ function chooseAction(state, playerId, opts) {
       power: _powerOf(comboCards, h.type),
       bigGroup: _bigGroupTypes[h.type] ? 1 : 0,                        // 大组牌型当最后手段
       split: _splitCount(comboCards),                                  // 不拆牌优先
+      // [2026-11-13 用户] 先按「拆没拆组 / 拆的是什么」分层, 再比同型与大小
+      breakLayer: breakLayerOf(currentHand && currentHand.type, h.type, comboCards, hand),
       // [2026-11-07 21:47] 不拆蛋子级同点组(手里 22222 不该拆出 222)
-      splitEgg: (opts.ignoreSplit || _tableIsCombo) ? 0 : _splitEggCount(comboCards),
+      splitEgg: opts.ignoreSplit ? 0 : _splitEggCount(comboCards),
       // [2026-11-06 用户] 「4 当作蛋子及以上牌型出的时候, 优先度靠后」
       //   (必须出蛋子时, 手上有 444 和别的蛋子 -> 优先出别的蛋子)
       fourEgg: (comboCards.length >= 3 && comboCards.every(function (c) {
@@ -528,6 +564,9 @@ module.exports = {
   splitPenalty: splitPenalty,
   // [2026-11-12 用户] 提示与托管共用: 拆了几条龙
   chainSplitCount: chainSplitCount,
+  // [2026-11-13 用户] 提示与托管共用: 跟牌分层
+  breakLayerOf: breakLayerOf,
+  usedGroupCount: usedGroupCount,
   chooseAction: chooseAction,
   // [2026-11-07 用户 C] 最近一次决策轨迹(候选集 + 排序键 + 阵营三态)
   getLastTrace: function () { return _lastTrace; },

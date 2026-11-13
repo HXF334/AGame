@@ -1,8 +1,7 @@
 // test-combo-follow-same-type.js
-// [2026-11-13 用户] 「我上次说的是别人出单牌时AI怎么拆, 而不是所有跟牌逻辑,
-//   如果上家出龙567, 我有999JQQK的话还是要先出JQK的。」
-// -> 拆组偏好(拆龙/拆对子)只用于**跟单牌**; 跟组合牌型时同型优先。
-//    本套件锁: 跟 567 龙时, 托管/提示都先出 JQK, 不因拆了 QQ 而过牌或改出 999。
+// [2026-11-13 用户] 跟组合牌型的分层: ①同型不拆组 ②同型拆 1 组 ③蛋子+; 拆 >=2 组 禁。
+//   本套件锁: 跟 567 龙时, 托管/提示都先出同型龙(只拆 1 组), 不因拆了 1 组而改出蛋子/过牌。
+//   断言只锁性质(同型/张数/动了几组/首候选=托管), 不写死具体牌面。
 var path = require('path');
 
 require('./mock-wx.js');
@@ -38,26 +37,33 @@ var extras = me.hand.filter(function (c) { return !keep[c.id]; });
 st.discarded = (st.discarded || []).concat(extras);
 me.hand = h.slice();
 
+// [2026-11-13 用户] 「上家出龙 567, 我有 999JQQK 还是要先出 JQK」:
+//   跟组合牌型时同型优先, 拆 1 组允许; 不写死具体牌面, 只锁性质。
+var ht = require('../src/hand-types.js');
+
 var act = ai.chooseAction(st, 'A');
 var played = (act.cardIds || []).map(function (id) {
   return me.hand.filter(function (c) { return c.id === id; })[0];
 });
-var ranks = played.map(function (c) { return c.rank; }).sort(function (a, b) { return a - b; });
+var tableHand = ht.identifyHand(table);
+var playedHand = played.length ? ht.identifyHand(played) : null;
+var touched = ai.usedGroupCount(played, me.hand);
 
-check('1 托管跟龙出 JQK', act.type === 'PLAY' && ranks.join(',') === '11,12,13',
-  act.type + ' ranks=' + ranks.join(','));
-check('2 托管没有改出 999', !(act.type === 'PLAY' && ranks.join(',') === '9,9,9'),
-  'type=' + act.type);
+check('1 托管跟龙出同型牌(龙), 张数与桌面一致',
+  act.type === 'PLAY' && !!playedHand && playedHand.type === tableHand.type && played.length === table.length,
+  act.type + ' type=' + (playedHand && playedHand.type) + ' n=' + played.length);
+check('2 只拆 1 个同点组(允许拆 1 组, 不许拆 >=2 组)', touched === 1,
+  'touched=' + touched);
 
 g.__setState(st, { human: 'A', currentPlayer: 'A', clearLog: true });
 var cands = g.uiHintCandidates();
 var first = cands[0] || {};
-check('3 提示首候选是同型龙(sameType=0)',
-  !!first && first.sameType === 0 && first.type === 'STRAIGHT',
-  'first=' + (first.label || '(none)') + ' sameType=' + first.sameType);
-check('4 提示首候选是 JQK 且排在 999 前',
-  !!first && /J/.test(first.label) && /Q/.test(first.label) && /K/.test(first.label),
+check('3 提示首候选 = 托管那一手', !!first &&
+  (first.ids || []).slice().sort().join(',') === (act.cardIds || []).slice().sort().join(','),
   'first=' + (first.label || '(none)'));
+check('4 提示首候选同型且只拆 1 组',
+  !!first && first.sameType === 0 && first.layer === 1 && first.type === tableHand.type,
+  'first=' + (first.label || '(none)') + ' sameType=' + first.sameType + ' layer=' + first.layer);
 
 console.log('');
 console.log('test-combo-follow-same-type: ' + pass + ' passed, ' + fail + ' failed');

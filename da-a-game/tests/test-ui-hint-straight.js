@@ -56,14 +56,23 @@ g.__setState(st, { currentPlayer: 'D', human: 'D', clearLog: true });
 //   但**手牌是单张**时(9/10/J), 连张不拆任何组 -> 提示照样要能找到(用户 2026-10-27 的原话)。
 // [2026-11-08 23:36/23:59 用户] 提示**放开拆组**: 手里全是对子时, 提示**给**拆出来的连张;
 //   但**托管(AI)不拆组** -> AI 自己不会出这手(两条线口径不同, 分别锁)。
-// [2026-11-13 用户] 「拆组偏好只用于跟单牌, 不是所有跟牌逻辑」-> 跟龙时同型优先, 托管也会拆组出连张;
-//   提示/托管恢复同口径。此处改为断言托管出这手连张。
+// [2026-11-13 用户] 跟龙时同型优先, 但**不能拆 >=2 个同点组**(这里 8/9/10 会动 88/99/1010 三组) -> 托管过牌。
+//   断言只锁性质: 出牌时动到的组数 < 2。
 var aiModH = require('../src/ai.js');
 var aiAct1 = aiModH.chooseAction(g.gameState(), 'D', {});
 var okFirst = g.uiHint();
-check('1a 跟龙同型优先 -> 托管也出这手拆组连张',
-  !!aiAct1 && aiAct1.type === 'PLAY' && (aiAct1.cardIds || []).length === 3,
-  'act=' + (aiAct1 ? aiAct1.type + ' n=' + (aiAct1.cardIds || []).length : 'null'));
+var _touched1 = 0;
+if (aiAct1 && aiAct1.type === 'PLAY') {
+  var _byId1 = {};
+  myHand.forEach(function (c) { _byId1[c.id] = c; });
+  var _used1 = {}, _all1 = {};
+  myHand.forEach(function (c) { _all1[c.rank] = (_all1[c.rank] || 0) + 1; });
+  (aiAct1.cardIds || []).forEach(function (id) { var c = _byId1[id]; if (c) _used1[c.rank] = (_used1[c.rank] || 0) + 1; });
+  for (var _r1 in _used1) if (_used1[_r1] > 0 && _used1[_r1] < _all1[_r1]) _touched1++;
+}
+check('1a 跟龙不拆 >=2 组',
+  !!aiAct1 && (aiAct1.type === 'PASS' || _touched1 < 2),
+  'act=' + (aiAct1 ? aiAct1.type + ' n=' + (aiAct1.cardIds || []).length + ' touched=' + _touched1 : 'null'));
 var candsH = g.uiHintCandidates();
 check('1b 提示与托管同口径 -> 拆出来的连张也给出(只罚不禁)',
   candsH.some(function (c) { return c.type === 'STRAIGHT'; }),

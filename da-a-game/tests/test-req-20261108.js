@@ -119,20 +119,24 @@ function hintOrderCase(name, handCards, tableCards) {
   for (var k = 1; k < shapes.length; k++) if (shapes[k] === shapes[k - 1]) consec.push(shapes[k]);
   check(name + ': 不出现连续重复的同一手(用户: 连点提示连着选三个 3)', consec.length === 0,
     JSON.stringify(shapes));
-  // (c) 顺序: 同牌型优先, 牌型从小到大(用 HINT_TYPE_RANK 判单调)
+  // (c) 顺序(2026-11-13 用户分层口径): 先「拆分层」, 再同牌型, 再牌型从小到大
   var tableType = null;
   try { var th = ht.identifyHand(st.table || []); tableType = th && th.type; } catch (e) { }
-  var mono = true, detail = [];
-  for (var m = 1; m < seq.length; m++) {
-    var prevSame = (tableType && seq[m - 1].type === tableType) ? 0 : 1;
-    var curSame = (tableType && seq[m].type === tableType) ? 0 : 1;
-    var prevRank = policy.HINT_TYPE_RANK[seq[m - 1].type];
-    var curRank = policy.HINT_TYPE_RANK[seq[m].type];
-    detail.push(seq[m].type + '(' + curRank + ')');
-    if (curSame < prevSame) { mono = false; break; }
-    if (curSame === prevSame && curRank < prevRank) { mono = false; break; }
+  var mono = true, detail = [], prevC = null;
+  for (var m = 0; m < cands.length; m++) {
+    var cc = cands[m];
+    var curSame = (tableType && cc.type === tableType) ? 0 : 1;
+    var curRank = policy.HINT_TYPE_RANK[cc.type];
+    var curLayer = (typeof cc.layer === 'number') ? cc.layer : 0;
+    detail.push(cc.type + '(' + curRank + ',L' + curLayer + ')');
+    if (prevC) {
+      if (curLayer < prevC.layer) { mono = false; break; }
+      if (curLayer === prevC.layer && curSame < prevC.same) { mono = false; break; }
+      if (curLayer === prevC.layer && curSame === prevC.same && curRank < prevC.rank) { mono = false; break; }
+    }
+    prevC = { layer: curLayer, same: curSame, rank: curRank };
   }
-  check(name + ': 同牌型优先 + 牌型从小到大', mono, detail.join(' > '));
+  check(name + ': 拆分层 -> 同牌型 -> 牌型从小到大', mono, detail.join(' > '));
   return seq;
 }
 {

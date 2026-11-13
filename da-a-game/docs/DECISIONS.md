@@ -306,7 +306,10 @@
 - 测试：`tests/test-split-chain.js` 扩到 17 断言（1.4 期望 0→1，新增 1.5–1.7 与提示/托管各 2 条）。
 - 相关：`src/ai.js`、`game.js`、`docs/ai/AI_POLICY.md` §3.1、`tests/test-split-chain.js`
 
-## D-075 拆组偏好只用于跟单牌，跟组合牌型时同型优先（2026-11-13）
+## D-075 拆组偏好只用于跟单牌，跟组合牌型时同型优先（2026-11-13，**已被 D-076 修正**）
+
+> ⚠️ 本条对「跟组合牌型」的处理（`_tableIsCombo` 把拆组全部清零）过度了：
+> 用户澄清的是「跟组合时同型优先」，不是「允许拆 ≥2 组」。以 D-076 为准。
 
 - 用户反馈："我上次说的是别人出单牌时AI怎么拆，而不是所有跟牌逻辑，如果上家出龙567，我有999JQQK的话还是要先出JQK的。"
 - 口径：拆组罚则（拆同点组/拆对子/拆龙）只用于**跟单张**时的取舍；上家出对子/蛋子/龙等**组合牌型**时，先看能否同型管上，同型优先，不因拆组改出别的牌型或过牌。
@@ -315,3 +318,20 @@
 - **行为变更（需知悉）**：上家 5678 龙、手里 67888899 时，现在也会拆 99 出 6789（2026-11-06 的旧期望是「不出 6789、宁可过牌」）；`tests/test-req-20261106b.js` T40.1 与 `tests/test-ui-hint-straight.js` 1a 已按新口径改写。
 - 测试：新增 `tests/test-combo-follow-same-type.js`（4 断言：托管出 JQK、不改出 999、提示首候选为同型龙、JQK 排在 999 前）。
 - 相关：`src/ai.js`、`game.js`、`tests/test-combo-follow-same-type.js`、`tests/test-req-20261106b.js`、`tests/test-ui-hint-straight.js`
+
+## D-076 跟牌分层：同型不拆 → 同型拆 1 组 → 蛋子+ → 拆龙 → 拆对子（2026-11-13）
+
+- 用户澄清（m02822）："67888899是因为拆组大于等于2组了，并不是不拆。是两回事。" 并给出三条完整口径：
+  - 跟龙：①同型不拆组由小到大 ②拆 1 组同型由小到大 ③蛋子+；**不能拆 ≥2 组**。
+  - 跟对子：①同型不拆组 ②蛋子+；**不能拆组**。
+  - 跟单张：①同型不拆组、不拆「全单张组成的龙」、由小到大 ②蛋子+ ③拆全单张龙 ④最后才拆对子。
+- 实现（`src/ai.js`）：
+  - 新增 `usedGroupCount(cards, hand)`（按 `groupKeyOf`，大A 单列）与 `breakLayerOf(tableType, type, cards, hand)`：
+    单张表 → 同型不拆 0 / 蛋子+ 1 / 拆龙 2 / 拆对子 3；对子表 → 同型 0 / 蛋子+ 1；其它组合 → 同型不拆 0 / 同型拆 1 组 1 / 蛋子+ 2。
+  - 硬过滤：`touched >= 2` 一律不进候选；跟对子时 `touched >= 1` 也不进。
+  - `SORT_KEYS` 在 `outAll` 之后插入 `breakLayer`（`src/ai-policy.js`），排序先分层再同型。
+  - 提示 `uiHintCandidates` 增加 `layer` 字段，比较器按 `bigTier → isFirst → layer → sameType → typeRank → splitGroup → len → value`。
+- 回退 D-075 的 `_tableIsCombo` 清零逻辑；`test-req-20261106b` T40.1 与 `test-ui-hint-straight` 1a 恢复「不许拆 ≥2 组」的性质断言（不写死牌面）。
+- 效果：567 龙 + 999JQQK → JQK（拆 1 组）；5678 龙 + 67888899 → 过牌（6789 拆 2 组）；单张场景 D-074 的结论不变（678JJQ→Q、1010JQK3→3、1010JQQK3→J）。
+- 测试：`test-combo-follow-same-type.js` 改为性质断言（同型/张数/`touched`/首候选=托管）；`test-ai-policy.js` 排序键顺序更新；全量 **105 套件 / 0 失败**。
+- 相关：`src/ai.js`、`src/ai-policy.js`、`game.js`、`tests/test-combo-follow-same-type.js`、`tests/test-req-20261106b.js`、`tests/test-req-20261108.js`、`tests/test-ui-hint-straight.js`、`tests/test-ai-policy.js`
