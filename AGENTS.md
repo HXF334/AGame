@@ -115,6 +115,13 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 | `skills/da-a-game-rules/SKILL.md` | 游戏规则唯一来源 |
 | `docs/history/OPENCLAW_HANDOFF.md` | 历史迁移资料，**不是现行规范** |
 
+### 文档更新节奏
+
+- `docs/DECISIONS.md`：**随决策更新**。规则、口径、架构取舍一变就追加一条（编号只增不复用）；只改实现不改口径的，不新增。
+- `docs/PROJECT_STATUS.md`：**里程碑 / 交接前更新**。记录当前 HEAD、测试数、已完成能力、已知问题、待办；不必每个小改动都改，日常变更靠 commit message。
+- `AGENTS.md` / `docs/ARCHITECTURE.md`：工作方式或结构真的变了才同步（新增红线、命令、模块、状态机契约）。
+- `skills/da-a-game-rules/SKILL.md`：规则唯一来源，非规则变更不要动。
+
 ## 11. 当前状态（摘要，详见 PROJECT_STATUS.md）
 
 - 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **105 套件 / 0 失败**。
