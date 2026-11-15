@@ -17,6 +17,9 @@ var path = require('path');
 var cp = require('child_process');
 
 var ROOT = path.resolve(__dirname, '..');     // da-a-game/
+// [2026-11-16] 体检里的套件常按 cwd 找文件；从仓库根调用会误报。
+//   统一先切到 da-a-game/，保证「在哪儿执行结果都一样」。
+try { process.chdir(ROOT); } catch (e) { }
 var FAST = process.argv.indexOf('--fast') >= 0;
 
 var results = [];

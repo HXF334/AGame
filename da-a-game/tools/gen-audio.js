@@ -67,13 +67,13 @@ function mix(dst, src, offset, gain) {
 
 // ---------- 音效 ----------
 function sfxDeal() {
-  var dur = 0.55, n = Math.round(dur * SR), a = mk(n), r = rng(11);
+  // [2026-11-16 用户] 发牌声要「均衡」：每轮一声短促的啪，不要长噪声+停顿
+  var dur = 0.07, n = Math.round(dur * SR), a = mk(n), r = rng(11);
   for (var i = 0; i < n; i++) {
     var t = i / SR;
-    var burst = (t % 0.09) < 0.05 ? 1 : 0.15;
-    a[i] = r() * 0.22 * burst * env(t, dur, 0.01, 0.2);
+    a[i] = r() * 0.30 * env(t, dur, 0.003, 0.03);
   }
-  return lp(a, 0.5);
+  return lp(a, 0.85);
 }
 
 function sfxLiangA() {

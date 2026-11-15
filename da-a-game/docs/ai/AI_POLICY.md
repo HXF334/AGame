@@ -269,6 +269,7 @@ POWER_RANK: SINGLE>PAIR>STRAIGHT>TRIPLE>BIG_TRIPLE>DOUBLE_STRAIGHT>DOUBLE_JOKER>
 | 敌友钮显示 / 手动三态 | ui-render.js 标记判定 + src/camp.js canManualMark | tests/test-req-20261109.js ⑫段 | 2026-11-10 |
 | 取牌的阵营过滤（同阵营不取 / 不明不三个以上4取） | src/ai.js _capCampOk | tests/test-req-20261110.js §1 | 2026-11-10 |
 | 王的拆组口径（2→0/2，3→0/1/3，4→0/2/4） | src/ai.js _jkAllow | tests/test-req-20261110.js §2 | 2026-11-10 |
+| 提示 = 托管（唯一区别：提示忽略阵营） | game.js uiHintCandidates + src/ai.js chooseAction(ignoreCamp) | tests/test-hint-equals-ai.js | 2026-11-16 |
 | 抓方推定信号C（三个4以上取主A） | src/camp.js inferCatcher | tests/test-req-20261110.js §3 | 2026-11-10 |
 | 观察者视角敌友（含推定，只读） | ui-render.js 敌友判定 + src/camp.js campOf | tests/test-ui-observer-camp.js §1 | 2026-11-11 |
 | 取牌「取」标志的判定源（plays 的 CAPTURE 条目） | game.js _uiScanCaptured + ui-render.js 徽标 | tests/test-ui-observer-camp.js §3 | 2026-11-11 |

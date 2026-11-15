@@ -307,9 +307,10 @@ function _dealOneRound() {
     uiDealAces = me.hand.filter(function (c) { return c.rank === 14; });
   }
   // [2026-11-15 用户报障] 「发牌时听不到声音, 发牌结束后一连串声音」
-  //   -> 发牌音跟着每一轮发。后又反馈「太急促」-> 每 3 轮响一次(22 轮约 7~8 声)。
+  //   -> 发牌音跟着每一轮发。后又反馈「太急促」-> 曾改每 3 轮一次。
+  // [2026-11-16 用户] 「发牌声音每秒都有停顿，均衡一点」-> 素材改成 0.07s 短音，恢复每轮一声。
   uiDealSfxRound++;
-  if (uiDealSfxRound % 3 === 1) _sfx('deal');
+  _sfx('deal');
   return true;
 }
 
@@ -653,7 +654,7 @@ function runGateStage() {
         //     否则发牌是异步的, 断言会在发牌完成前就执行 -> 79 套件大面积失配。
         //     真机/模拟器 DEAL_STEP=200 -> 保留 0.2 秒逐轮节奏(用户要的观感)。
         uiDealAces = [];
-        uiDealSfxRound = 0;   // [2026-11-15 用户] 发牌音改为每 3 轮一次, 避免"太急促"
+        uiDealSfxRound = 0;   // [2026-11-16 用户] 发牌音每轮一声（素材改成 0.07s 短音，不再急促）
         if (DEAL_STEP <= 0) {
           // 无头: **同步**把 22 轮发完(只发牌, 收尾在循环后做一次)
           while (gameState && gameState.phase === PHASES.DEALING) {
