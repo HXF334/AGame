@@ -442,7 +442,7 @@ function _autoPlayTakeover() {
   if (currentPlayer !== humanPlayer) return false;
   // [2026-11-08 23:36 用户] 手动标的敌友要影响托管的出牌 -> 把标记带给 AI
   if (gameState) gameState.uiMarks = uiMarks;   // 每次刷新(新对局时 uiMarks 被整体替换过)
-  var act = chooseAction(gameState, humanPlayer);
+  var act = chooseAction(gameState, humanPlayer, { endgame: true });
   if (!act) return false;
   uiAutoPlayTakeovers++;
   if (act.type === 'PLAY') {
@@ -2184,7 +2184,7 @@ function runAI() {
         continue;
       }
       // 调 AI 决策
-      var action = chooseAction(gameState, currentPlayer);
+      var action = chooseAction(gameState, currentPlayer, { endgame: true });
       if (!action) {
         log('AI 无效 action: ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer));
         var fp2 = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: currentPlayer } });

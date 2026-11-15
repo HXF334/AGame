@@ -22,6 +22,7 @@ const policy = require('./ai-policy.js');
 // [2026-11-07 23:27 用户] 阵营可见性(敌/友/不明)统一走 src/camp.js —— 出牌决策读这个标记
 const camp = require('./camp.js');
 const memory = require('./ai-memory.js');
+const endgame = require('./endgame.js');
 
 // 牌的"保留价值"(越大越该留着)。仅用于 AI 排序, 不参与任何合法性判断。
 function keepValue(c) {
@@ -274,6 +275,23 @@ function chooseAction(state, playerId, opts) {
   var currentHand = table.length > 0 ? identifyHand(table) : null;
   _trace.tableType = currentHand ? currentHand.type : null;
   _trace.tableCount = table.length;
+
+  // [2026-11-15 用户 D-080] 残局搜索：所有存活玩家手牌总数 <= 10 时，
+  //   用「未见牌抽样 + 全员托管推演」评估每个候选动作的阵营胜率；
+  //   推演里队友/对手都走现有 chooseAction（带阵营判断），所以会同时考虑队友。
+  if (opts.endgame && !opts.noEndgame && endgame.isEndgame(state, endgame.ENDGAME_LIMIT)) {
+    var _eg = endgame.search(state, playerId, { samples: 6, chooseAction: chooseAction });
+    if (_eg && _eg.action) {
+      _trace.note = '残局搜索(score=' + Math.round(_eg.score) + ')';
+      _trace.chosen = _eg.action.type === 'PLAY'
+        ? { type: identifyHand(_eg.action.cardIds.map(function (id) {
+            return hand.filter(function (c) { return c.id === id; })[0];
+          })).type, count: _eg.action.cardIds.length,
+            ranks: '', keyText: '' }
+        : { type: 'PASS', count: 0, ranks: '', keyText: '' };
+      return _done(_eg.action);
+    }
+  }
 
   // ================= 新一轮起手 (§5) =================
   // [2026-11-06 用户] 「看最小的牌能组龙就出龙，能出对子就出对子，组不了就出单。」
