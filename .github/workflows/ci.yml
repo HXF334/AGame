@@ -1,0 +1,27 @@
+name: ci
+
+# [2026-11-16] 最小 CI：每次 push / PR 跑全量测试 + 快速体检。
+#   项目是原生小游戏、无构建，所以只装 Node，不装任何依赖。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: da-a-game
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: 全量测试
+        run: node tests/_runall.js
+
+      - name: 静态体检（快速）
+        run: node scripts/preflight.js --fast

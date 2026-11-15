@@ -65,6 +65,7 @@ var EXPECTED_PACK = [
   'src/transition.js',
   'src/turn.js',
   'src/ui-mirror.js',
+  'src/public-view.js',
   'src/util.js',
   'src/win-loss.js'
 ];

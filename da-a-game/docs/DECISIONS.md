@@ -418,3 +418,13 @@
 - 代价：提示现在也会跑残局搜索（全体剩牌 ≤10 时），实测平均 ~50ms、最坏 ~400ms（15 次采样），不阻塞。
 - 测试：新增 	ests/test-hint-equals-ai.js（4 断言：提示首手 = ignoreCamp 结果、友方标记下托管 PASS 而提示仍出）；全量 **110 套件 / 0 失败**。
 - 相关：src/ai.js、game.js、	ests/test-hint-equals-ai.js
+
+## D-084 观战视角不跨局；取消托管后立即恢复操作（2026-11-16）
+- 现象：上一局切到某人视角，新局仍停留在该视角；托管中轮到真人、取消托管后「出牌/不出/提示」三个按钮不出现。
+- 决定：`newGame()` 重置 `uiObserver = null`（视角只在当局有效）；`_uiToggleAutoPlay` 关闭托管时，若正轮到真人，调用 `uiTurnTick()` + `_uiClearTurnDisplay(currentPlayer)` 后重绘，保证按钮立即恢复。
+- 测试：`tests/test-view-autoplay-cancel.js`（4 断言：视角重置、托管中按钮隐藏、取消后三个按钮回来）。
+
+## D-085 联机状态投影 publicView 与最小 CI（2026-11-16）
+- 新增 `src/public-view.js`：`project(state, viewerId)` 纯函数——只保留 viewer 自己的 `hand`/`底牌`，别人的手牌只给 `handCount`，剔除 `deck`/`dealOrder`，`底牌公开 !== true` 时别人的底牌置 null；桌面/弃牌/流水照常保留。为好友建房的服务端同步做准备。
+- 入包文件 40 个；新增 `tests/test-public-view.js`（7 断言：自己手牌保留、别人手牌零泄露、只给张数、牌堆与发牌顺序剔除、底牌隐藏/公开、公开信息保留）。
+- 新增 `.github/workflows/ci.yml`：push/PR 在 `windows-latest` + Node 24 上跑全量测试与 `preflight --fast`（无 npm 依赖）。

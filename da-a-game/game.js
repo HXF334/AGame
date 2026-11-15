@@ -388,7 +388,14 @@ function _uiToggleAutoPlay() {
   log(uiAutoPlay ? '开启托管: AI 代打真人手牌(本局持续, 直到取消)' : '关闭托管: 恢复真人操作');
   selectedCards = [];
   if (uiAutoPlay) _autoPlaySchedule(500);
-  else _autoPlayCancelTimer();   // 取消 -> 排队中的动作作废(不许再自动出牌)
+  else {
+    _autoPlayCancelTimer();   // 取消 -> 排队中的动作作废(不许再自动出牌)
+    // [2026-11-16 用户] 托管取消时若正轮到真人，强制刷新回合显示，保证三个按钮立刻出现
+    if (gameState && gameState.phase === PHASES.PLAY && currentPlayer === humanPlayer) {
+      uiTurnTick();
+      _uiClearTurnDisplay(currentPlayer);
+    }
+  }
   if (ctx) draw();
 }
 
@@ -953,6 +960,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiTickLastSec = -1;
   uiDealSfxRound = 0;                 // [2026-11-15] 新局发牌音重新计数
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
+  uiObserver = null;                  // [2026-11-16 用户] 观战视角不跨局：上一局看的是谁，新局都回到真人自己
   _autoPlayCancelTimer();             // [2026-11-06] 同时作废排队中的托管动作
   selectedCards = [];
   handCardHitboxes = [];
@@ -2603,6 +2611,7 @@ if (typeof module !== 'undefined' && module.exports) {
     },
     // [2026-11-12 用户] 测试钩子: 模拟顶部 5 按钮切换观察视角(null = 回到自己)
     __setObserver: function (pid) { uiObserver = pid || null; },
+  __observer: function () { return uiObserver; },
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)
