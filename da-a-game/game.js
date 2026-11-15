@@ -1425,10 +1425,10 @@ function uiButtons() {
     // [2026-11-07 23:22 / 2026-11-08 用户] 「托管中不再显示出牌/不出/提示三个按钮」
     //   -> 托管中 AI 代打, 真人不用手动操作: 三个按钮**整个不画**(连命中框都没有)。
     if (!uiAutoPlay) {
-      out.push({ id: 'play', label: '出牌', enabled: onTurn });
-      out.push({ id: 'pass', label: '不出', enabled: onTurn });
-      // [2026-10-24] 【提示】: 只给**引擎校验过的合法候选**(见 uiHintCandidates)
+      // [2026-11-15 用户] 「把提示和出牌按钮换个位置」-> 顺序：提示 / 不出 / 出牌
       out.push({ id: 'hint', label: '提示', enabled: onTurn });
+      out.push({ id: 'pass', label: '不出', enabled: onTurn });
+      out.push({ id: 'play', label: '出牌', enabled: onTurn });
     }
   }
 
