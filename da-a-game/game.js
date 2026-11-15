@@ -1034,6 +1034,61 @@ function showToast(txt, ms) {
 //         (按 card id 去重 -> 3a/3b/3c 各成一候选 -> 点提示会连着选三个 3)。
 //      4) **排序**: 托管那手 -> 同牌型(与桌面同型) -> 牌型从小到大 -> 张数少 -> 牌力小
 //         (之前是三段**拼接** AI 候选 + 引擎组合 + 单张 -> 顺序乱, 一会儿龙一会儿蛋子)。
+// [2026-11-16 用户] 提示兜底：常规排序挑不出牌时，穷举引擎认可的合法出牌。
+//   做法是拿真实 state 的克隆逐个交给引擎校验（PLAY 成功=合法），
+//   因此 4 取牌（如 444 用 2 张 4 取 333）也会被纳入；全都失败才返回空。
+function _bruteForceLegalPlays(me, table) {
+  var res = [], seen = {}, attempts = 0;
+  var fours = me.hand.filter(function (c) { return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker; });
+  function labelOf(cards, kind) {
+    if (kind === 'CAPTURE') return '取牌(4×' + cards.length + ')';
+    var same = cards.every(function (c) { return c.rank === cards[0].rank && !!c['is主方大A'] === !!cards[0]['is主方大A']; });
+    if (same) return cards.length + '张' + (rankDesc(cards[0].rank) || '');
+    var h = null;
+    try { h = handTypes.identifyHand(cards); } catch (e) { h = null; }
+    return (h && h.type && h.type !== 'INVALID') ? h.type : ('出牌(' + cards.length + ')');
+  }
+  function tryPlay(cards, kind) {
+    if (!cards || !cards.length || attempts >= 600) return;
+    var key = cards.map(function (c) { return c.id; }).join('|');
+    if (seen[key]) return;
+    seen[key] = 1; attempts++;
+    var probe = JSON.parse(JSON.stringify(gameState));
+    var r = engine.transition(probe, {
+      type: 'PLAY', payload: { playerId: humanPlayer, cardIds: cards.map(function (c) { return c.id; }) }
+    });
+    if (!r || !r.ok) return;
+    res.push({ label: labelOf(cards, kind), type: 'PLAY', cards: cards, len: cards.length, isFirst: false, value: 0 });
+  }
+  // 4 取牌优先穷举：目标 N 张 -> 用 N-1 张 4（444 取 333 = 44）
+  var need = table.length - 1;
+  if (need >= 2 && need <= 8 && fours.length >= need) {
+    (function pick(start, chosen) {
+      if (attempts >= 600) return;
+      if (chosen.length === need) { tryPlay(chosen.slice(), 'CAPTURE'); return; }
+      for (var i = start; i < fours.length; i++) {
+        chosen.push(fours[i]); pick(i + 1, chosen); chosen.pop();
+        if (attempts >= 600) return;
+      }
+    })(0, []);
+  }
+  me.hand.forEach(function (c) { tryPlay([c]); });
+  candidateCombos(me.hand).forEach(function (ids) {
+    var cards = me.hand.filter(function (c) { return ids.indexOf(c.id) >= 0; });
+    if (cards.length === ids.length) tryPlay(cards);
+  });
+  res.sort(function (a, b) { return a.len - b.len || (a.label < b.label ? -1 : (a.label > b.label ? 1 : 0)); });
+  // 同一 label+张数只留一条（例如 3 张 4 取 333 会枚举出 3 种 2 张组合，展示上只留一条）
+  var uniq = [], ukey = {};
+  res.forEach(function (c) {
+    var k = c.label + '#' + c.len;
+    if (ukey[k]) return;
+    ukey[k] = 1; uniq.push(c);
+  });
+  if (uniq.length) uniq[0].isFirst = true;
+  return uniq;
+}
+
 function uiHintCandidates(mode) {
   var _isEnginePool = (mode === 'engine');   // 真人手动点选用: 全量合法组合, 按实体牌去重
   var me = gameState.players.find(function (p) { return p.id === humanPlayer; });
@@ -1141,6 +1196,9 @@ function uiHintCandidates(mode) {
     for (var k2 in used) { if (groups[k2] > used[k2]) n++; }
     return n * 2 + _aiChainSplit(cards, me.hand);
   }
+  // [2026-11-16 用户] 常规排序挑不出牌时，退化为「穷举所有引擎认可的合法出牌」——
+  //   包括 4 取牌（如 444 用 2 张 4 取 333）；全都试不出才返回空 → 提示「没有可用牌」。
+  if (!out.length) out = _bruteForceLegalPlays(me, table);
   out.sort(function (a, b) {
     // [2026-11-16 用户] 提示≡托管: 跟牌时用托管同一套排序键(ai-policy.SORT_KEYS),
     //   提示与托管的唯一区别是不看阵营(chooseAction 传 ignoreCamp)。
