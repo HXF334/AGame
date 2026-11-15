@@ -279,6 +279,7 @@ let handCardHitboxes = [];
 var DEAL_STEP_MS = 200;            // 每轮间隔(真机/模拟器)
 var uiDealTimer = null;           // 发牌定时器
 var uiDealAces = [];              // 发牌期间真人手里**已发的** A(可亮的候选)
+var uiDealSfxRound = 0;           // [2026-11-15] 发牌音效节流: 每 3 轮响一次
 
 // 由 wx 运行时决定发牌间隔: 无头测试 = 0ms(否则套件被拖慢)
 function _computeDealStep(wxObj) {
@@ -304,8 +305,9 @@ function _dealOneRound() {
     uiDealAces = me.hand.filter(function (c) { return c.rank === 14; });
   }
   // [2026-11-15 用户报障] 「发牌时听不到声音, 发牌结束后一连串声音」
-  //   -> 发牌音应该**跟着每一轮**发(22 轮, 每轮 0.2s), 而不是发完才响一声。
-  _sfx('deal');
+  //   -> 发牌音跟着每一轮发。后又反馈「太急促」-> 每 3 轮响一次(22 轮约 7~8 声)。
+  uiDealSfxRound++;
+  if (uiDealSfxRound % 3 === 1) _sfx('deal');
   return true;
 }
 
@@ -649,6 +651,7 @@ function runGateStage() {
         //     否则发牌是异步的, 断言会在发牌完成前就执行 -> 79 套件大面积失配。
         //     真机/模拟器 DEAL_STEP=200 -> 保留 0.2 秒逐轮节奏(用户要的观感)。
         uiDealAces = [];
+        uiDealSfxRound = 0;   // [2026-11-15 用户] 发牌音改为每 3 轮一次, 避免"太急促"
         if (DEAL_STEP <= 0) {
           // 无头: **同步**把 22 轮发完(只发牌, 收尾在循环后做一次)
           while (gameState && gameState.phase === PHASES.DEALING) {
@@ -945,6 +948,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiLastPhase = '';                 // [2026-11-09] 新局 -> 阶段重新记
   uiPrevPhaseSfx = null;            // [2026-11-15] 新局 -> 允许再次放胜负音
   uiTickLastSec = -1;
+  uiDealSfxRound = 0;                 // [2026-11-15] 新局发牌音重新计数
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
   _autoPlayCancelTimer();             // [2026-11-06] 同时作废排队中的托管动作
   selectedCards = [];
