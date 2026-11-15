@@ -1,6 +1,7 @@
 {
   "description": "内蒙古打大A 微信小游戏 (MiniMax API 独立开发)",
   "minigameRoot": "./",
+  "cloudfunctionRoot": "cloudfunctions/",
   "projectname": "da-a-game",
   "appid": "wx99808147273cdea1",
   "setting": {
@@ -54,6 +55,10 @@
       {
         "type": "folder",
         "value": "tools"
+      },
+      {
+        "type": "folder",
+        "value": "cloudfunctions"
       }
     ],
     "include": []

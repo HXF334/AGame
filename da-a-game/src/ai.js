@@ -21,6 +21,7 @@ const leadChoice = require('./lead-choice.js');
 const policy = require('./ai-policy.js');
 // [2026-11-07 23:27 用户] 阵营可见性(敌/友/不明)统一走 src/camp.js —— 出牌决策读这个标记
 const camp = require('./camp.js');
+const memory = require('./ai-memory.js');
 
 // 牌的"保留价值"(越大越该留着)。仅用于 AI 排序, 不参与任何合法性判断。
 function keepValue(c) {
@@ -281,6 +282,19 @@ function chooseAction(state, playerId, opts) {
   //   用户例子: 王322kkk->22 / 55567->567 / 45567->4567 / 5666778->5
   if (table.length === 0) {
     var _lead = leadChoice.pickLead(hand);
+    // [2026-11-15 用户 D-078] AI 记牌: 残局(手牌 <=6)时, 若手里有"绝对最大"的单张
+    //   (剩余未见牌里没有更大的), 优先领出它 —— 稳拿主动权, 且不浪费。
+    if (_lead && hand.length <= 6 && _lead.cards.length === 1) {
+      var _top = memory.highestSingle(state, playerId);
+      var _bestWin = null;
+      hand.forEach(function (c) {
+        if (isFour(c)) return;                    // 4 留给取牌
+        var enc = memory.singleEncoding(c);
+        if (enc < _top) return;                   // 还有更大的未见牌 -> 不是绝对最大
+        if (!_bestWin || enc < memory.singleEncoding(_bestWin)) _bestWin = c;
+      });
+      if (_bestWin) _lead = { cards: [_bestWin], type: HAND_TYPES.SINGLE };
+    }
     if (_lead) {
       _trace.note = '起手(lead-choice)';
       _trace.chosen = { type: identifyHand(_lead.cards).type, count: _lead.cards.length,

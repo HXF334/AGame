@@ -347,3 +347,23 @@
 - 测试：`tests/test-audio.js`（18 断言，fake wx）覆盖默认开启、节流、持久化、BGM 解锁/停止、无能力降级、两个开关按钮存在且不重叠；`test-pack-manifest.js` 入包清单加入 `audio.js` 与 12 个音频（37 个文件）。
 - 验证：全量 **106 套件 / 0 失败**；模拟器重编译后两个开关显示正常，点「音」变灰并输出 `音效: 关`，控制台无报错。
 - 相关：`audio.js`、`assets/audio/*.wav`、`tools/gen-audio.js`、`ui-render.js`、`game.js`、`tests/test-audio.js`、`tests/test-pack-manifest.js`
+
+
+## D-078 AI 记牌：只用公开信息 + 残局优先绝对最大单张（2026-11-15）
+
+- 用户要求：AI 增加记牌能力（可复用现有记牌器的统计口径）；明确**不做**残局搜索、**不做**节奏微随机、**不设**难度等级（仍只有一个等级）。
+- 实现：新增 `src/ai-memory.js`——`remaining(state, viewerId)` 用公开信息（桌面、弃牌堆、出牌流水 `plays` 里的 `cards`、公开底牌）+ 自己手牌，算每个点数剩余张数（两副牌每点 8 张、王各 2 张）；`highestSingle()` 求剩余最大单张编码；`canBeBeatenSingle()` 判断某张单张是否绝对最大。**不许读别人手牌**。
+- 使用（只一处，便于回滚）：`src/ai.js` 在**领出**且**手牌 ≤6** 时，若手里有绝对最大的单张（4 除外），优先领出它——稳拿主动权，避免残局把控制牌留死。跟牌、拆组、阵营判定等其他口径不变。
+- 不做残局搜索的原因：对手手牌未知，需要从未见牌抽样（determinization）多次模拟，组合爆炸且会引入随机性与卡顿；收益/风险不划算。
+- 测试：`tests/test-ai-memory.js`（6 断言：剩余张数守恒、自己手牌计入已见、最大单张、残局优先领出、手牌 >6 不启用）；`test-pack-manifest.js` 加 `src/ai-memory.js`（38 个文件）。
+- 验证：全量 **107 套件 / 0 失败**。
+- 相关：`src/ai-memory.js`、`src/ai.js`、`tests/test-ai-memory.js`、`tests/test-pack-manifest.js`
+
+## D-079 云开发初始化函数与环境（2026-11-15）
+
+- 用户提供环境 ID `cloud1-d5g7uiwu9f7caacdc`，要求在开始联网前先写好初始化云函数。
+- 实现：新增 `cloudfunctions/init-db/`（`index.js` + `package.json`），幂等创建 `rooms`、`room_logs` 集合；已存在时返回 `exists`，不报错。索引与安全规则仍需在控制台设置（云函数无法改安全规则）。
+- 配置：`project.config.json` 增加 `cloudfunctionRoot: "cloudfunctions/"`，并把 `cloudfunctions` 加入 `packOptions.ignore`（不进小游戏包）。
+- 部署：开发者工具 → 云函数 → 右键 `init-db` → 上传并部署（云端安装依赖）→ 云端测试 `{}`；预期 `{ ok: true, results: { rooms: 'created', room_logs: 'created' } }`。
+- 联网代码尚未接入：接入时在 `game.js` 层 `wx.cloud.init({ env })`，`src/` 继续保持不依赖 `wx.*`。
+- 相关：`cloudfunctions/`、`cloudfunctions/README.md`、`project.config.json`
