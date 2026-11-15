@@ -88,7 +88,7 @@
 | `da-a-game/tests/test-ai-memory.js` | **新增（6 断言）**：剩余张数守恒、自己手牌计入已见、最大单张判定、残局优先领出绝对最大单张、手牌 >6 不启用。 |
 | `da-a-game/tests/test-pack-manifest.js`（D-078/D-080） | 入包清单加 `src/ai-memory.js`、`src/endgame.js`（现 39 个文件）。 |
 | `da-a-game/src/endgame.js` | **新增（D-080）**：残局搜索。全体存活手牌 ≤10 时，用未见牌抽样 + 全员托管推演，按阵营胜负选动作；不读别人手牌。 |
-| `da-a-game/tests/test-endgame.js` | **新增（12 断言）**：阈值、未见牌统计、抽样不重复、候选枚举、终局/未终局评分、队友剩牌计入、搜索返回合法动作。 |
+| `da-a-game/tests/test-endgame.js` | **新增（13 断言）**：阈值、未见牌统计、抽样不重复、候选枚举、终局/未终局评分、队友剩牌计入、搜索返回合法动作。 |
 | `da-a-game/cloudfunctions/init-db/` | **新增（D-079）**：云开发初始化云函数，幂等创建 `rooms`/`room_logs` 集合。 |
 | `da-a-game/project.config.json`（D-079） | `cloudfunctionRoot: "cloudfunctions/"`，并把 `cloudfunctions` 加入 `packOptions.ignore`（不进小游戏包）。 |
 
