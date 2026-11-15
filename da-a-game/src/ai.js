@@ -248,6 +248,46 @@ function chainSplitCount(cards, hand) {
   return n;
 }
 
+// [2026-11-16 用户] 提示要与托管完全同序：把 chooseAction 的候选评分键抽成独立函数，
+//   提示对每个候选算同一套 keys，再用 ai-policy.comparePicks 排序。
+function splitCountOf(cards, hand) {
+  var groups = handGroups(hand);
+  var used = {};
+  (cards || []).forEach(function (c) { var k = groupKeyOf(c); used[k] = (used[k] || 0) + 1; });
+  var n = 0;
+  for (var rk in groups) {
+    if (used[rk] && used[rk] < groups[rk].length) n++;
+  }
+  return n * 2 + chainSplitCount(cards, hand);
+}
+
+function aiKeysFor(state, playerId, cards) {
+  if (!state || !state.players || !cards || !cards.length) return null;
+  var player = state.players.find(function (p) { return p.id === playerId; });
+  if (!player || !Array.isArray(player.hand)) return null;
+  var hand = player.hand;
+  var table = Array.isArray(state.table) ? state.table : [];
+  var currentHand = table.length ? identifyHand(table) : null;
+  var h = identifyHand(cards);
+  if (!h || h.type === 'INVALID') return null;
+  var forced = !!(currentHand && currentHand.type === HAND_TYPES.SINGLE &&
+    table.length === 1 && (table[0]['is主方大A'] || table[0].isBigJoker || table[0].isSmallJoker));
+  var fourEgg = (cards.length >= 3 && cards.every(function (c) {
+    return c.rank === 4 && !c.isBigJoker && !c.isSmallJoker;
+  })) ? 1 : 0;
+  return {
+    outAll: (cards.length === hand.length) ? 0 : 1,
+    breakLayer: breakLayerOf(currentHand && currentHand.type, h.type, cards, hand),
+    splitEgg: splitEggCount(cards, hand),
+    sameType: (currentHand && h.type === currentHand.type) ? 0 : 1,
+    power: _powerOf(cards, h.type, forced),
+    fourEgg: fourEgg,
+    split: splitCountOf(cards, hand),
+    bigGroup: _bigGroupTypes[h.type] ? 1 : 0,
+    kv: Math.max.apply(null, cards.map(keepValue)),
+    len: cards.length
+  };
+}
 function chooseAction(state, playerId, opts) {
   opts = opts || {};
   // [2026-11-07 用户 C] AI 决策日志: 记下候选集 + 排序键, 目视报障时直接看「为什么选这手」
@@ -395,17 +435,8 @@ function chooseAction(state, playerId, opts) {
     var _gk = groupKeyOf(c);
     (_hgroups[_gk] = _hgroups[_gk] || []).push(c);
   });
-  function _splitCount(cards) {
-    var used = {};
-    cards.forEach(function (c) { var _gk2 = groupKeyOf(c); used[_gk2] = (used[_gk2] || 0) + 1; });
-    var n = 0;
-    for (var rk in _hgroups) {
-      if (used[rk] && used[rk] < _hgroups[rk].length) n++;   // 拿了组里的一部分 = 拆牌
-    }
-    // [2026-11-12 用户] 拆对子(同点组)比拆龙更伤: 权重 2; 拆龙权重 1。
-    //   678JJQ 打单 -> Q(0) < 6(拆龙 1) < J(拆对子 2)。
-    return n * 2 + chainSplitCount(cards, hand);
-  }
+  function _splitCount(cards) { return splitCountOf(cards, hand); }
+
   // [2026-11-08 13:59 用户] 「正常拆组只针对组合牌型(龙/双龙/连珠蛋/假八等),
   //   同点数的牌尽量不拆(对子/蛋子/大蛋子/真七/真八等)」
   //   两条罚则:
@@ -593,6 +624,7 @@ module.exports = {
   breakLayerOf: breakLayerOf,
   usedGroupCount: usedGroupCount,
   chooseAction: chooseAction,
+  aiKeysFor: aiKeysFor,
   // [2026-11-07 用户 C] 最近一次决策轨迹(候选集 + 排序键 + 阵营三态)
   getLastTrace: function () { return _lastTrace; },
   // [2026-11-08] 排好序的候选(提示用同一套顺序)

@@ -16,6 +16,8 @@ var _aiSplitsRejected = require('./src/ai.js').splitsRejected;
 var _aiChainSplit = require('./src/ai.js').chainSplitCount;
 // [2026-11-13 用户] 提示与托管共用跟牌分层(同型不拆/拆 1 组/蛋子+/拆龙/拆对子)
 var _aiBreakLayer = require('./src/ai.js').breakLayerOf;
+// [2026-11-16 用户] 提示排序与托管同一套评分键
+var _aiKeysFor = require('./src/ai.js').aiKeysFor;
 // [2026-11-07 用户 C] AI 决策轨迹(候选集 + 排序键 + 阵营三态) -> 打日志
 var getAiTrace = require('./src/ai.js').getLastTrace;
 // [2026-11-08 22:40] 提示用 AI 的**同一套**选牌逻辑(排序一致), 只是不考虑阵营
@@ -1082,13 +1084,16 @@ function uiHintCandidates(mode) {
     return true;
   }
   // (1) 托管那一手 -> 第一个候选(与托管**同一个** chooseAction 调用)
+  var _aiPickIds = null;
   if (!_isEnginePool) {
     try {
       if (gameState) gameState.uiMarks = uiMarks;   // 手动敌友标记要进 AI 决策
       // [2026-11-16 用户] 提示第一手必须与托管一致: 托管在残局会走残局搜索,
       //   这里也要带 endgame, 否则会出现「提示选王、托管出 55」。
-      var _aiAct = chooseAction(gameState, humanPlayer, { endgame: true });
+      // [2026-11-16 用户] 提示≡托管(唯一区别: 不看阵营) -> ignoreCamp
+      var _aiAct = chooseAction(gameState, humanPlayer, { endgame: true, ignoreCamp: true });
       if (_aiAct && _aiAct.type === 'PLAY' && _aiAct.cardIds && _aiAct.cardIds.length) {
+        _aiPickIds = _aiAct.cardIds.slice();
         add(_aiAct.cardIds.slice(), true, true);   // 托管那一手 -> 原样进第一候选
       }
     } catch (e) { }
@@ -1128,8 +1133,14 @@ function uiHintCandidates(mode) {
     return n * 2 + _aiChainSplit(cards, me.hand);
   }
   out.sort(function (a, b) {
-    // [2026-11-16 用户] 提示的第一手必须就是托管会出的那一手(提示≡托管, D-021),
-    //   否则会出现「提示选王、托管出 55」。托管首选优先于大A 分级; 其余候选再按大A 分级。
+    // [2026-11-16 用户] 提示≡托管: 跟牌时用托管同一套排序键(ai-policy.SORT_KEYS),
+    //   提示与托管的唯一区别是不看阵营(chooseAction 传 ignoreCamp)。
+    if (a.keys && b.keys) {
+      var _c = aiPolicy.comparePicks(a.keys, b.keys);
+      if (_c) return _c;
+      return a.label < b.label ? -1 : (a.label > b.label ? 1 : 0);
+    }
+    // 领出(桌空)没有「跟牌键」 -> 沿用原排序: 托管首选优先 -> 大A 分级 -> ...
     if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
     // [2026-11-12 用户] 含大A 的一律靠后: 0=不含大A, 1=双大A, 2=大A 混出。
     if (a.bigTier !== b.bigTier) return a.bigTier - b.bigTier;
@@ -1426,8 +1437,9 @@ function uiButtons() {
     //   -> 托管中 AI 代打, 真人不用手动操作: 三个按钮**整个不画**(连命中框都没有)。
     if (!uiAutoPlay) {
       // [2026-11-15 用户] 「把提示和出牌按钮换个位置」-> 顺序：提示 / 不出 / 出牌
-      out.push({ id: 'hint', label: '提示', enabled: onTurn });
+      // [2026-11-16 用户] 「把提示和不出按钮换一下位置」-> 顺序：不出 / 提示 / 出牌
       out.push({ id: 'pass', label: '不出', enabled: onTurn });
+      out.push({ id: 'hint', label: '提示', enabled: onTurn });
       out.push({ id: 'play', label: '出牌', enabled: onTurn });
     }
   }

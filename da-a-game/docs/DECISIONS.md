@@ -406,3 +406,15 @@
 - 影响：跟单大A/单王时优先 5 张大蛋子；普通跟牌仍按大A 最后手段；残局搜索仍按 D-080 生效。
 - 测试：`tests/test-hint-matches-autoplay.js` 第 3 组；`tests/test-ai-memory.js` 去掉原第 3 节（≤6 行为），新增 `seenCards` 断言。
 - 相关：`src/ai.js`、`src/endgame.js`、`game.js`、`tests/test-hint-matches-autoplay.js`、`tests/test-ai-memory.js`
+
+## D-083 提示 = 托管同源（唯一区别：提示忽略阵营）；按钮顺序改为 不出/提示/出牌（2026-11-16）
+
+- 用户要求：提示逻辑改成和托管一样，两者唯一区别是「提示时不考虑阵营」；并把「提示」「不出」按钮换位。
+- 实现：
+  1. src/ai.js 新增 splitCountOf(cards, hand) 与 iKeysFor(state, playerId, cards)（返回与 i-policy.SORT_KEYS 同键的排序键）；chooseAction 支持 { ignoreCamp: true }，跳过「同阵营不压/不取重手」过滤。
+  2. game.js uiHintCandidates 取托管那一手改为 chooseAction(gameState, humanPlayer, { endgame: true, ignoreCamp: true })；跟牌候选的排序改用 iPolicy.comparePicks 与托管共用同一套键；排序后把托管首选置顶（isFirst = true）。
+  3. 按钮顺序改为 不出 / 提示 / 出牌。
+- 影响：提示与托管在「打哪一手」上完全一致；唯一差别是提示不避让同阵营，因此会出现「提示建议出、托管却不出」的情况（提示更激进）。提示不改变局面，风险只是可能误导，出牌前仍需自己判断敌友。
+- 代价：提示现在也会跑残局搜索（全体剩牌 ≤10 时），实测平均 ~50ms、最坏 ~400ms（15 次采样），不阻塞。
+- 测试：新增 	ests/test-hint-equals-ai.js（4 断言：提示首手 = ignoreCamp 结果、友方标记下托管 PASS 而提示仍出）；全量 **110 套件 / 0 失败**。
+- 相关：src/ai.js、game.js、	ests/test-hint-equals-ai.js
