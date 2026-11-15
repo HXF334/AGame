@@ -141,7 +141,7 @@ if (cfg) {
   //   -> 同样 WAGame.js:1 SyntaxError。packOptions.ignore 是**黑名单**,
   //   新增目录忘了加就会漏网, 所以这里做**白名单反查**: 除 src/ 与两个已知游戏文件外,
   //   任何 .js 都不该出现在包里。
-  var KNOWN_GAME_JS = ['game.js', 'ui-render.js'];
+  var KNOWN_GAME_JS = ['game.js', 'ui-render.js', 'audio.js'];
   var strayJs = [];
   (function walk(dir, rel) {
     fs.readdirSync(dir).forEach(function (n) {

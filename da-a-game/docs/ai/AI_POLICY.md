@@ -68,14 +68,15 @@
 | 序 | 键 | 含义 | 为什么在这个位置 |
 |---|---|---|---|
 | 1 | `outAll` | 出完优先 | 能一次走完就走完；**假八/大假八同样适用，没有例外** |
-| 2 | `splitEgg` | 组合牌型拆了 ≥2 个同点组 | QQKKKKA 不能出 QKA（动了 QQ+KKKKK）；QKKKKA 可以（只动 KKKKK）。**同点数家族拆同点组是硬过滤**，见 3.1 |
-| 3 | `sameType` | 同牌型优先 | 上家出 JJ、手牌 22777 → 选 22 不选 777 |
-| 4 | `power` | 牌力等级（§6.3 链），弱牌先出 | 双王 < 假八 < 真七；**含大A 的牌 +500 → 最后** |
-| 5 | `fourEgg` | 4 组成的蛋子+ 靠后 | 有别的选择就别出 4 组成的蛋子+ |
-| 6 | `split` | 不拆同点组 | 拆开的 999 不该赢整组 9999 |
-| 7 | `bigGroup` | 大组牌型靠后 | 大组是最后手段，但排在「不拆组」之后 |
-| 8 | `kv` | 保留价值低优先 | 打出留着的价值低的牌 |
-| 9 | `len` | 张数少 | 同上，收尾用 |
+| 2 | `breakLayer` | 拆组/拆龙程度分层（D-076） | 同型不拆 → 同型拆 1 组 → 蛋子+ → 拆龙 → 拆对子；**拆 ≥2 组已由硬过滤挡掉** |
+| 3 | `splitEgg` | 组合牌型拆了 ≥2 个同点组 | QQKKKKA 不能出 QKA（动了 QQ+KKKKK）；QKKKKA 可以（只动 KKKKK）。**同点数家族拆同点组是硬过滤**，见 3.1 |
+| 4 | `sameType` | 同牌型优先 | 上家出 JJ、手牌 22777 → 选 22 不选 777 |
+| 5 | `power` | 牌力等级（§6.3 链），弱牌先出 | 双王 < 假八 < 真七；**含大A 的牌 +500 → 最后** |
+| 6 | `fourEgg` | 4 组成的蛋子+ 靠后 | 有别的选择就别出 4 组成的蛋子+ |
+| 7 | `split` | 不拆同点组 | 拆开的 999 不该赢整组 9999 |
+| 8 | `bigGroup` | 大组牌型靠后 | 大组是最后手段，但排在「不拆组」之后 |
+| 9 | `kv` | 保留价值低优先 | 打出留着的价值低的牌 |
+| 10 | `len` | 张数少 | 同上，收尾用 |
 
 > 裁定 E：**不拆组 > 同类型优先**（`splitEgg` 在 `sameType` 之前）。
 > 顺序由 `tests/test-ai-policy.js` 锁住 —— 改顺序必须同时改那条测试（有意摩擦）。
@@ -237,7 +238,7 @@
 ## 15. 口径表（机检：本块与代码不一致 → 闸门失败）
 
 ```ai-policy-table
-SORT_KEYS: outAll>splitEgg>sameType>power>fourEgg>split>bigGroup>kv>len
+SORT_KEYS: outAll>breakLayer>splitEgg>sameType>power>fourEgg>split>bigGroup>kv>len
 POWER_RANK: SINGLE>PAIR>STRAIGHT>TRIPLE>BIG_TRIPLE>DOUBLE_STRAIGHT>DOUBLE_JOKER>STRAIGHT_TRIPLE>FAKE_EIGHT>TRUE_SEVEN>TRUE_EIGHT>TRIPLE_JOKER>BIG_STRAIGHT_TRIPLE>BIG_FAKE_EIGHT>FOUR_JOKER>DOUBLE_BIG_A
 ```
 

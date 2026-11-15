@@ -35,6 +35,52 @@ var calculateScore = require('./src/scoring.js').calculateScore;
 var uiMirror = require('./src/ui-mirror.js');
 // [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
 var uiRender = require('./ui-render.js');
+// [2026-11-15 用户] 音效 + 背景音乐(各有独立开关, 持久化)
+var audioMod = require('./audio.js');
+var audioMgr = null;
+function _ensureAudio() {
+  if (audioMgr) return audioMgr;
+  if (typeof wx === 'undefined' || !wx || typeof wx.createInnerAudioContext !== 'function') return null;
+  try {
+    audioMgr = audioMod.createManager(wx, {
+      get: function (k) { return (wx.getStorageSync && wx.getStorageSync(k)) || null; },
+      set: function (k, v) { if (wx.setStorageSync) wx.setStorageSync(k, v); }
+    });
+  } catch (e) { audioMgr = null; }
+  return audioMgr;
+}
+function _sfx(name) { var a = _ensureAudio(); if (a) a.play(name); }
+// 按牌型分三档: 炸弹/大牌/普通
+function _sfxTypeOf(t) {
+  if (t === 'DOUBLE_BIG_A' || t === 'FOUR_JOKER' || t === 'THREE_JOKER' ||
+      t === 'BIG_FAKE_EIGHT' || t === 'BIG_STRAIGHT_TRIPLE') return 'bomb';
+  if (t === 'TRIPLE' || t === 'BIG_TRIPLE' || t === 'TRUE_SEVEN' || t === 'TRUE_EIGHT' ||
+      t === 'STRAIGHT_TRIPLE' || t === 'DOUBLE_STRAIGHT' || t === 'FOUR') return 'playBig';
+  return 'play';
+}
+// 从「新增的流水」里补放音效(出牌/过牌/取牌)
+function _sfxAfterPlays(prevLen) {
+  var arr = (gameState && gameState.plays) || [];
+  for (var i = prevLen; i < arr.length; i++) {
+    var e = arr[i];
+    if (!e) continue;
+    if (e.kind === 'CAPTURE') _sfx('capture');
+    else if (e.kind === 'PASS') _sfx('pass');
+    else if (e.kind === 'PLAY') _sfx(_sfxTypeOf(e.type));
+  }
+}
+// [2026-11-15] 胜负音: 按真人所在阵营与最终 winner 比对
+var uiPrevPhaseSfx = null;
+function _sfxEnd() {
+  var end = null;
+  try { end = checkGameEnd(gameState); } catch (e) { end = null; }
+  var winner = end && end.winner;
+  if (!winner || winner === 'draw') { _sfx('lose'); return; }
+  var mainId = gameState['主A'] && gameState['主A'].establishedBy;
+  var isMain = humanPlayer === mainId || humanPlayer === gameState['次方'];
+  var humanCamp = isMain ? '主方' : '抓方';
+  _sfx(winner === humanCamp ? 'win' : 'lose');
+}
 
 // [2026-10-25] 这几个 UI 状态的**赋值**必须早于模块底部的启动调用 initGame():
 //   JS 的 var 只提升**声明**, 不提升 `= {}` 的**赋值** —— 之前 uiPlays 就是这么炸的
@@ -268,6 +314,7 @@ function _dealOneRound() {
 //     -> DEAL 被重跑 -> START_GAME 报 phase 错(实测全量套件失败)。
 function _afterDeal() {
   log('  发牌完成');
+  _sfx('deal');
   uiDealAces = [];
   // 发牌结束 -> 进入**发牌后的亮A阶段**(SKILL §3 第 5 步)
   var e1 = canLiangA(gameState, humanPlayer);
@@ -423,10 +470,12 @@ function _autoPlayTakeover() {
 function _autoPlayDoPlay(ids) {
   // [2026-11-09 用户] 托管出牌也要能触发**推风**(真人托管时出完牌)
   var _hadT0 = (gameState.table || []).length > 0;
+  var _prevAutoPlaysLen = (gameState.plays || []).length;
   var r = transition(gameState, { type: ACTIONS.PLAY,
     payload: { playerId: humanPlayer, cardIds: ids } });
   if (r && r.ok) {
     gameState = r.state;
+    _sfxAfterPlays(_prevAutoPlaysLen);
     var cards = (gameState.table || []).slice(-ids.length);
     _uiRecordPlay(humanPlayer, cards);
     log('  托管出牌: ' + ids.length + ' 张');
@@ -450,9 +499,11 @@ function _autoPlayDoPlay(ids) {
 }
 
 function _autoPlayDoPass() {
+  var _prevAutoPassLen = (gameState.plays || []).length;
   var r = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: humanPlayer } });
   if (r && r.ok) {
     gameState = r.state;
+    _sfxAfterPlays(_prevAutoPassLen);
     uiPassed[humanPlayer] = true;
     log('  托管: 真人不出');
     advanceCurrentPlayer();
@@ -711,6 +762,7 @@ function _aiLiangARound() {
       payload: { playerId: pid, cardId: e.cards[0].id } });
     if (r && r.ok) {
       gameState = r.state;
+      _sfx('liangA');
       log('  AI ' + pn(pid) + ' 亮A → 主A: ' + psuit(gameState['主A'] && gameState['主A'].suit));
       return;
     }
@@ -778,6 +830,7 @@ if (!doIt) {
     payload: { playerId: humanPlayer, cardId: card.id } });
   if (r && r.ok) {
     gameState = r.state;
+    _sfx('liangA');
     log('  真人亮A: ' + psuit(card.suit) + ' (主A 由' + pn(humanPlayer) + ', 方式=主动亮)');
     logState('亮A后');
   } else {
@@ -807,6 +860,7 @@ if (!doIt) {
     payload: { playerId: humanPlayer, suit: suit, cardIds: ids2 } });
   if (r && r.ok) {
     gameState = r.state;
+    _sfx('fanA');
     log('  真人反A成功: ' + pn(humanPlayer) + ' 成为主A');
     logState('反A后');
   } else {
@@ -887,6 +941,8 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiPassResetAt = 0;
   uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
   uiLastPhase = '';                 // [2026-11-09] 新局 -> 阶段重新记
+  uiPrevPhaseSfx = null;            // [2026-11-15] 新局 -> 允许再次放胜负音
+  uiTickLastSec = -1;
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
   _autoPlayCancelTimer();             // [2026-11-06] 同时作废排队中的托管动作
   selectedCards = [];
@@ -1211,9 +1267,21 @@ function uiTurnTick() {
   }
 }
 
+var uiTickLastSec = -1;   // [2026-11-15] 倒计时最后 3 秒的「滴」音去重
+function _sfxCountdownTick() {
+  var dl = uiLiangDeadline || uiTurnDeadline || uiAiWaitDeadline;
+  if (!dl) { uiTickLastSec = -1; return; }
+  var left = dl - Date.now();
+  if (left <= 0) { uiTickLastSec = -1; return; }
+  var sec = Math.ceil(left / 1000);
+  if (sec > 3) { uiTickLastSec = -1; return; }
+  if (sec !== uiTickLastSec) { uiTickLastSec = sec; _sfx('tick'); }
+}
 function uiStartTicker() {
   if (uiTicker || typeof setInterval === "undefined") return;
-  uiTicker = setInterval(function () { if (ctx && (uiTurnDeadline || uiLiangDeadline || uiAiWaitDeadline)) draw(); }, 250);
+  uiTicker = setInterval(function () {
+    if (ctx && (uiTurnDeadline || uiLiangDeadline || uiAiWaitDeadline)) { _sfxCountdownTick(); draw(); }
+  }, 250);
 }
 
 // ===== 亮A 决策倒计时 (2026-10-27 用户) =====
@@ -1485,6 +1553,8 @@ function _uiScores() {
 var btnMarkHits = null;
 var btnMemo = null;
 var btnPlayerHits = null;
+var btnSound = null;    // [2026-11-15] 音效开关
+var btnMusic = null;    // [2026-11-15] 背景音乐开关
 var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
 // [2026-10-25] 「不出」的 UI 层状态: 引擎的 passedPlayers 语义是「有人出牌就清全员」,
 //   但用户要的是「只在**该玩家自己**出牌时才清」+ 推风/新一轮时全清 -> 这里独立维护
@@ -1725,6 +1795,9 @@ function _uiMemoOpenNow() {
 }
 
 function draw() {
+  // [2026-11-15] 首次进入 GAME_END 时按真人阵营放胜负音(结算面板 1 秒后才弹)
+  if (gameState && gameState.phase === PHASES.GAME_END && uiPrevPhaseSfx !== PHASES.GAME_END) _sfxEnd();
+  if (gameState) uiPrevPhaseSfx = gameState.phase;
   // [P2 2026-11-12] 桌面/不出/取/轮次统一从引擎流水派生(D-064)
   _uiProjectPlays();
   // [2026-11-03/04 用户] 「牌局结束的时候后面的闹钟要清掉」
@@ -1779,6 +1852,8 @@ function draw() {
     turnIsLiang: !!(gateChoice && gateChoice.kind === 'LIANG_A'),   // [2026-10-27] 亮A 倒计时画大一点
     turnIsGate: !!uiGateKind,             // [2026-11-03] 三种闸门倒计时都用大表盘
     autoPlay: uiAutoPlay,
+    sfxOn: !!(_ensureAudio() && audioMgr.sfxOn()),
+    bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
     phase: gameState.phase
   });
   btnLog = out.btnLog;
@@ -1789,6 +1864,8 @@ function draw() {
   btnMemo = out.memoIcon;
   btnSettle = out.settleBtn;
   btnAutoPlay = out.autoPlayIcon;
+  btnSound = out.soundIcon;
+  btnMusic = out.musicIcon;
   btnAutoPlayCancel = out.cancelAutoPlayBox;
 }
 
@@ -1891,6 +1968,7 @@ function doPlay() {
     var _playedCards0 = selectedCards.map(function (id) {
       return player.hand.concat(gameState['底牌'] || []).find(function (x) { return x.id === id; });
     }).filter(function (c) { return !!c; });
+    var _prevPlaysLen = (gameState.plays || []).length;
     var r0 = transition(gameState, {
       type: ACTIONS.PLAY,
       payload: { playerId: currentPlayer, cardIds: selectedCards.slice() }
@@ -1903,6 +1981,7 @@ function doPlay() {
       }).join(' ');
       gameState = r0.state;
       _uiRecordPlay(currentPlayer, _playedCards0);   // [2026-10-26] 桌面显示他的牌
+      _sfxAfterPlays(_prevPlaysLen);
       log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' 出 ' + cardText);
       selectedCards = [];
       // [P0 修复 2026-10-23] 原来读 me2.hand.length —— me2 是 transition **之前**
@@ -1952,9 +2031,11 @@ function doPass() {
   // [P0] 轮次结束标志: 引擎 handlePass 在轮结束的同一返回里清空 table+passedPlayers,
   //   事后用 passedPlayers 反推必然为 false -> 推风永不触发。此处用清桌前后对比取证。
   var _hadTable = (gameState.table || []).length > 0;
+  var _prevPassPlaysLen = (gameState.plays || []).length;
   var r = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: currentPlayer } });
   if (r && r.ok) {
     gameState = r.state;
+    _sfxAfterPlays(_prevPassPlaysLen);
     var _roundEnded = _hadTable && (gameState.table || []).length === 0;
     log((names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS');
     // [2026-10-26] 过牌**不再删**自己的出牌显示 ——
@@ -2124,6 +2205,7 @@ function runAI() {
       if (action.choice !== undefined) wrapped.payload.choice = action.choice;
       var r1 = transition(gameState, wrapped);
       if (r1 && r1.ok) {
+        var _prevAiPlaysLen = (gameState.plays || []).length;
         // [2026-10-24] 记录 AI 最新出牌 -> 显示在它自己座位前方
         if (action.type === ACTIONS.PLAY && action.cardIds && action.cardIds.length) {
           _uiRecordPlay(currentPlayer, _uiCardsByIds(action.cardIds, gameState));
@@ -2144,6 +2226,7 @@ function runAI() {
         // [P0 修复] AI 出牌也可能结束轮次(所有人都过完后最后一人出牌收桌), 同上取证
         var _hadT1 = (gameState.table || []).length > 0;
         gameState = r1.state;
+        _sfxAfterPlays(_prevAiPlaysLen);
         var _re1 = _hadT1 && (gameState.table || []).length === 0;
         // [2026-11-08 16:03 用户] 「AI决策的log太多了, 不用每次出牌都出」-> 出牌不再打决策轨迹
         //   (决策轨迹只在: 托管代打时 + AI 过牌时 打)
@@ -2166,7 +2249,9 @@ function runAI() {
         // [修复] 强制过牌而不是 break, 否则游戏卡死且按钮无响应
         var fp = transition(gameState, { type: ACTIONS.PASS, payload: { playerId: currentPlayer } });
         if (fp && fp.ok) {
+          var _prevFpLen = (gameState.plays || []).length;
           gameState = fp.state;
+          _sfxAfterPlays(_prevFpLen);
           uiPassed[currentPlayer] = true;
           log('AI ' + (names[['A','B','C','D','E'].indexOf(currentPlayer)] || currentPlayer) + ' PASS (强制)');
           advanceCurrentPlayer();
@@ -2287,6 +2372,10 @@ if (typeof wx !== 'undefined') {
     var x = touch.clientX || touch.x;
     var y = touch.clientY || touch.y;
 
+    // [2026-11-15] 首次触摸后解锁音频(规避自动播放限制), 之后启动 BGM
+    var _au = _ensureAudio();
+    if (_au) _au.unlock();
+
     // 检查 顶部 5 按钮 (切换 humanPlayer)
     for (var i = 0; i < (btnSelectPlayers || []).length; i++) {
       var bp = btnSelectPlayers[i];
@@ -2308,6 +2397,28 @@ if (typeof wx !== 'undefined') {
     if (btnSettle && x >= btnSettle.x && x <= btnSettle.x + btnSettle.w &&
         y >= btnSettle.y && y <= btnSettle.y + btnSettle.h) {
       uiClick('newGame');
+      draw();
+      return;
+    }
+    // [2026-11-15 用户] 音效/音乐两个独立开关(顶栏机器人左边)
+    if (btnSound && x >= btnSound.x - btnSound.r && x <= btnSound.x + btnSound.r &&
+        y >= btnSound.y - btnSound.r && y <= btnSound.y + btnSound.r) {
+      var _a1 = _ensureAudio();
+      if (_a1) {
+        var _onS = _a1.toggleSfx();
+        if (_onS) _a1.play('play');
+        log('音效: ' + (_onS ? '开' : '关'));
+      }
+      draw();
+      return;
+    }
+    if (btnMusic && x >= btnMusic.x - btnMusic.r && x <= btnMusic.x + btnMusic.r &&
+        y >= btnMusic.y - btnMusic.r && y <= btnMusic.y + btnMusic.r) {
+      var _a2 = _ensureAudio();
+      if (_a2) {
+        var _onM = _a2.toggleBgm();
+        log('音乐: ' + (_onM ? '开' : '关'));
+      }
       draw();
       return;
     }

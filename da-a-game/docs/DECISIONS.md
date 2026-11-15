@@ -335,3 +335,15 @@
 - 效果：567 龙 + 999JQQK → JQK（拆 1 组）；5678 龙 + 67888899 → 过牌（6789 拆 2 组）；单张场景 D-074 的结论不变（678JJQ→Q、1010JQK3→3、1010JQQK3→J）。
 - 测试：`test-combo-follow-same-type.js` 改为性质断言（同型/张数/`touched`/首候选=托管）；`test-ai-policy.js` 排序键顺序更新；全量 **105 套件 / 0 失败**。
 - 相关：`src/ai.js`、`src/ai-policy.js`、`game.js`、`tests/test-combo-follow-same-type.js`、`tests/test-req-20261106b.js`、`tests/test-req-20261108.js`、`tests/test-ui-hint-straight.js`、`tests/test-ai-policy.js`
+
+## D-077 音效与背景音乐（2026-11-15）
+
+- 用户要求：补齐操作音效（发牌、亮A、反A、出牌、不出、取牌、倒计时、胜负），另加背景音乐；**音效与音乐各有独立开关**。
+- 实现：新增 `audio.js`（`createManager(wxObj, storage)`），11 种音效各一个 `InnerAudioContext`（懒创建、90ms 节流），BGM 单独 context（`loop=true`、音量 0.22）；开关持久化 `dada_sfx`/`dada_bgm`（默认开，`'0'` 关）。
+- 素材：`assets/audio/*.wav` 共 12 个占位文件，由 `tools/gen-audio.js`（纯 Node 合成）生成；正式素材可同名替换，不需要改代码。
+- UI：`ui-render.js` 顶栏机器人左侧新增「音」「乐」两个圆钮（开=金色/关=灰），`render()` 返回 `soundIcon`/`musicIcon`；`game.js` 触摸入口先 `unlock()`（微信自动播放限制），命中后 `toggleSfx()`/`toggleBgm()` 并打日志。
+- 播放接线：`game.js` 的 `_sfxAfterPlays(prevLen)` 从新增出牌流水补放，覆盖真人、托管、AI 三条路径；发牌/亮A/反A 单独挂钩；倒计时最后 3 秒每秒 `tick`；胜负在 `draw()` 首次进入 `GAME_END` 时按真人阵营放 `win`/`lose`。
+- 降级：无 `wx.createInnerAudioContext` 时 `_ensureAudio()` 返回 null，全部播放静默跳过，不影响对局。
+- 测试：`tests/test-audio.js`（18 断言，fake wx）覆盖默认开启、节流、持久化、BGM 解锁/停止、无能力降级、两个开关按钮存在且不重叠；`test-pack-manifest.js` 入包清单加入 `audio.js` 与 12 个音频（37 个文件）。
+- 验证：全量 **106 套件 / 0 失败**；模拟器重编译后两个开关显示正常，点「音」变灰并输出 `音效: 关`，控制台无报错。
+- 相关：`audio.js`、`assets/audio/*.wav`、`tools/gen-audio.js`、`ui-render.js`、`game.js`、`tests/test-audio.js`、`tests/test-pack-manifest.js`

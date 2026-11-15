@@ -14,11 +14,13 @@
 ├─────────────────────────────────────────────────────────┤
 │ ui-render.js   纯几何：布局、绘制、命中框（hitboxes）        │
 ├─────────────────────────────────────────────────────────┤
+│ audio.js       音效/BGM 管理器（wx InnerAudioContext 封装）  │
+├─────────────────────────────────────────────────────────┤
 │ src/           规则引擎：纯函数，不依赖 wx.*，不碰定时器      │
 └─────────────────────────────────────────────────────────┘
 ```
 
-依赖方向：`game.js → ui-render.js / src/*`；`src/*` 之间只允许单向依赖（`transition → play/capture/push-wind/hand-types`），`src/` **绝不** `require('game.js')` 或 `wx.*`。
+依赖方向：`game.js → ui-render.js / audio.js / src/*`；`audio.js` 只在 `game.js` 里实例化并注入 `wx`（测试注入 fake wx）；`src/*` 之间只允许单向依赖（`transition → play/capture/push-wind/hand-types`），`src/` **绝不** `require('game.js')` 或 `wx.*`。
 
 ## 2. 模块清单（`da-a-game/src/`，19 个）
 
@@ -234,6 +236,15 @@ chooseAction(state, playerId)
 
 - `game.js` 只做**布局结果的使用**与交互：`uiLayout()` / `uiHandLayout()` 来自 `ui-render.js`，返回坐标与 hitboxes。
 - `ui-render.js` 负责：桌面、顶栏（模式/主A/次方/记牌器）、5 个座位、每人桌面牌、手牌、按钮、toast、结算面板；`render()` 返回 hitboxes 供 `game.js` 命中检测。
+
+### 音效与 BGM（D-077）
+
+- `audio.js` 只做播放器封装：`createManager(wxObj, storage)` 返回 `play/unlock/toggleSfx/toggleBgm/sfxOn/bgmOn`；不依赖 `game.js`、不做规则。
+- 素材在 `assets/audio/*.wav`（12 个占位文件，由 `tools/gen-audio.js` 生成，可用同名正式素材直接替换，无需改代码）。
+- 11 种音效各占一个 `InnerAudioContext`（懒创建、90ms 节流，避免叠音）；BGM 单独一个 context，`loop=true`、音量 0.22。
+- 开关持久化在 `wx.setStorageSync('dada_sfx'/'dada_bgm')`（默认开，值为 `'0'` 表示关）；顶栏机器人左侧「音」「乐」两个圆钮分别控制。
+- 微信限制自动播放：首次 `touchstart` 调 `unlock()` 后才启动 BGM；`game.js` 里 `_sfxAfterPlays(prevLen)` 从新增出牌流水补放，真人/托管/AI 三条路径共用。
+- 胜负音在 `draw()` 检测 `phase` 首次变为 `GAME_END` 时播放；倒计时在最后 3 秒每秒 `tick`。
 - 顶部 5 个圆形按钮 = 切换 `uiObserver`（只读观察视角，可看 5 家手牌），不是玩家。
 - 手牌点击 → 选中/取消；`_uiExpandSelection` 会自动补成合法牌型（点一张 5 自动带成对子/蛋子）。
 - `uiPlays` / `uiPlaysTrick` / `uiTrickId` / `uiPassed` / `uiTakenPlay` 是**从 `gameState.plays` 派生的视图**（D-064）：`_uiProjectPlays()` 遍历流水重建；PLAY/CAPTURE 记录带 `cards`，PASS 追加 PASS 记录，轮末清桌追加 CLEAR 记录。「暂时藏起某手牌」「暂时藏起不出」用 `uiHiddenAt`、`uiPassHidden`、`uiPassResetAt` 表达，不再手工增删这些视图。
@@ -255,7 +266,7 @@ chooseAction(state, playerId)
 ## 11. 测试架构
 
 - 无测试框架：每个 `tests/test-*.js` 自带 `test()`/`assert`，`node tests/test-xxx.js` 直接跑，退出码非 0 即失败。
-- `tests/_runall.js`：枚举 `test-*.js`（当前 **105** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
+- `tests/_runall.js`：枚举 `test-*.js`（当前 **106** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
 - `tests/mock-wx.js`：`__isMock=true`、800×400 canvas、`ctx` 方法桩、`onTouchStart` 收集 handler、`fireTouch`；必须在 `require game.js` **之前**安装。
 - `tests/lib/state-builder.js`：`SB.build({...})` 构造确定局面并自动补足 108 张；`SB.countAll` 校验守恒。
 - 断言纪律：锁性质（合法/不合法、状态不变、不崩、日志出现），不写死具体牌；E2E 用固定局面 + 钩子。
@@ -265,7 +276,7 @@ chooseAction(state, playerId)
 
 - `project.config.json`：`appid=wx99808147273cdea1`、`libVersion=3.17.6`、`minigameRoot=./`、`packOptions.ignore=[scripts,tests,docs,skills,tools]`。
 - `project.private.config.json`（git 忽略，仅本地）：`libVersion` 同为 3.17.6。
-- `tests/test-pack-manifest.js` 锁定最终入包文件集合（当前 24 个文件），新增目录忘加 ignore 会被这条测试拦住。
+- `tests/test-pack-manifest.js` 锁定最终入包文件集合（当前 37 个文件），新增目录忘加 ignore 会被这条测试拦住。
 - 无 `package.json`、无 lockfile；不要引入依赖。
 
 ## 13. 已知取舍与技术债

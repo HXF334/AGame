@@ -28,6 +28,19 @@ function section(t) { console.log('\n=== ' + t + ' ==='); }
 
 // ---- 期望打进包的文件清单（增删游戏文件时同步这里）----
 var EXPECTED_PACK = [
+  'audio.js',
+  'assets/audio/bgm.wav',
+  'assets/audio/bomb.wav',
+  'assets/audio/capture.wav',
+  'assets/audio/deal.wav',
+  'assets/audio/fan-a.wav',
+  'assets/audio/liang-a.wav',
+  'assets/audio/lose.wav',
+  'assets/audio/pass.wav',
+  'assets/audio/play-big.wav',
+  'assets/audio/play.wav',
+  'assets/audio/tick.wav',
+  'assets/audio/win.wav',
   'game.js',
   'game.json',
   'project.config.json',
@@ -116,8 +129,8 @@ section('3. 包内顶层结构固定');
 var topLevel = actualSet.map(function (f) {
   return f.indexOf('/') >= 0 ? f.split('/')[0] : f;
 }).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
-check('顶层只有 game.js / game.json / project.config.json / ui-render.js / src',
-  topLevel.join(',') === 'game.js,game.json,project.config.json,src,ui-render.js',
+check('顶层只有 game.js / game.json / project.config.json / ui-render.js / audio.js / assets / src',
+  topLevel.join(',') === 'assets,audio.js,game.js,game.json,project.config.json,src,ui-render.js',
   topLevel.join(','));
 
 console.log('\ntest-pack-manifest: ' + passed + ' passed, ' + failed + ' failed');
