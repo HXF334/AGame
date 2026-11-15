@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **113 个套件 / 执行 113 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **114 个套件 / 执行 113 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 113/113 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 113/114 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,7 +39,7 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：113 个无头套件（规则/AI/UI/E2E/审计）。
+- **测试**：114 个无头套件（规则/AI/UI/E2E/审计）。
 
 ## 4. 本轮变更（2026-11-12～13，D-059～D-076）
 
@@ -94,6 +94,8 @@
 | `da-a-game/src/ai.js`（D-082） | 大蛋子按张数加权；跟单大A/单王不再惩罚含大A；删除「自己≤6 优先绝对最大单张」。 |
 | `da-a-game/tests/test-hint-matches-autoplay.js` | **新增（6 断言）**：提示首手 = 托管那一手（首出 556+双王 / 跟单 6 的大A / 跟单大A 的 5 张 A 蛋）。 |
 | `da-a-game/cloudfunctions/init-db/` | **新增（D-079）**：云开发初始化云函数，幂等创建 `rooms`/`room_logs` 集合。 |
+| `da-a-game/ui-render.js` / `game.js`（D-087） | 左上角 ☰ 菜单：下拉「背景音乐 / 音效 / 退出游戏」；顶栏「音」「乐」快捷开关保留，状态同源。 |
+| `da-a-game/tests/test-menu.js` | **新增（D-087，9 断言）**：菜单默认收起、三项、文本、顺序、命中区在画布内且不重叠。 |
 | `da-a-game/project.config.json`（D-079） | `cloudfunctionRoot: "cloudfunctions/"`，并把 `cloudfunctions` 加入 `packOptions.ignore`（不进小游戏包）。 |
 
 ### 文档与 skills
@@ -135,7 +137,7 @@
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
 5. **P4（单机收尾）**：~~AI 记牌（D-078）~~ 已完成；**残局搜索（D-080）** 已实现（全体剩牌 ≤10，抽样推演，含队友评估），只在 AI/托管启用。
 6. **下一阶段**：好友建房对战（服务器权威 + `publicView` 投影 + 房间/同步）。云开发环境已开通（`cloud1-d5g7uiwu9f7caacdc`），`init-db` 云函数已写好待部署；上线前需确认棋牌类目/资质。
-7. **持续**：改动后更新本文件；保持 113+ 套件全绿。
+7. **持续**：改动后更新本文件；保持 114+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）
 

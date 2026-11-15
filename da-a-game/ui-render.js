@@ -86,6 +86,8 @@ function layout(W, H) {
     //   (机器人中心在 vw-0.36H, 再往左每 0.11H 放一个, 半径比机器人略小)
     sound: { iconX: vw - Math.round(vh * 0.58), iconY: vh * 0.062, iconR: Math.round(vh * 0.036) },
     music: { iconX: vw - Math.round(vh * 0.47), iconY: vh * 0.062, iconR: Math.round(vh * 0.036) },
+    // [2026-11-16 用户] 左上角菜单按钮(☰): 点开下拉「背景音乐 / 音效 / 退出游戏」
+    menu: { iconX: Math.round(vh * 0.062), iconY: vh * 0.062, iconR: Math.round(vh * 0.040) },
     // 机器人图形比例(相对圆半径) -> 「占大部分按钮区域」
     // [2026-11-06 用户] 「机器人头像再大一点(不是按钮变大, 是按钮里的机器人)」
     //   -> 头/眼/天线整体放大, **按钮本身大小不变**(0.042H, 与记牌器一致)
@@ -1216,6 +1218,57 @@ text(ctx, st.names[i], px + 22, y, Math.max(11, Math.round(m.vh * 0.036)), (pid 
 //   作用: 1) 测试模式下切换真人视角 2) 显示阵营(主/次)
 //   [用户] 阵营要显示正确: 只给主A持有者标「主方」, 次方仅身份亮明后标「次方」
 
+// [2026-11-16 用户] 左上角菜单：☰ 按钮 + 下拉「背景音乐 / 音效 / 退出游戏」
+function drawMenuButton(ctx, m, open) {
+  var r = m.menu.iconR, x = m.menu.iconX, y = m.menu.iconY;
+  circle(ctx, x, y, r);
+  ctx.fillStyle = open ? 'rgba(255,217,138,0.95)' : 'rgba(0,0,0,0.42)';
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = Math.max(1, Math.round(r * 0.08));
+  ctx.stroke();
+  var lw = r * 0.92, gap = r * 0.40;
+  ctx.strokeStyle = open ? '#2b2b2b' : '#ffffff';
+  ctx.lineWidth = Math.max(2, Math.round(r * 0.15));
+  for (var i = -1; i <= 1; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x - lw / 2, y + i * gap);
+    ctx.lineTo(x + lw / 2, y + i * gap);
+    ctx.stroke();
+  }
+}
+
+function drawMenuPanel(ctx, st, m) {
+  var r = m.menu.iconR;
+  var w = Math.round(r * 5.4), rowH = Math.round(r * 1.60), pad = Math.round(r * 0.30);
+  var x = Math.round(m.menu.iconX - r);
+  var y = Math.round(m.menu.iconY + r + r * 0.40);
+  var h = rowH * 3 + pad * 2;
+  ctx.fillStyle = 'rgba(20,20,20,0.92)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + 0.5, y + 0.5);
+  ctx.lineTo(x + w - 0.5, y + 0.5);
+  ctx.lineTo(x + w - 0.5, y + h - 0.5);
+  ctx.lineTo(x + 0.5, y + h - 0.5);
+  ctx.closePath();
+  ctx.stroke();
+  var rows = [
+    { id: 'menuBgm', text: '背景音乐：' + (st.bgmOn ? '开' : '关') },
+    { id: 'menuSfx', text: '音效：' + (st.sfxOn ? '开' : '关') },
+    { id: 'menuExit', text: '退出游戏' }
+  ];
+  var items = [];
+  rows.forEach(function (it, i) {
+    var iy = y + pad + i * rowH;
+    text(ctx, it.text, x + w / 2, iy + rowH / 2, Math.round(rowH * 0.46), '#ffffff', 'center', false);
+    items.push({ id: it.id, x: x, y: iy, w: w, h: rowH });
+  });
+  return items;
+}
+
 function render(ctx, st) {
   var m = layout(st.W, st.H);
   drawTable(ctx, m);
@@ -1232,6 +1285,9 @@ function render(ctx, st) {
   var btnBoxes = drawButtons(ctx, st, m, st.buttons || []);
   var switchHit = drawMeSeat(ctx, st, m);
   var handBoxes = drawHand(ctx, st, m);
+  var menuIcon = { x: m.menu.iconX, y: m.menu.iconY, r: m.menu.iconR };
+  drawMenuButton(ctx, m, !!st.menuOpen);
+  var menuItems = st.menuOpen ? drawMenuPanel(ctx, st, m) : [];
   drawToast(ctx, st, m);
   var settleBtn = (st.phase === 'GAME_END') ? drawSettlement(ctx, st, m) : null;
   return {
@@ -1239,6 +1295,7 @@ function render(ctx, st) {
     seatHitboxes: seatInfo.boxes, markHits: seatInfo.markHits,
     memoIcon: memoIcon, autoPlayIcon: autoIcon, layout: m,
     soundIcon: audioIcons.sound, musicIcon: audioIcons.music,
+    menuIcon: menuIcon, menuItems: menuItems,
     switchHit: switchHit,
     settleBtn: settleBtn,
     cancelAutoPlayBox: (handBoxes || []).filter(function (b) { return b.cancelAutoPlay; })[0] || null,

@@ -162,6 +162,7 @@ var uiMarks = {};
 var uiTakenPlay = {};
 var _uiMarksWerePublic = false;   // [2026-11-08 16:24] 上次渲染时阵营是否已确定(次方亮明/明打/1V4)
 var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
+var uiMenuOpen = false;   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/退出)
 
 // === 工具 ===
 // 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
@@ -948,6 +949,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiLogVisible = false;             // 日志面板默认隐藏
   uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
   uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
+  uiMenuOpen = false;               // [2026-11-16] 新局收起左上角菜单
   uiPlays = {};                     // 清掉各家出牌显示
   uiPlaysTrick = {};
   uiTrickId = 0;
@@ -1644,6 +1646,8 @@ var btnMemo = null;
 var btnPlayerHits = null;
 var btnSound = null;    // [2026-11-15] 音效开关
 var btnMusic = null;    // [2026-11-15] 背景音乐开关
+var btnMenu = null;     // [2026-11-16] 左上角菜单按钮
+var btnMenuItems = [];  // [2026-11-16] 菜单下拉项
 var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
 // [2026-10-25] 「不出」的 UI 层状态: 引擎的 passedPlayers 语义是「有人出牌就清全员」,
 //   但用户要的是「只在**该玩家自己**出牌时才清」+ 推风/新一轮时全清 -> 这里独立维护
@@ -1943,6 +1947,7 @@ function draw() {
     autoPlay: uiAutoPlay,
     sfxOn: !!(_ensureAudio() && audioMgr.sfxOn()),
     bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
+    menuOpen: uiMenuOpen,
     phase: gameState.phase
   });
   btnLog = out.btnLog;
@@ -1955,6 +1960,8 @@ function draw() {
   btnAutoPlay = out.autoPlayIcon;
   btnSound = out.soundIcon;
   btnMusic = out.musicIcon;
+  btnMenu = out.menuIcon;
+  btnMenuItems = out.menuItems || [];
   btnAutoPlayCancel = out.cancelAutoPlayBox;
 }
 
@@ -2465,6 +2472,37 @@ if (typeof wx !== 'undefined') {
     var _au = _ensureAudio();
     if (_au) _au.unlock();
 
+    // [2026-11-16 用户] 左上角菜单：展开时优先吃掉下拉项的点击
+    if (uiMenuOpen) {
+      for (var mi = 0; mi < (btnMenuItems || []).length; mi++) {
+        var mit = btnMenuItems[mi];
+        if (x >= mit.x && x <= mit.x + mit.w && y >= mit.y && y <= mit.y + mit.h) {
+          if (mit.id === 'menuBgm') {
+            var _b = audioMgr ? audioMgr.toggleBgm() : false;
+            log('背景音乐: ' + (_b ? '开' : '关'));
+          } else if (mit.id === 'menuSfx') {
+            var _s = audioMgr ? audioMgr.toggleSfx() : false;
+            log('音效: ' + (_s ? '开' : '关'));
+          } else if (mit.id === 'menuExit') {
+            log('退出游戏');
+            uiMenuOpen = false;
+            if (wx && typeof wx.exitMiniProgram === 'function') wx.exitMiniProgram({});
+            draw();
+            return;
+          }
+          uiMenuOpen = false;
+          draw();
+          return;
+        }
+      }
+    }
+    if (btnMenu && x >= btnMenu.x - btnMenu.r && x <= btnMenu.x + btnMenu.r &&
+        y >= btnMenu.y - btnMenu.r && y <= btnMenu.y + btnMenu.r) {
+      uiMenuOpen = !uiMenuOpen;
+      draw();
+      return;
+    }
+
     // 检查 顶部 5 按钮 (切换 humanPlayer)
     for (var i = 0; i < (btnSelectPlayers || []).length; i++) {
       var bp = btnSelectPlayers[i];
@@ -2670,6 +2708,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // [2026-11-12 用户] 测试钩子: 模拟顶部 5 按钮切换观察视角(null = 回到自己)
     __setObserver: function (pid) { uiObserver = pid || null; },
   __observer: function () { return uiObserver; },
+    // [2026-11-16] 测试钩子: 左上角菜单开合与下拉项命中区
+    __menuOpen: function () { return uiMenuOpen; },
+    __setMenuOpen: function (v) { uiMenuOpen = !!v; draw(); },
+    __menuItems: function () { return btnMenuItems || []; },
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)

@@ -432,3 +432,9 @@
 - 规则：提示先按 D-083 的「与托管同源」排序；若一手都挑不出（例如上家 333、我 444：444 压不过 333，但可用 2 张 4 取牌），则**穷举**手牌里的单张、`candidateCombos` 组合与「N-1 张 4 取 N 张目标」的取牌子集，逐手交给引擎 `transition` 校验，只保留返回 `ok` 的。
 - 展示：兜底候选按张数、标签排序，第一条标 `isFirst`；相同「标签+张数」去重（3 张 4 取 333 会枚举出 3 种 2 张组合，只留一条）。全都非法才返回空 → 提示「当前没有可用牌」。
 - 测试：`tests/test-hint-fallback.js`（4 断言：444 取 333 出「取牌(4×2)」且首选、单大A + 56 无解时返回空）。
+
+## D-087 左上角菜单：☰ 下拉「背景音乐 / 音效 / 退出游戏」（2026-11-16）
+- 用户要求：左上角加一个按钮，点开显示下拉列表——背景音乐开关、音效开关、退出按钮。
+- 实现：`ui-render.js` 新增 `layout().menu`（左上角 `iconR = 0.040H`）与 `drawMenuButton` / `drawMenuPanel`；`render()` 返回 `menuIcon` 与 `menuItems`（三项命中区）。`game.js` 新增 `uiMenuOpen`，点击 ☰ 开合；下拉项优先吃掉点击，分别调 `audioMgr.toggleBgm()` / `toggleSfx()`（无音频能力时安全降级）与 `wx.exitMiniProgram()`；新局 `uiMenuOpen = false`。
+- 顶栏原有的「音」「乐」两个快捷开关保留，与菜单项共享同一持久化状态（`dada_sfx` / `dada_bgm`）。
+- 测试：`tests/test-menu.js`（9 断言：默认收起、三项、文本、顺序、命中区在画布内且不重叠、收起）。
