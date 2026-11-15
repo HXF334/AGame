@@ -381,3 +381,28 @@
 - 边界：纯逻辑、不依赖 `wx.*`；不修改规则引擎；确定性种子让测试可复现；样例数/步数/上限都是常量，便于调参。
 - 测试：`tests/test-endgame.js`（13 断言：阈值、未见牌、抽样不重复、候选、终局评分、队友剩牌计入、搜索返回合法动作、`chooseAction` 残局分支）。全量 **108 套件 / 0 失败**。
 - 相关：`src/endgame.js`、`src/ai.js`、`game.js`、`tests/test-endgame.js`、`tests/test-pack-manifest.js`
+
+
+## D-081 提示与托管完全一致：提示也走残局搜索、首选优先于大A 分级（2026-11-16）
+
+- 用户报：亮A后首出、手牌 556+双王，点提示选中王，托管却出 55；上家出 6、手牌单大A+双王，提示选王，托管出大A。
+- 根因两条：
+  1. 托管在残局（全场剩牌 ≤10）走 `endgame.search`，提示只调 `chooseAction` 不带 `endgame`，两边首选不同；
+  2. 提示排序把 `bigTier`（含大A 的候选）排在 `isFirst` 之前，导致托管首选若是大A 反而被压到后面。
+- 改法：
+  - `game.js uiHintCandidates` 里取托管那一手改为 `chooseAction(gameState, humanPlayer, { endgame: true })`；
+  - 提示排序比较器改为 `isFirst` 先于 `bigTier`（托管首选永远第一个候选，其余候选再按大A 分级）；
+  - `endgame.search` 平分时优先保留「常规 `chooseAction` 会选的那一手」（把该候选提到枚举首位、比较用 `score + 1e-9`），避免提示与托管在等分局面各选一个。
+- 测试：新增 `tests/test-hint-matches-autoplay.js`（6 断言，覆盖上述两例 + 跟单大A）。
+
+## D-082 大蛋子按张数排序；跟单大A/单王不惩罚大A；删除「自己≤6 优先绝对最大单张」（2026-11-16）
+
+- 用户报：上家出单大A、手牌 AAAAA999999，托管出 999999，应出 AAAAA。
+- 根因：`_powerOf` 里 5 张 A 蛋含大A → +`500`，牌力被抬到 6 张 9 蛋之上（9 蛋 50、A 蛋 550）；同时 6 张大蛋子与 5 张同分。
+- 改法：
+  1. `_powerOf` 对 `BIG_TRIPLE` 按张数加权：`p = POWER_RANK*10 + (len - 4)`，5 张 < 6 张；
+  2. 新增 `_forcedByBigSingle`：桌面是**单张大A/大王/小王**时，跟牌只能靠大蛋子+，此时不加大A 的 `+500`（合法必出，不算浪费）；
+  3. 删除 `ai.js` 里 D-078 的「自己手牌 ≤6 且单张是绝对最大 → 优先领出该单张」整段（用户 m04024 第 5 条要求）。
+- 影响：跟单大A/单王时优先 5 张大蛋子；普通跟牌仍按大A 最后手段；残局搜索仍按 D-080 生效。
+- 测试：`tests/test-hint-matches-autoplay.js` 第 3 组；`tests/test-ai-memory.js` 去掉原第 3 节（≤6 行为），新增 `seenCards` 断言。
+- 相关：`src/ai.js`、`src/endgame.js`、`game.js`、`tests/test-hint-matches-autoplay.js`、`tests/test-ai-memory.js`

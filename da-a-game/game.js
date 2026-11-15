@@ -1085,7 +1085,9 @@ function uiHintCandidates(mode) {
   if (!_isEnginePool) {
     try {
       if (gameState) gameState.uiMarks = uiMarks;   // 手动敌友标记要进 AI 决策
-      var _aiAct = chooseAction(gameState, humanPlayer);
+      // [2026-11-16 用户] 提示第一手必须与托管一致: 托管在残局会走残局搜索,
+      //   这里也要带 endgame, 否则会出现「提示选王、托管出 55」。
+      var _aiAct = chooseAction(gameState, humanPlayer, { endgame: true });
       if (_aiAct && _aiAct.type === 'PLAY' && _aiAct.cardIds && _aiAct.cardIds.length) {
         add(_aiAct.cardIds.slice(), true, true);   // 托管那一手 -> 原样进第一候选
       }
@@ -1126,9 +1128,11 @@ function uiHintCandidates(mode) {
     return n * 2 + _aiChainSplit(cards, me.hand);
   }
   out.sort(function (a, b) {
+    // [2026-11-16 用户] 提示的第一手必须就是托管会出的那一手(提示≡托管, D-021),
+    //   否则会出现「提示选王、托管出 55」。托管首选优先于大A 分级; 其余候选再按大A 分级。
+    if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
     // [2026-11-12 用户] 含大A 的一律靠后: 0=不含大A, 1=双大A, 2=大A 混出。
     if (a.bigTier !== b.bigTier) return a.bigTier - b.bigTier;
-    if (!!a.isFirst !== !!b.isFirst) return a.isFirst ? -1 : 1;
     // [2026-11-13 用户] 与托管的 breakLayer 同口径:
     //   跟单张: 同型不拆 -> 蛋子+ -> 拆全单张龙 -> 拆对子
     //   跟龙/对子: 同型不拆 -> 同型拆 1 组 -> 蛋子+ (拆 >=2 组由托管硬过滤, 提示只排最后)

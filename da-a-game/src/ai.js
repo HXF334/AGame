@@ -21,7 +21,6 @@ const leadChoice = require('./lead-choice.js');
 const policy = require('./ai-policy.js');
 // [2026-11-07 23:27 用户] 阵营可见性(敌/友/不明)统一走 src/camp.js —— 出牌决策读这个标记
 const camp = require('./camp.js');
-const memory = require('./ai-memory.js');
 const endgame = require('./endgame.js');
 
 // 牌的"保留价值"(越大越该留着)。仅用于 AI 排序, 不参与任何合法性判断。
@@ -300,19 +299,6 @@ function chooseAction(state, playerId, opts) {
   //   用户例子: 王322kkk->22 / 55567->567 / 45567->4567 / 5666778->5
   if (table.length === 0) {
     var _lead = leadChoice.pickLead(hand);
-    // [2026-11-15 用户 D-078] AI 记牌: 残局(手牌 <=6)时, 若手里有"绝对最大"的单张
-    //   (剩余未见牌里没有更大的), 优先领出它 —— 稳拿主动权, 且不浪费。
-    if (_lead && hand.length <= 6 && _lead.cards.length === 1) {
-      var _top = memory.highestSingle(state, playerId);
-      var _bestWin = null;
-      hand.forEach(function (c) {
-        if (isFour(c)) return;                    // 4 留给取牌
-        var enc = memory.singleEncoding(c);
-        if (enc < _top) return;                   // 还有更大的未见牌 -> 不是绝对最大
-        if (!_bestWin || enc < memory.singleEncoding(_bestWin)) _bestWin = c;
-      });
-      if (_bestWin) _lead = { cards: [_bestWin], type: HAND_TYPES.SINGLE };
-    }
     if (_lead) {
       _trace.note = '起手(lead-choice)';
       _trace.chosen = { type: identifyHand(_lead.cards).type, count: _lead.cards.length,
@@ -451,10 +437,14 @@ function chooseAction(state, playerId, opts) {
   }
   // [2026-11-09 用户] 牌力等级(§6.3): 数字小 = 牌力弱 -> 弱牌先出(别浪费大牌)
   //   例: 手牌「双王 + 真七(9999999)」-> 先出双王(§6.3: 双王 < 假八 < 真七)。
-  function _powerOf(cards, type) {
+  function _powerOf(cards, type, ignoreBigA) {
     var p = (policy.POWER_RANK[type] || 0) * 10;
+    // [2026-11-16 用户] 大蛋子 4/5/6 张按张数决定强弱: 5 张 A 蛋 < 6 张 9 蛋,
+    //   跟单大A/单王时先出张数少的(不浪费更大的蛋)。
+    if (type === HAND_TYPES.BIG_TRIPLE) p += Math.max(0, cards.length - 4);
     // 含大A(不是双大A)的牌: 当最后手段(大A 混进组合就不算大A, 但牌本身很重)
-    if (type !== HAND_TYPES.DOUBLE_BIG_A && cards.some(function (c) { return !!c.is主方大A; })) p += 500;
+    //   [2026-11-16 用户] 跟「单大A/单王」时只能靠大蛋子+ 压, 此时不惩罚大A。
+    if (!ignoreBigA && type !== HAND_TYPES.DOUBLE_BIG_A && cards.some(function (c) { return !!c.is主方大A; })) p += 500;
     return p;
   }
 
@@ -479,6 +469,9 @@ function chooseAction(state, playerId, opts) {
   var _mode = (state && state.mode) || '';
   var _solo = _mode.indexOf('1V4') === 0;      // 1V4 独打
   var _picks = [];
+  // 跟「单大A/单王」: 普通单张压不住, 只能靠大蛋子+; 此时大A 不算「最后手段」。
+  var _forcedByBigSingle = !!(currentHand && currentHand.type === HAND_TYPES.SINGLE &&
+    table.length === 1 && (table[0]['is主方大A'] || table[0].isBigJoker || table[0].isSmallJoker));
   dedup.forEach(function (combo) {
     var comboCards = combo.map(function (id) { return byId[id]; }).filter(Boolean);
     if (!comboCards.length) return;
@@ -536,7 +529,7 @@ function chooseAction(state, playerId, opts) {
       //   -> §6.3 牌力等级(数字小 = 弱): 双王 70 < 连珠蛋 80 < 假八 90 < 真七 100 < 真八 110
       //      < 三王 120 < 大连珠蛋 130 < 大假八 140 < 四王 150 < 双大A 160。
       //      含大A(不是双大A)的牌仍是最后手段(大A 不与别的牌混出, 见上面的硬规则)。
-      power: _powerOf(comboCards, h.type),
+      power: _powerOf(comboCards, h.type, _forcedByBigSingle),
       bigGroup: _bigGroupTypes[h.type] ? 1 : 0,                        // 大组牌型当最后手段
       split: _splitCount(comboCards),                                  // 不拆牌优先
       // [2026-11-13 用户] 先按「拆没拆组 / 拆的是什么」分层, 再比同型与大小

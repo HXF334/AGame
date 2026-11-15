@@ -1,5 +1,5 @@
 // tests/test-ai-memory.js —— AI 记牌（D-078）
-// 只锁性质: 剩余张数守恒、最大单张判定、残局领出"绝对最大"单张。
+// 只锁性质: 剩余张数守恒、最大单张判定、seenCards 公开信息口径。
 var assert = require('assert');
 var SB = require('./lib/state-builder.js');
 var ai = require('../src/ai.js');
@@ -74,22 +74,12 @@ ok('2.2 所有更大的牌都见过了 -> 3 是最大单张', function () {
   assert.ok(memory.highestSingle(b.st, 'B') <= 13, '3 以上只剩 4..K');
 });
 
-// ---- 3. 残局领出绝对最大单张 ----
-ok('3.1 手牌 <=6 且 3 绝对最大 -> 先出 3 而不是最小牌', function () {
-  var b = baseState([3, 5, 7, 9, 11]);
-  markBiggerSeen(b.st, 1);
-  var act = ai.chooseAction(b.st, 'B', {});
-  assert.strictEqual(act.type, 'PLAY');
-  assert.strictEqual(act.cardIds.length, 1, '应领出单张');
-  assert.strictEqual(handCard(b.st, act.cardIds[0]).rank, 3, '应出 3');
-});
-
-ok('3.2 手牌 >6 时不启用该偏好', function () {
-  var b = baseState([3, 5, 7, 9, 11, 13, 10]);
-  markBiggerSeen(b.st, 1);
-  var act = ai.chooseAction(b.st, 'B', {});
-  var cards = act.cardIds.map(function (id) { return handCard(b.st, id); });
-  assert.ok(identifyHand(cards), '应仍能正常出牌');
+// ---- 3. seenCards: 公开信息 + 自己手牌 ----
+ok('3.1 seenCards 含自己手牌与桌面', function () {
+  var b = baseState([3, 5]);
+  var seen = memory.seenCards(b.st, 'B');
+  assert.ok(seen.some(function (c) { return c.rank === 3; }), '含自己手牌');
+  assert.ok(seen.length >= 2);
 });
 
 console.log('\n  ' + pass + ' passed, ' + fail + ' failed');

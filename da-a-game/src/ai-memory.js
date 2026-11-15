@@ -67,8 +67,16 @@ function canBeBeatenSingle(state, viewerId, card) {
   return singleEncoding(card) < highestSingle(state, viewerId);
 }
 
+// 公开信息里"已见"的牌(去重按 id 由调用方处理)
+function seenCards(state, viewerId) {
+  var out = [];
+  _eachSeen(state, viewerId, function (c) { if (c) out.push(c); });
+  return out;
+}
+
 module.exports = {
   remaining: remaining,
+  seenCards: seenCards,
   highestSingle: highestSingle,
   canBeBeatenSingle: canBeBeatenSingle,
   singleEncoding: singleEncoding

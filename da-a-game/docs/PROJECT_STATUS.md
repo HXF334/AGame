@@ -23,7 +23,7 @@
 |---|---|---|
 | 全量回归 | `node tests/_runall.js` | **108 个套件 / 执行 108 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 108/108 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 108/109 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -89,6 +89,10 @@
 | `da-a-game/tests/test-pack-manifest.js`（D-078/D-080） | 入包清单加 `src/ai-memory.js`、`src/endgame.js`（现 39 个文件）。 |
 | `da-a-game/src/endgame.js` | **新增（D-080）**：残局搜索。全体存活手牌 ≤10 时，用未见牌抽样 + 全员托管推演，按阵营胜负选动作；不读别人手牌。 |
 | `da-a-game/tests/test-endgame.js` | **新增（13 断言）**：阈值、未见牌统计、抽样不重复、候选枚举、终局/未终局评分、队友剩牌计入、搜索返回合法动作。 |
+| `da-a-game/game.js`（D-081） | 提示取托管那一手时带 `{endgame:true}`；提示排序改为「托管首选 → 大A 分级」。 |
+| `da-a-game/src/endgame.js`（D-081） | 平分时优先常规 `chooseAction` 的选择（候选提前 + 严格大于才替换）。 |
+| `da-a-game/src/ai.js`（D-082） | 大蛋子按张数加权；跟单大A/单王不再惩罚含大A；删除「自己≤6 优先绝对最大单张」。 |
+| `da-a-game/tests/test-hint-matches-autoplay.js` | **新增（6 断言）**：提示首手 = 托管那一手（首出 556+双王 / 跟单 6 的大A / 跟单大A 的 5 张 A 蛋）。 |
 | `da-a-game/cloudfunctions/init-db/` | **新增（D-079）**：云开发初始化云函数，幂等创建 `rooms`/`room_logs` 集合。 |
 | `da-a-game/project.config.json`（D-079） | `cloudfunctionRoot: "cloudfunctions/"`，并把 `cloudfunctions` 加入 `packOptions.ignore`（不进小游戏包）。 |
 

@@ -12,6 +12,7 @@
 var card = require('./card.js');
 var transitionMod = require('./transition.js');
 var winLoss = require('./win-loss.js');
+var memory = require('./ai-memory.js');
 var handTypes = require('./hand-types.js');
 var combos = require('./combos.js');
 
@@ -39,20 +40,10 @@ function isEndgame(state, limit) {
 // 已经很清楚的牌：自己手牌、桌面、弃牌堆、出牌流水里的 cards、已公开的底牌
 function seenIds(state, viewerId) {
   var ids = {};
-  var me = (state.players || []).filter(function (p) { return p.id === viewerId; })[0];
-  if (me && me.hand) me.hand.forEach(function (c) { ids[c.id] = 1; });
-  (state.table || []).forEach(function (c) { ids[c.id] = 1; });
-  (state.discarded || []).forEach(function (c) { ids[c.id] = 1; });
-  (state.plays || []).forEach(function (r) {
-    (r.cards || []).forEach(function (c) { ids[c.id] = 1; });
-  });
-  if (state.底牌公开 && Array.isArray(state.底牌)) {
-    state.底牌.forEach(function (c) { ids[c.id] = 1; });
-  }
+  memory.seenCards(state, viewerId).forEach(function (c) { ids[c.id] = 1; });
   return ids;
 }
 
-// 未见牌（别人手牌 + 未公开底牌）
 function unseenCards(state, viewerId) {
   var seen = seenIds(state, viewerId);
   return card.createDeck().filter(function (c) { return !seen[c.id]; });
@@ -196,6 +187,16 @@ function search(state, playerId, opts) {
   if (!actions.length) return null;
   var samples = opts.samples || 6;
   var rng = opts.rng || mulberry32(opts.seed || 20261115);
+  // [2026-11-16] 平分时优先选「常规决策」那一手, 避免提示/托管在等分局面下选到不同动作。
+  var pref = null;
+  try { pref = chooseAction(state, playerId); } catch (e) { pref = null; }
+  if (pref && pref.type === 'PLAY') {
+    var prefKey = (pref.cardIds || []).slice().sort().join(',');
+    var pj = actions.findIndex(function (a) {
+      return a.type === 'PLAY' && (a.cardIds || []).slice().sort().join(',') === prefKey;
+    });
+    if (pj > 0) actions = [actions[pj]].concat(actions.slice(0, pj), actions.slice(pj + 1));
+  }
   var best = null;
   actions.forEach(function (action) {
     var sum = 0, n = 0;
@@ -209,7 +210,7 @@ function search(state, playerId, opts) {
     }
     if (!n) return;
     var avg = sum / n;
-    if (!best || avg > best.score) best = { action: action, score: avg, samples: n };
+    if (!best || avg > best.score + 1e-9) best = { action: action, score: avg, samples: n };
   });
   return best;
 }
