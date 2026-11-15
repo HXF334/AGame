@@ -303,6 +303,9 @@ function _dealOneRound() {
   if (me && me.hand) {
     uiDealAces = me.hand.filter(function (c) { return c.rank === 14; });
   }
+  // [2026-11-15 用户报障] 「发牌时听不到声音, 发牌结束后一连串声音」
+  //   -> 发牌音应该**跟着每一轮**发(22 轮, 每轮 0.2s), 而不是发完才响一声。
+  _sfx('deal');
   return true;
 }
 
@@ -314,7 +317,6 @@ function _dealOneRound() {
 //     -> DEAL 被重跑 -> START_GAME 报 phase 错(实测全量套件失败)。
 function _afterDeal() {
   log('  发牌完成');
-  _sfx('deal');
   uiDealAces = [];
   // 发牌结束 -> 进入**发牌后的亮A阶段**(SKILL §3 第 5 步)
   var e1 = canLiangA(gameState, humanPlayer);

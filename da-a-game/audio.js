@@ -73,7 +73,7 @@ function createManager(wxObj, storage) {
         bgmCtx = wxObj.createInnerAudioContext();
         bgmCtx.autoplay = false;
         bgmCtx.loop = true;
-        bgmCtx.volume = 0.22;
+        bgmCtx.volume = 0.35;
         bgmCtx.src = BGM_SRC;
       } catch (e) { bgmCtx = null; return; }
     }

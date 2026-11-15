@@ -165,7 +165,9 @@ function sfxLose() {
 
 // ---------- 背景音乐（8s 无缝循环） ----------
 function bgm() {
-  var dur = 8, sr = 12000, n = Math.round(dur * sr), a = mk(n);
+  // [2026-11-15 用户报障] 听不到背景音乐: 原来 12000Hz 非常规采样率 + 振幅 0.055
+  //   -> 部分平台解码失败/音量过低; 改为标准 16000Hz 并把振幅提到 0.16。
+  var dur = 8, sr = 16000, n = Math.round(dur * sr), a = mk(n);
   // Am - F - C - G，每和弦 2s
   var chords = [
     [220.0, 261.63, 329.63],
@@ -182,7 +184,7 @@ function bgm() {
         var local = t - start;
         var e = Math.min(1, local / 0.5) * Math.min(1, (end - t) / 0.5); // 交叉淡入淡出
         var trem = 0.85 + 0.15 * Math.sin(2 * Math.PI * 0.25 * t);
-        a[i] += 0.055 * e * trem * (Math.sin(2 * Math.PI * f * t) + 0.35 * Math.sin(2 * Math.PI * f * 2 * t));
+        a[i] += 0.16 * e * trem * (Math.sin(2 * Math.PI * f * t) + 0.35 * Math.sin(2 * Math.PI * f * 2 * t));
       }
     }
   }

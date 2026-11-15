@@ -53,7 +53,7 @@ var mgr2 = audio.createManager(wx2, { get: function () { return null; }, set: fu
 mgr2.unlock();
 var bgmCtx = wx2.made.filter(function (c) { return c.src === audio.BGM_SRC; })[0];
 check('2.1 解锁后启动 BGM', !!bgmCtx && bgmCtx.playing === true, 'ctx=' + !!bgmCtx);
-check('2.2 BGM 循环播放且音量较低', bgmCtx && bgmCtx.loop === true && bgmCtx.volume <= 0.3);
+check('2.2 BGM 循环播放且音量适中', bgmCtx && bgmCtx.loop === true && bgmCtx.volume > 0.2 && bgmCtx.volume <= 0.5);
 
 mgr2.toggleBgm();
 check('2.3 关闭音乐后 BGM 停止', mgr2.bgmOn() === false && bgmCtx.playing === false);
