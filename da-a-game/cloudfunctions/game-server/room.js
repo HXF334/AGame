@@ -151,11 +151,46 @@ function start(room, now) {
   room.round += 1;
   room.seq += 1;
   room.status = 'PLAYING';
+  advanceToPlay(room);
   room.moveKeys = [];
   room.deadline = room.config.turnSeconds > 0 ? t + room.config.turnSeconds * 1000 : 0;
   room.players.forEach(function (p) { p.ready = false; });
   room.updatedAt = t;
   return { ok: true, room: room };
+}
+
+// [2026-11-16 用户] 联网对局进入战斗：自动推进无需人类决策的闸门（亮A/反A/翻底牌/身份），
+// 让房间从发牌直接走到 PLAY；人类决策类闸门后续再开放。
+function advanceToPlay(room) {
+  var guard = 0;
+  while (guard++ < 12) {
+    var ph = room.state && room.state.phase;
+    if (!ph) break;
+    var r = null;
+    if (ph === 'LIANG_A') {
+      r = engine.transition(room.state, { type: 'FORCED_CHECK', payload: {} });
+    } else if (ph === 'LIANG_A_RESOLVED') {
+      r = engine.transition(room.state, { type: 'ADVANCE', payload: {} });
+    } else if (ph === 'FAN_A' || ph === 'FAN_A_RESOLVED') {
+      r = engine.transition(room.state, { type: 'REVEAL_BOTTOM', payload: {} });
+    } else if (ph === 'REVEAL_BOTTOM') {
+      r = engine.transition(room.state, { type: 'REVEAL_BOTTOM', payload: {} });
+    } else if (ph === 'IDENTITY_CHOICE') {
+      var who = engine.identityChooser(room.state);
+      if (!who) break;
+      r = engine.transition(room.state, { type: 'CHOOSE_IDENTITY', payload: { playerId: who, choice: 'HIDDEN' } });
+    } else {
+      break;
+    }
+    if (!r || !r.ok) break;
+    room.state = r.state;
+    room.seq += 1;
+  }
+  if (room.state && room.state.phase === 'PLAY' && !room.state.currentPlayer) {
+    room.state.currentPlayer = engine.determineFirstPlayer(room.state) || 'A';
+    room.seq += 1;
+  }
+  return room;
 }
 
 function settle(room, now) {
@@ -282,6 +317,7 @@ module.exports = {
   settle: settle,
   apply: apply,
   tick: tick,
+  advanceToPlay: advanceToPlay,
   setOffline: setOffline,
   setOnline: setOnline,
   poll: poll,

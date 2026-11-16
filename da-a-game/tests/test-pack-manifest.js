@@ -47,6 +47,7 @@ var EXPECTED_PACK = [
   'ui-render.js',
   'src/ai.js',
   'src/lobby.js',
+  'src/net-state.js',
   'src/ai-memory.js',
   'src/endgame.js',
   'src/flow.js',

@@ -48,6 +48,7 @@
 | `history.js` | 战绩页格式化（D-091）：模式/胜负/时间/得分文本 + 汇总，纯函数 |
 | `record.js` | 战绩记录（P3，D-090） | `buildRecord(state, view)`：只输出公开信息（模式/胜负/阵营/得分/流水条数），不含手牌底牌 |
 | `flow.js` | 流程层（P1，D-088/D-089） | 阶段闸门表 `GATE_PLAN`（DEAL→FORCED_CHECK→ADVANCE→REVEAL→IDENTITY→PLAY）与 `gateIndexOf`/`nextStage`；发牌 `startDeal`/`dealRound`/`isDealing`；game.js 直接引用 |
+| `net-state.js` | 联网视图适配（D-099） | publicView → 渲染状态：自己的手牌原样、别人只补等长空数组（仅用于 .length），底牌按公开标志裁剪 |
 | `protocol.js` | 联机动作信封（P0，D-093） | `makeAction`/`validateEnvelope`/`actionKey`：类型白名单 PLAY/PASS/PUSH_WIND、`baseSeq` 乐观锁、协议版本校验 |
 | `timing.js` | 计时参数集中（P0，D-093） | `AI_STEP`/`DEAL_STEP`/`SETTLE`/`TURN`/`LIANG`/`RECONNECT`/`POLL`；客户端与服务端共用 |
 | `version.js` | 协议/规则版本（P0，D-093） | `PROTOCOL_VERSION`/`RULES_VERSION`，握手校验用 |
@@ -276,7 +277,7 @@ chooseAction(state, playerId)
 ## 11. 测试架构
 
 - 无测试框架：每个 `tests/test-*.js` 自带 `test()`/`assert`，`node tests/test-xxx.js` 直接跑，退出码非 0 即失败。
-- `tests/_runall.js`：枚举 `test-*.js`（当前 **124** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
+- `tests/_runall.js`：枚举 `test-*.js`（当前 **126** 个），可带起止序号只跑一段；汇总「套件 N 个 / 执行 N 次 / 失败 M 次」。
 - `tests/mock-wx.js`：`__isMock=true`、800×400 canvas、`ctx` 方法桩、`onTouchStart` 收集 handler、`fireTouch`；必须在 `require game.js` **之前**安装。
 - `tests/lib/state-builder.js`：`SB.build({...})` 构造确定局面并自动补足 108 张；`SB.countAll` 校验守恒。
 - 断言纪律：锁性质（合法/不合法、状态不变、不崩、日志出现），不写死具体牌；E2E 用固定局面 + 钩子。

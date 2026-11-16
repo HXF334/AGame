@@ -528,3 +528,13 @@
 - 服务端 `game-server` 补 `leave` action；`room.poll` 增加 `you`（当前座位）与 `players[].owner`，供等待页展示。
 - 轮询到 `status=PLAYING` 时暂仍停在等待页并显示「对局中（第 x/y 局）」，对局页 netDriver 下一阶段接。
 - 测试：`tests/test-lobby.js` 22 断言；全量 125/125；`preflight --fast` 12/12。
+
+## D-099 联网对局 MVP：服务端自动闸门 + 客户端 netDriver（2026-11-16）
+
+- **决策**：联网房间开局后，服务端 `room.advanceToPlay()` 自动推进「无需人类决策」的闸门：
+  `LIANG_A → FORCED_CHECK → LIANG_A_RESOLVED → ADVANCE → FAN_A → REVEAL_BOTTOM → IDENTITY_CHOICE(默认 HIDDEN) → PLAY`。
+  即联网 MVP 暂不支持人工亮A/反A/身份选择，统一走强制排查 + 暗打；人类决策闸门后续版本再开放。
+- **客户端**：轮询到 `status=PLAYING` 自动进入对局页，`src/net-state.js` 把 `publicView` 适配成渲染状态（别人手牌只补等长空数组，仅用于 .length）；
+  出牌/不出/提示改走 `online.send()`，本地不跑引擎推进、不跑 AI；联网对局禁用托管（提示仍可用，用穷举合法牌保证正确性）。
+- **日志**：联网关键路径统一 `log()`——进入对局、每次发送/成功/失败/异常、房间号与 seq、退出与结算，便于真机排查。
+- **边界**：服务端仍是唯一权威；客户端渲染状态只用于显示与选牌，全部动作经 `apply` 校验（baseSeq/幂等/座位）。

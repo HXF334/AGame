@@ -40,6 +40,7 @@ var timing = require('./src/timing.js');
 // [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
 var uiRender = require('./ui-render.js');
 var onlineMod = require('./src/online.js');   // [2026-11-16 用户] 联网 P2：房间控制器
+var netStateMod = require('./src/net-state.js');   // [2026-11-16 用户] 联网对局：view → 牌桌状态
 // [2026-11-15 用户] 音效 + 背景音乐(各有独立开关, 持久化)
 var audioMod = require('./audio.js');
 var audioMgr = null;
@@ -180,6 +181,7 @@ var uiOnline = null;
 var uiRoomTimer = null;
 var uiRoomBusy = false;
 var uiNick = '';
+var uiNet = false;   // [2026-11-16 用户] 联网对局中（本地不再跑 AI/引擎推进）
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
 var uiHistoryConfirm = false;   // [2026-11-16] 清空二次确认
@@ -409,6 +411,7 @@ var uiAutoPlayTimer = 0;       // 托管排队中的动作(取消托管时必须
 // [2026-11-06 用户] 托管: 开启后**本局持续**由 AI 代打, 直到用户取消;
 //   取消后**不得再自动出牌**(排队中的动作必须作废)。
 function _uiToggleAutoPlay() {
+  if (uiNet) { showToast('联网对局暂不支持托管'); log('联网对局: 忽略托管开关'); draw(); return; }
   uiAutoPlay = !uiAutoPlay;
   log(uiAutoPlay ? '开启托管: AI 代打真人手牌(本局持续, 直到取消)' : '关闭托管: 恢复真人操作');
   selectedCards = [];
@@ -1339,6 +1342,16 @@ function _uiComboLabel(cards) {
 //   2) 多次点击 -> 按有效牌从小到大依次推荐下一个候选
 var uiHintIdx = 0;
 function uiHint() {
+  if (uiNet) {
+    if (currentPlayer !== humanPlayer) { log('  提示: 现在不是你的回合'); return false; }
+    var _meN = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    var _candsN = _bruteForceLegalPlays(_meN, gameState.table || []);
+    if (!_candsN.length) { showToast(NO_PLAYABLE_TEXT); log('  提示: ' + NO_PLAYABLE_TEXT); draw(); return false; }
+    selectedCards = _candsN[0].ids.slice();
+    log('联网提示: ' + _candsN[0].label + ' -> 已选中 ' + selectedCards.length + ' 张');
+    draw();
+    return true;
+  }
   if (currentPlayer !== humanPlayer || gameState.phase !== PHASES.PLAY) {
     log('  提示: 现在不是你的回合');
     return false;
@@ -2171,6 +2184,12 @@ function doPlay() {
     if (ctx) draw();
     return;
   }
+  if (uiNet) {
+    if (!selectedCards.length) { showToast('请先选牌'); draw(); return; }
+    if (currentPlayer !== humanPlayer) { showToast('还没轮到你出牌'); draw(); return; }
+    _netSend('PLAY', { cardIds: selectedCards.slice() });
+    return;
+  }
   // [2026-11-03 用户] 别人出牌时真人可以**提前选牌**, 但**不能打出**
   //   -> 这里显式拦住「真人在别人回合把自己的牌打出去」。
   //   判据是**牌的归属**(选中的牌里有没有真人的牌), 不是「当前玩家是不是真人」:
@@ -2266,6 +2285,11 @@ function doPlay() {
 
 // === 过牌 ===
 function doPass() {
+  if (uiNet) {
+    if (currentPlayer !== humanPlayer) { showToast('还没轮到你'); draw(); return; }
+    _netSend('PASS', {});
+    return;
+  }
   if (!currentPlayer || gameState.phase !== PHASES.PLAY) {
     if (ctx) draw();
     return;
@@ -2627,9 +2651,55 @@ function _ensureOnlineClient() {
   uiOnline = onlineMod.createClient({ call: _cloudCall, now: function () { return Date.now(); } });
   uiOnline.onUpdate(function (view) {
     uiRoomView = view;
+    if (view && view.status === 'PLAYING') {
+      if (!uiNet) _enterNetGame(view);
+      else _applyNetView(view);
+      return;
+    }
+    if (uiNet && view && (view.status === 'SETTLED' || view.status === 'FINISHED')) {
+      _applyNetView(view);
+      log('联网对局结束: round=' + view.round + '/' + view.rounds + ' status=' + view.status);
+      return;
+    }
     if (uiPage === 'LOBBY') draw();
   });
   return uiOnline;
+}
+
+// [2026-11-16 用户] 联网对局：把服务端 view 铺成牌桌（只读 + 我的回合出牌）
+function _enterNetGame(view) {
+  uiNet = true;
+  uiPage = 'GAME';
+  humanPlayer = netStateMod.seatId(view.you == null ? 0 : view.you);
+  log('进入联网对局: room=' + view.id + ' 我=' + humanPlayer + ' 局=' + view.round + '/' + view.rounds);
+  _applyNetView(view);
+}
+
+function _applyNetView(view) {
+  var st = netStateMod.toRender(view);
+  if (!st) return;
+  gameState = st;
+  currentPlayer = st.currentPlayer || netStateMod.seatId(view.you == null ? 0 : view.you);
+  _uiProjectPlays();
+  draw();
+}
+
+function _netSend(type, payload) {
+  if (!uiOnline) { showToast('未连接房间'); return; }
+  log('联网发送: ' + type + (payload ? ' ' + JSON.stringify(payload) : ''));
+  uiOnline.send(type, payload || {})['then'](function (r) {
+    if (!r || !r.ok) {
+      log('联网失败: ' + type + ' -> ' + ((r && r.error) || 'UNKNOWN'));
+      showToast('操作失败: ' + ((r && r.error) || '网络错误'));
+      draw();
+      return;
+    }
+    log('联网成功: ' + type + ' seq=' + (r.room && r.room.seq));
+    if (r.room) _applyNetView(r.room);
+  })['catch'](function (e) {
+    log('联网异常: ' + type + ' ' + (e && e.message));
+    showToast('网络错误');
+  });
 }
 
 function _stopRoomPolling() {
@@ -2639,7 +2709,7 @@ function _stopRoomPolling() {
 function _startRoomPolling() {
   _stopRoomPolling();
   uiRoomTimer = setInterval(function () {
-    if (!uiOnline || !uiOnline.roomId || uiPage !== 'LOBBY') return;
+    if (!uiOnline || !uiOnline.roomId || (uiPage !== 'LOBBY' && !(uiNet && uiPage === 'GAME'))) return;
     uiOnline.poll()['catch'](function () { /* 轮询失败下轮再试 */ });
   }, 1500);
 }
