@@ -1256,8 +1256,9 @@ function drawHistoryPanel(ctx, st, m) {
   var sumH = Math.round(vh * 0.042);
   var closeH = Math.round(vh * 0.070);
   var gapBtn = Math.round(vh * 0.022);
+  var gapTop = Math.round(vh * 0.020);
   var bodyH = rowH * Math.max(rows.length, 1);
-  var h = titleH + sumH + bodyH + gapBtn + closeH + pad * 2;
+  var h = titleH + sumH + gapTop + bodyH + gapBtn + closeH + pad * 2;
   var x = Math.round((vw - w) / 2), y = Math.round((vh - h) / 2);
 
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -1275,7 +1276,7 @@ function drawHistoryPanel(ctx, st, m) {
   var sum = st.historySummary || '';
   if (sum) text(ctx, sum, x + w / 2, y + pad + titleH + sumH * 0.45, Math.round(vh * 0.028), '#e8d8b8', 'center', false);
 
-  var ty = y + pad + titleH + sumH;
+  var ty = y + pad + titleH + sumH + gapTop;
   if (st.historyState === 'loading') {
     text(ctx, '加载中…', x + w / 2, ty + bodyH / 2, Math.round(vh * 0.032), '#ffffff', 'center', false);
   } else if (st.historyState === 'err') {
