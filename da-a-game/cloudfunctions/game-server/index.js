@@ -66,7 +66,7 @@ exports.main = async function (event) {
         return fail('WRITE_FAILED', { message: String(e.errMsg || e.message || e) });
       }
     }
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
 
   if (!event.roomId) return fail('NO_ROOM_ID');
@@ -81,25 +81,26 @@ exports.main = async function (event) {
     var jr = roomMod.join(room, { openid: openid, nick: event.nick || '', avatar: event.avatar || '' });
     if (!jr.ok) return fail(jr.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
   if (action === 'ready') {
     var sr = roomMod.setReady(room, openid, event.ready !== false);
     if (!sr.ok) return fail(sr.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
   if (action === 'start') {
     if (room.ownerId !== openid) return fail('NOT_OWNER');
     var tr = roomMod.start(room);
     if (!tr.ok) return fail(tr.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
   if (action === 'apply') {
     var ar = roomMod.apply(room, event.env, openid);
     if (!ar.ok) return fail(ar.error, { seq: room.seq });
     await saveRoom(room);
+    roomMod.autoAi(room);
     return ok({ room: roomMod.poll(room, openid), seq: room.seq, ended: !!ar.ended });
   }
   if (action === 'tick') {
@@ -112,22 +113,22 @@ exports.main = async function (event) {
     var of = roomMod.setOffline(room, openid);
     if (!of.ok) return fail(of.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
   if (action === 'online') {
     var on = roomMod.setOnline(room, openid);
     if (!on.ok) return fail(on.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
   if (action === 'leave') {
     var lv = roomMod.leave(room, openid);
     if (!lv.ok) return fail(lv.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
   if (action === 'poll') {
-    return ok({ room: roomMod.poll(room, openid) });
+    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
   }
   return fail('UNKNOWN_ACTION');
 };

@@ -193,6 +193,27 @@ function advanceToPlay(room) {
   return room;
 }
 
+// [2026-11-16 用户] 联网对局：轮到 AI / 离线托管的座位时，服务端直接代打，避免房间卡住。
+function autoAi(room) {
+  var guard = 0;
+  while (guard++ < 30 && room.status === 'PLAYING' && room.state && room.state.phase === 'PLAY') {
+    var cur = room.state.currentPlayer;
+    if (!cur) break;
+    var p = room.players.filter(function (x) { return SEATS[x.seat] === cur; })[0];
+    if (!p || !(p.ai || p.offline)) break;
+    var act = ai.chooseAction(room.state, cur, { endgame: true });
+    if (!act || !act.type) break;
+    var env = { type: act.type, payload: Object.assign({ playerId: cur }, act.payload || {}) };
+    var r = engine.transition(room.state, env);
+    if (!r || !r.ok) break;
+    room.state = r.state;
+    room.seq += 1;
+    var end = wl.checkGameEnd(room.state);
+    if (end && end.ended) { settle(room, Date.now()); break; }
+  }
+  return room;
+}
+
 function settle(room, now) {
   var end = wl.checkGameEnd(room.state);
   if (!end.ended) return false;
@@ -318,6 +339,7 @@ module.exports = {
   apply: apply,
   tick: tick,
   advanceToPlay: advanceToPlay,
+  autoAi: autoAi,
   setOffline: setOffline,
   setOnline: setOnline,
   poll: poll,

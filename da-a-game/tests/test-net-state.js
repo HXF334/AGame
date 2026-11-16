@@ -56,5 +56,12 @@ check('3.3 poll 带 you', pv.you === 0);
 check('3.4 别人只给 handCount', pv.state.players[1].hand === undefined && pv.state.players[1].handCount >= 20);
 check('3.5 适配器可渲染', netState.toRender(pv).players[1].hand.length === pv.state.players[1].handCount);
 
+section('4. 服务端 AI 代打（autoAi）');
+var seqBefore = room.seq;
+roomMod.autoAi(room);
+check('4.1 autoAi 推进了 seq', room.seq >= seqBefore);
+var humanSeats = room.players.filter(function (p) { return !p.ai && !p.offline; }).map(function (p) { return 'ABCDE'[p.seat]; });
+check('4.2 轮到真人或已结算', room.state.phase !== 'PLAY' || humanSeats.indexOf(room.state.currentPlayer) >= 0);
+
 console.log('\n结果: ' + passed + ' 通过 / ' + failed + ' 失败');
 if (failed) { console.log('失败项: ' + failures.join(', ')); process.exit(1); }
