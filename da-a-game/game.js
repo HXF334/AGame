@@ -2067,9 +2067,25 @@ function _submitGameRecord() {
     return false;
   }
 }
+var uiDrawBusy = false;
+// [2026-11-16] 单机局终偶发 "Maximum call stack size exceeded":
+//   渲染帧里同步做 console 输出/云调用, 某些注入环境会**重入 draw()** → 无限递归。
+//   这里加两层保护: ①draw 重入直接返回; ②局终副作用先记状态再异步执行。
 function draw() {
+  if (uiDrawBusy) return;
+  uiDrawBusy = true;
+  try { _drawImpl(); } finally { uiDrawBusy = false; }
+}
+function _drawImpl() {
   // [2026-11-15] 首次进入 GAME_END 时按真人阵营放胜负音(结算面板 1 秒后才弹)
-  if (gameState && gameState.phase === PHASES.GAME_END && uiPrevPhaseSfx !== PHASES.GAME_END) { _sfxEnd(); _submitGameRecord(); }
+  if (gameState && gameState.phase === PHASES.GAME_END && uiPrevPhaseSfx !== PHASES.GAME_END) {
+    // 先落状态, 避免副作用里重入 draw 时又走一遍
+    uiPrevPhaseSfx = PHASES.GAME_END;
+    _sfxEnd();
+    // [2026-11-16] 战绩上报移出渲染帧: 云调用/日志回调不应发生在 draw 里
+    if (typeof setTimeout === 'function') setTimeout(function () { _submitGameRecord(); }, 0);
+    else _submitGameRecord();
+  }
   if (gameState) uiPrevPhaseSfx = gameState.phase;
   // [P2 2026-11-12] 桌面/不出/取/轮次统一从引擎流水派生(D-064)
   _uiProjectPlays();

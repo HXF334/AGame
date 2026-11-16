@@ -546,3 +546,14 @@
 - **定时触发器**：`game-server/config.json` 每分钟触发；`tickAllRooms()` 扫描 PLAYING 房间，`gateTick` + `tick` 推进超时/AI 代打并落库。
 - **断线重连**：房间号写 `dada_room`，`onShow` 时优先 `online()`，否则 `joinRoom` 恢复；`onHide` 标记离线；离开房间清除。
 - 验证：`test-net-state` 17、`test-room-gates` 8、`test-ui-netgate` 7、`test-ui-netsettle` 8；全量 129/129；`game-server` 部署 37 files/96.9KB。
+
+## D-101 draw() 重入保护与局终副作用移出渲染帧
+
+- 背景：单机局终偶发 `Maximum call stack size exceeded`（RangeError，栈顶在 devtools 的 console reporter），现象是结算已经打印但随后报错。
+- 原因：`draw()` 在首帧进入 `GAME_END` 时同步执行胜负音与战绩上报（含 `console.log` / `wx.cloud.callFunction`），注入环境可能在日志/云回调中重入 `draw()`，而 `uiPrevPhaseSfx` 当时尚未更新，导致无限递归。
+- 决定：
+  1. `draw()` 改为外层包装，`uiDrawBusy` 为真时直接 return；实际绘制在 `_drawImpl()`。
+  2. 进入 `GAME_END` 时**先**把 `uiPrevPhaseSfx` 置为 `GAME_END`，再执行副作用。
+  3. 战绩上报用 `setTimeout(0)` 移出渲染帧；无 `setTimeout` 时退回同步。
+- 验证：新增 `tests/test-draw-reentrancy.js`（3 断言：重入不抛异常、外层渲染只跑一次、重入确实发生）；全量 130/130，`preflight --fast` 12/12；开发者工具单机托管跑完一局，结算与 `战绩已上报: ok` 正常，无 RangeError。
+- 影响：无行为变化，只增加一层防御；联网/单机共用同一 `draw()`。
