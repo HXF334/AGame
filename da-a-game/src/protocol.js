@@ -1,12 +1,13 @@
 // [2026-11-16 用户] 联网对战 P0：动作信封（客户端 → 服务端）
 //   设计约束：
-//   - 只允许引擎能处理的三个动作：PLAY / PASS / PUSH_WIND；
+//   - 只允许引擎能处理的动作：出牌/过牌/推风 + 亮A/反A/推进/翻底牌/选身份；
 //   - 信封带 baseSeq：服务端据此做「客户端看到的是不是最新版本」的并发检查（乐观锁）；
 //   - 校验函数是纯函数，客户端可以在发送前自检，服务端再校验一次（双保险）。
 //   - 纯函数、无 wx、无依赖。
 var version = require('./version.js');
 
-var ACTIONS = ['PLAY', 'PASS', 'PUSH_WIND'];
+var ACTIONS = ['PLAY', 'PASS', 'PUSH_WIND', 'LIANG_A', 'FAN_A', 'ADVANCE',
+  'REVEAL_BOTTOM', 'CHOOSE_IDENTITY'];
 
 function isInt(n) {
   return typeof n === 'number' && isFinite(n) && Math.floor(n) === n;
@@ -47,6 +48,25 @@ function validateEnvelope(env) {
     }
     if (!Array.isArray(p.cardIds) || p.cardIds.length === 0) {
       return { ok: false, code: 'BAD_PAYLOAD', message: 'PLAY requires payload.cardIds' };
+    }
+  }
+  if (env.type === 'LIANG_A') {
+    var la = env.payload || {};
+    if (['H', 'D', 'C', 'S'].indexOf(la.suit) < 0) {
+      return { ok: false, code: 'BAD_PAYLOAD', message: 'LIANG_A requires payload.suit' };
+    }
+  }
+  if (env.type === 'FAN_A') {
+    var fa = env.payload || {};
+    if (['H', 'D', 'C', 'S'].indexOf(fa.suit) < 0 ||
+        !Array.isArray(fa.cardIds) || fa.cardIds.length !== 2) {
+      return { ok: false, code: 'BAD_PAYLOAD', message: 'FAN_A requires suit and two cardIds' };
+    }
+  }
+  if (env.type === 'CHOOSE_IDENTITY') {
+    var ci = env.payload || {};
+    if (ci.choice !== 'PUBLIC' && ci.choice !== 'HIDDEN') {
+      return { ok: false, code: 'BAD_PAYLOAD', message: 'CHOOSE_IDENTITY requires choice PUBLIC|HIDDEN' };
     }
   }
   return { ok: true };

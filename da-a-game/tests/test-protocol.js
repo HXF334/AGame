@@ -20,6 +20,12 @@ ok('accept PASS without payload', protocol.validateEnvelope({ v: 1, type: 'PASS'
 
 ok('actionKey stable', protocol.actionKey(env) === protocol.actionKey(Object.assign({}, env)));
 ok('actionKey includes seq', protocol.actionKey(env) !== protocol.actionKey(Object.assign({}, env, { baseSeq: 4 })));
-ok('actions whitelist', protocol.ACTIONS.join(',') === 'PLAY,PASS,PUSH_WIND');
+ok('actions whitelist', protocol.ACTIONS.join(',') ===
+  'PLAY,PASS,PUSH_WIND,LIANG_A,FAN_A,ADVANCE,REVEAL_BOTTOM,CHOOSE_IDENTITY');
+ok('LIANG_A needs suit', protocol.validateEnvelope(protocol.makeAction('LIANG_A', {}, 0)).code === 'BAD_PAYLOAD');
+ok('LIANG_A ok with suit', protocol.validateEnvelope(protocol.makeAction('LIANG_A', { suit: 'S' }, 0)).ok === true);
+ok('FAN_A needs two cards', protocol.validateEnvelope(protocol.makeAction('FAN_A', { suit: 'S', cardIds: ['H-A-1'] }, 0)).code === 'BAD_PAYLOAD');
+ok('CHOOSE_IDENTITY needs choice', protocol.validateEnvelope(protocol.makeAction('CHOOSE_IDENTITY', {}, 0)).code === 'BAD_PAYLOAD');
+ok('ADVANCE ok', protocol.validateEnvelope(protocol.makeAction('ADVANCE', {}, 0)).ok === true);
 
 console.log('protocol: ' + checks + ' checks passed');

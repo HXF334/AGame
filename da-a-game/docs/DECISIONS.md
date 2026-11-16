@@ -487,8 +487,17 @@
 - 后续 P1 起在分支上做 game-server 房间核心。
 ## D-094 好友建房：多局准备、积分榜、头像昵称（2026-11-16）
 
-- 创建房间数字项上限统一 99（对局数/基础分/出牌时间）。
-- 单局结束弹单局积分榜；达到对局数弹总积分榜；总榜关闭回首页。对局中头像下方常显累计分。
+- 创建房间：对局数上限 30，基础分/出牌时间上限 99。
+- 单局结束弹单局积分榜；达到对局数弹总积分榜；总榜关闭回首页。对局中头像下方只显示累计总分（局间也不显示单局增减）。
 - 局间用「下一局」= 准备：点过的人收起结算进入准备态，全员准备后 3 秒自动开局；准备态断线可恢复。
 - 头像昵称：优先微信授权；受小游戏平台限制可能只拿到匿名数据，故必须有降级（键盘输入昵称 + 内置头像）；昵称截断 6 字 + `…`；对局中不显示昵称，仅结算显示；昵称过内容安全后再落库。
 - 验收：打满局数总榜正确并回首页；5 人准备流程；长昵称不越界。
+## D-095 联网 P1：服务端房间核心（2026-11-16）
+
+- 房间对象可整存云数据库 `rooms`（`_id` = 6 位房间号）：`{id, ownerId, status, config, round, seq, players[{openid,seat,nick,avatar,ready,ai,total}], state, moveKeys, lastRound}`。
+- 状态机：`WAITING → PLAYING → SETTLED → …→ FINISHED`；全员 5 人准备（AI 视为已准备）自动开局；达到 `config.rounds` 后进入 `FINISHED`。
+- 一致性：每次动作带 `baseSeq`，服务端要求与 `room.seq` 相等否则 `STALE`；`actionKey(type|playerId|cardIds|baseSeq)` 落 `moveKeys` 做幂等；服务端强制把 `payload.playerId` 改写为调用者的座位号，客户端不能替别人出牌。
+- 裁剪：`poll` 只回 `publicView`（他人手牌只给张数、无 deck/dealOrder）；引擎副本由 `tools/sync-engine.js` 从 `src/` 同步并带 hash。
+- 计分：每局结束用 `scoring.calculateScore`，按 `config.baseScore` 折算进 `players[].total`；局间只展示累计总分（不展示单局增减）。
+- 创建参数上限：对局数 **30**，基础分 / 出牌时间 **99**；语音房字段固定 false（暂不支持）。
+- 协议白名单扩到 8 个动作（含亮A/反A/推进/翻底牌/选身份），`PROTOCOL_VERSION` 仍为 1（仅在分支内演进）。
