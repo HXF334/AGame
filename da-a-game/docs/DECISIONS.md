@@ -439,3 +439,11 @@
 - 顶栏原有的「音」「乐」两个快捷开关**已删除**（2026-11-16 用户要求），入口统一收进 ☰ 菜单；状态仍是 `dada_sfx` / `dada_bgm` 持久化。菜单项文案用「音乐」「音效」。
 - 位置：☰ 在 `vh*0.115`，模式/大A 文字从 ☰ 右侧开始，下拉面板左边缘略右移以避开刘海。
 - 测试：`tests/test-menu.js`（9 断言：默认收起、三项、文本、顺序、命中区在画布内且不重叠、收起）。
+
+## D-088 流程层第一步：阶段闸门表收口到 `src/flow.js`（2026-11-16）
+
+- 背景：P1 计划把发牌与闸门从 `game.js` 抽到流程层；闸门顺序此前硬编码在 `game.js` 的 `GATE_PLAN` 里。
+- 做法：新增 `da-a-game/src/flow.js`（纯数据 + 纯函数，不依赖 wx）：导出 `GATE_PLAN`、`gateIndexOf(id)`、`stageAt(i)`、`nextStage(id)`、`isFinalStage(id)`；`game.js` 改为 `require('./src/flow.js').GATE_PLAN`，不再自带表。
+- 收益：闸门顺序只有一个定义点；后续把「自动/真人决策判定」「发牌推进」搬进 flow 时有稳定落点。
+- 边界：本次只搬表与顺序查询，定时器、UI、transition 调用仍留在 `game.js`；行为零变化（115/115 全绿）。
+- 验证：`tests/test-flow.js`（10 断言：顺序、索引、下一档、末档、越界、game.js 引用同一张表）；`test-pack-manifest` 入包 41 个文件。

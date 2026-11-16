@@ -591,14 +591,8 @@ let btnSelectPlayers = null;
 // 阶段顺序沿用既有状态机(SKILL §3), 未新增任何阶段:
 //   发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌
 // 强制排查仅在「主A 未确立」时执行 —— 真人亮了 A 就跳过(符合 §4.2)。
-var GATE_PLAN = [
-  { id: 'DEAL',         label: '发牌' },
-  { id: 'FORCED_CHECK', label: '强制排查' },
-  { id: 'ADVANCE',      label: '进入反A阶段' },
-  { id: 'REVEAL',       label: '翻开底牌' },
-  { id: 'IDENTITY',     label: '次方身份选择' },
-  { id: 'PLAY',         label: '正式出牌' }
-];
+// [P1 2026-11-16] 阶段闸门表收口到 src/flow.js，顺序只在那里定义
+var GATE_PLAN = require('./src/flow.js').GATE_PLAN;
 var gateIdx = 0;
 var gateChoice = null;   // { kind, eligible, reason, cards?, suit? } 待真人决策
 
