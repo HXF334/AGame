@@ -436,5 +436,6 @@
 ## D-087 左上角菜单：☰ 下拉「背景音乐 / 音效 / 退出游戏」（2026-11-16）
 - 用户要求：左上角加一个按钮，点开显示下拉列表——背景音乐开关、音效开关、退出按钮。
 - 实现：`ui-render.js` 新增 `layout().menu`（左上角 `iconR = 0.040H`）与 `drawMenuButton` / `drawMenuPanel`；`render()` 返回 `menuIcon` 与 `menuItems`（三项命中区）。`game.js` 新增 `uiMenuOpen`，点击 ☰ 开合；下拉项优先吃掉点击，分别调 `audioMgr.toggleBgm()` / `toggleSfx()`（无音频能力时安全降级）与 `wx.exitMiniProgram()`；新局 `uiMenuOpen = false`。
-- 顶栏原有的「音」「乐」两个快捷开关保留，与菜单项共享同一持久化状态（`dada_sfx` / `dada_bgm`）。
+- 顶栏原有的「音」「乐」两个快捷开关**已删除**（2026-11-16 用户要求），入口统一收进 ☰ 菜单；状态仍是 `dada_sfx` / `dada_bgm` 持久化。菜单项文案用「音乐」「音效」。
+- 位置：☰ 在 `vh*0.115`，模式/大A 文字从 ☰ 右侧开始，下拉面板左边缘略右移以避开刘海。
 - 测试：`tests/test-menu.js`（9 断言：默认收起、三项、文本、顺序、命中区在画布内且不重叠、收起）。

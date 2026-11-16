@@ -66,15 +66,17 @@ check('3.1 无 createInnerAudioContext 时不崩', mgr3.canAudio() === false);
 check('3.2 播放请求返回 false', mgr3.play('play') === false);
 check('3.3 unlock 不崩', (mgr3.unlock(), true));
 
-console.log('\n=== 4. 顶栏开关按钮 ===');
+console.log('\n=== 4. 音效/音乐入口（左上角菜单）===');
 var g = require(path.join(__dirname, '..', 'game.js'));
 var texts = g.__renderTexts();
-check('4.1 顶栏画出「音」按钮', texts.indexOf('音') >= 0);
-check('4.2 顶栏画出「乐」按钮', texts.indexOf('乐') >= 0);
-var m = g.uiLayout();
-check('4.3 两个按钮都在托管机器人左侧',
-  m.sound.iconX < m.autoPlay.iconX && m.music.iconX < m.autoPlay.iconX);
-check('4.4 两个按钮不重叠', Math.abs(m.sound.iconX - m.music.iconX) >= m.sound.iconR + m.music.iconR);
+check('4.1 顶栏不再有独立「音」「乐」按钮', texts.indexOf('音') < 0 && texts.indexOf('乐') < 0);
+g.__setMenuOpen(true);
+var mitems = g.__menuItems();
+var mtexts = g.__renderTexts();
+check('4.2 菜单下拉三项', mitems.length === 3, String(mitems.length));
+check('4.3 菜单含「音乐」项', mtexts.some(function (t) { return /^音乐：/.test(t); }), mtexts.join(' | '));
+check('4.4 菜单含「音效」项', mtexts.some(function (t) { return /^音效：/.test(t); }), mtexts.join(' | '));
+g.__setMenuOpen(false);
 
 console.log('\n=== 结果: ' + pass + ' 通过, ' + fail + ' 失败 ===');
 process.exit(fail ? 1 : 0);

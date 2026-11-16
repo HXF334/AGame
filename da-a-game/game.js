@@ -1644,8 +1644,6 @@ function _uiScores() {
 var btnMarkHits = null;
 var btnMemo = null;
 var btnPlayerHits = null;
-var btnSound = null;    // [2026-11-15] 音效开关
-var btnMusic = null;    // [2026-11-15] 背景音乐开关
 var btnMenu = null;     // [2026-11-16] 左上角菜单按钮
 var btnMenuItems = [];  // [2026-11-16] 菜单下拉项
 var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
@@ -1958,8 +1956,6 @@ function draw() {
   btnMemo = out.memoIcon;
   btnSettle = out.settleBtn;
   btnAutoPlay = out.autoPlayIcon;
-  btnSound = out.soundIcon;
-  btnMusic = out.musicIcon;
   btnMenu = out.menuIcon;
   btnMenuItems = out.menuItems || [];
   btnAutoPlayCancel = out.cancelAutoPlayBox;
@@ -2479,7 +2475,7 @@ if (typeof wx !== 'undefined') {
         if (x >= mit.x && x <= mit.x + mit.w && y >= mit.y && y <= mit.y + mit.h) {
           if (mit.id === 'menuBgm') {
             var _b = audioMgr ? audioMgr.toggleBgm() : false;
-            log('背景音乐: ' + (_b ? '开' : '关'));
+            log('音乐: ' + (_b ? '开' : '关'));
           } else if (mit.id === 'menuSfx') {
             var _s = audioMgr ? audioMgr.toggleSfx() : false;
             log('音效: ' + (_s ? '开' : '关'));
@@ -2527,28 +2523,7 @@ if (typeof wx !== 'undefined') {
       draw();
       return;
     }
-    // [2026-11-15 用户] 音效/音乐两个独立开关(顶栏机器人左边)
-    if (btnSound && x >= btnSound.x - btnSound.r && x <= btnSound.x + btnSound.r &&
-        y >= btnSound.y - btnSound.r && y <= btnSound.y + btnSound.r) {
-      var _a1 = _ensureAudio();
-      if (_a1) {
-        var _onS = _a1.toggleSfx();
-        if (_onS) _a1.play('play');
-        log('音效: ' + (_onS ? '开' : '关'));
-      }
-      draw();
-      return;
-    }
-    if (btnMusic && x >= btnMusic.x - btnMusic.r && x <= btnMusic.x + btnMusic.r &&
-        y >= btnMusic.y - btnMusic.r && y <= btnMusic.y + btnMusic.r) {
-      var _a2 = _ensureAudio();
-      if (_a2) {
-        var _onM = _a2.toggleBgm();
-        log('音乐: ' + (_onM ? '开' : '关'));
-      }
-      draw();
-      return;
-    }
+
     // [2026-10-25] 记牌器图标: 点击展开/收起记牌器
     if (btnMemo && x >= btnMemo.x - btnMemo.r && x <= btnMemo.x + btnMemo.r &&
         y >= btnMemo.y - btnMemo.r && y <= btnMemo.y + btnMemo.r) {

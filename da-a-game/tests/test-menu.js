@@ -1,5 +1,5 @@
 // tests/test-menu.js
-// [2026-11-16 用户] 左上角菜单：☰ 点开下拉，含「背景音乐 / 音效 / 退出游戏」三项；
+// [2026-11-16 用户] 左上角菜单：☰ 点开下拉，含「音乐 / 音效 / 退出游戏」三项；
 //   再点 ☰ 收起；选项文本随开关状态变化；退出项存在。
 var path = require('path');
 var g = require(path.join(__dirname, '..', 'game.js'));
@@ -23,7 +23,7 @@ var items = g.__menuItems();
 check('2.1 下拉共三项', items.length === 3, String(items.length));
 var texts = g.__renderTexts();
 function has(re) { return texts.some(function (t) { return re.test(t); }); }
-check('2.2 含背景音乐项', has(/背景音乐/), texts.join(' | '));
+check('2.2 含音乐项', has(/^音乐：/), texts.join(' | '));
 check('2.3 含音效项', has(/^音效：/), texts.join(' | '));
 check('2.4 含退出游戏项', has(/退出游戏/), texts.join(' | '));
 

@@ -245,8 +245,8 @@ chooseAction(state, playerId)
 - `audio.js` 只做播放器封装：`createManager(wxObj, storage)` 返回 `play/unlock/toggleSfx/toggleBgm/sfxOn/bgmOn`；不依赖 `game.js`、不做规则。
 - 素材在 `assets/audio/*.wav`（12 个占位文件，由 `tools/gen-audio.js` 生成，可用同名正式素材直接替换，无需改代码）。
 - 11 种音效各占一个 `InnerAudioContext`（懒创建、90ms 节流，避免叠音）；BGM 单独一个 context，`loop=true`、音量 0.22。
-- 开关持久化在 `wx.setStorageSync('dada_sfx'/'dada_bgm')`（默认开，值为 `'0'` 表示关）；顶栏机器人左侧「音」「乐」两个圆钮分别控制。
-- 左上角 ☰ 菜单（D-087）：ui-render.js 的 menu 布局 + drawMenuPanel 画下拉（背景音乐 / 音效 / 退出游戏），ender() 返回 menuIcon 与 menuItems；game.js 用 uiMenuOpen 开合，下拉项优先吃掉点击。
+- 开关持久化在 `wx.setStorageSync('dada_sfx'/'dada_bgm')`（默认开，值为 `'0'` 表示关）；入口在左上角 ☰ 菜单（音乐 / 音效 / 退出游戏），顶栏不再放独立「音」「乐」按钮。
+- 左上角 ☰ 菜单（D-087）：ui-render.js 的 menu 布局 + drawMenuPanel 画下拉（音乐 / 音效 / 退出游戏），ender() 返回 menuIcon 与 menuItems；game.js 用 uiMenuOpen 开合，下拉项优先吃掉点击。
 - 微信限制自动播放：首次 `touchstart` 调 `unlock()` 后才启动 BGM；`game.js` 里 `_sfxAfterPlays(prevLen)` 从新增出牌流水补放，真人/托管/AI 三条路径共用。
 - 胜负音在 `draw()` 检测 `phase` 首次变为 `GAME_END` 时播放；倒计时在最后 3 秒每秒 `tick`。
 - 顶部 5 个圆形按钮 = 切换 `uiObserver`（只读观察视角，可看 5 家手牌），不是玩家。

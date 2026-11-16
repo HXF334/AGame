@@ -82,12 +82,9 @@ function layout(W, H) {
     //   0.38H -> 0.33H(往右回一点但仍避开胶囊按钮); 大小与记牌器一致(0.042H)
     // [2026-11-06 用户] 「机器人按钮左移一点」-> 0.33H -> 0.36H
     autoPlay: { iconX: vw - Math.round(vh * 0.36), iconY: vh * 0.062, iconR: Math.round(vh * 0.042) },
-    // [2026-11-15 用户] 音效/音乐两个独立开关: 顶栏机器人左边并排两个小圆钮
-    //   (机器人中心在 vw-0.36H, 再往左每 0.11H 放一个, 半径比机器人略小)
-    sound: { iconX: vw - Math.round(vh * 0.58), iconY: vh * 0.062, iconR: Math.round(vh * 0.036) },
-    music: { iconX: vw - Math.round(vh * 0.47), iconY: vh * 0.062, iconR: Math.round(vh * 0.036) },
-    // [2026-11-16 用户] 左上角菜单按钮(☰): 点开下拉「背景音乐 / 音效 / 退出游戏」
-    menu: { iconX: Math.round(vh * 0.062), iconY: vh * 0.062, iconR: Math.round(vh * 0.040) },
+    // [2026-11-16 用户] 左上角菜单按钮(☰): 点开下拉「音乐 / 音效 / 退出游戏」
+    //   往右让开刘海, 同时给右侧「模式/大A」文字留出起点
+    menu: { iconX: Math.round(vh * 0.115), iconY: vh * 0.062, iconR: Math.round(vh * 0.040) },
     // 机器人图形比例(相对圆半径) -> 「占大部分按钮区域」
     // [2026-11-06 用户] 「机器人头像再大一点(不是按钮变大, 是按钮里的机器人)」
     //   -> 头/眼/天线整体放大, **按钮本身大小不变**(0.042H, 与记牌器一致)
@@ -219,21 +216,18 @@ function drawTable(ctx, m) {
 //   第一行: 模式(测试=全名 / 正式=明暗)
 //   第二行: 「大A 花色」 + 阵营明细(只留 主X / 次X, 隔两个空格)
 //     次方**身份亮明** -> 和主方同色(黄); 未亮明 -> 浅灰
-function drawTopBar(ctx, st, m, memoIcon, autoIcon, audioIcons) {
+function drawTopBar(ctx, st, m, memoIcon, autoIcon) {
   var g = st.gameState;
   var h = m.top.h;
   ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(0, 0, m.vw, h);
   ctx.fillStyle = 'rgba(217,160,91,0.5)'; ctx.fillRect(0, h - 1, m.vw, 1);
   var fs = Math.max(10, Math.round(m.vh * 0.034));
-  var x = m.safeL + 4;
+  // [2026-11-16 用户] ☰ 菜单占最左; 模式/大A 文字右移, 用真机同款短文案(明打/暗打)
+  var x = (m.menu ? m.menu.iconX + m.menu.iconR + Math.round(m.vh * 0.022) : m.safeL + 4);
   var y0 = h * 0.30, y1 = h * 0.70;
-  if (st.testMode) {
-    text(ctx, '模式 ' + (g.mode || '未定'), x, y0, fs, '#ffd98a', 'left', true);
-  } else {
-    var mode = g.mode || '';
-    var bright = mode.indexOf('明打') >= 0 ? '明打' : (mode.indexOf('暗打') >= 0 ? '暗打' : (mode || '未定'));
-    text(ctx, bright, x, y0, fs, '#ffd98a', 'left', true);
-  }
+  var mode = g.mode || '';
+  var bright = mode.indexOf('明打') >= 0 ? '明打' : (mode.indexOf('暗打') >= 0 ? '暗打' : (mode || '未定'));
+  text(ctx, bright, x, y0, fs, '#ffd98a', 'left', true);
   var zhu = g['主A'];
   var zhuTxt = zhu ? (SUIT_CHAR[zhu.suit] || zhu.suit) : '-';
   text(ctx, '大A ' + zhuTxt, x, y1, fs, '#ffd98a', 'left', true);
@@ -279,26 +273,6 @@ function drawTopBar(ctx, st, m, memoIcon, autoIcon, audioIcons) {
     ctx.lineTo(autoIcon.x, _hy - _hh / 2 - _ar * _bt.antenna);
     ctx.stroke();
     circle(ctx, autoIcon.x, _hy - _hh / 2 - _ar * _bt.antennaDot, Math.max(1.8, _ar * _bt.eye)); ctx.fill();
-  }
-  // [2026-11-15 用户] 音效/音乐开关: 开=金色, 关=灰; 字母「音」「乐」
-  if (audioIcons) {
-    var _fs = Math.max(9, Math.round(m.vh * 0.030));
-    if (audioIcons.sound) {
-      var _sd = audioIcons.sound, _onS = !!st.sfxOn;
-      ctx.fillStyle = _onS ? '#ffd98a' : 'rgba(120,120,120,0.55)';
-      circle(ctx, _sd.x, _sd.y, _sd.r); ctx.fill();
-      ctx.strokeStyle = _onS ? '#ffffff' : '#8a8a8a'; ctx.lineWidth = 1.5;
-      circle(ctx, _sd.x, _sd.y, _sd.r); ctx.stroke();
-      text(ctx, '音', _sd.x, _sd.y, _fs, _onS ? '#2b2b2b' : '#e8e8e8', 'center', true);
-    }
-    if (audioIcons.music) {
-      var _ms = audioIcons.music, _onM = !!st.bgmOn;
-      ctx.fillStyle = _onM ? '#ffd98a' : 'rgba(120,120,120,0.55)';
-      circle(ctx, _ms.x, _ms.y, _ms.r); ctx.fill();
-      ctx.strokeStyle = _onM ? '#ffffff' : '#8a8a8a'; ctx.lineWidth = 1.5;
-      circle(ctx, _ms.x, _ms.y, _ms.r); ctx.stroke();
-      text(ctx, '乐', _ms.x, _ms.y, _fs, _onM ? '#2b2b2b' : '#e8e8e8', 'center', true);
-    }
   }
 }
 
@@ -1241,7 +1215,7 @@ function drawMenuButton(ctx, m, open) {
 function drawMenuPanel(ctx, st, m) {
   var r = m.menu.iconR;
   var w = Math.round(r * 5.4), rowH = Math.round(r * 1.60), pad = Math.round(r * 0.30);
-  var x = Math.round(m.menu.iconX - r);
+  var x = Math.round(m.menu.iconX - r * 0.2);   // [2026-11-16] 往右让开刘海
   var y = Math.round(m.menu.iconY + r + r * 0.40);
   var h = rowH * 3 + pad * 2;
   ctx.fillStyle = 'rgba(20,20,20,0.92)';
@@ -1256,7 +1230,7 @@ function drawMenuPanel(ctx, st, m) {
   ctx.closePath();
   ctx.stroke();
   var rows = [
-    { id: 'menuBgm', text: '背景音乐：' + (st.bgmOn ? '开' : '关') },
+    { id: 'menuBgm', text: '音乐：' + (st.bgmOn ? '开' : '关') },
     { id: 'menuSfx', text: '音效：' + (st.sfxOn ? '开' : '关') },
     { id: 'menuExit', text: '退出游戏' }
   ];
@@ -1274,11 +1248,7 @@ function render(ctx, st) {
   drawTable(ctx, m);
   var memoIcon = { x: m.memo.iconX, y: m.memo.iconY, r: m.memo.iconR };
   var autoIcon = { x: m.autoPlay.iconX, y: m.autoPlay.iconY, r: m.autoPlay.iconR };
-  var audioIcons = {
-    sound: { x: m.sound.iconX, y: m.sound.iconY, r: m.sound.iconR },
-    music: { x: m.music.iconX, y: m.music.iconY, r: m.music.iconR }
-  };
-  drawTopBar(ctx, st, m, memoIcon, autoIcon, audioIcons);
+  drawTopBar(ctx, st, m, memoIcon, autoIcon);
   drawMemo(ctx, st, m);
   var seatInfo = drawSeats(ctx, st, m);
   drawTurnInfo(ctx, st, m, seatInfo.seatMap);
@@ -1294,7 +1264,6 @@ function render(ctx, st) {
     btnLog: null, btnStage: btnBoxes, handHitboxes: handBoxes,
     seatHitboxes: seatInfo.boxes, markHits: seatInfo.markHits,
     memoIcon: memoIcon, autoPlayIcon: autoIcon, layout: m,
-    soundIcon: audioIcons.sound, musicIcon: audioIcons.music,
     menuIcon: menuIcon, menuItems: menuItems,
     switchHit: switchHit,
     settleBtn: settleBtn,
