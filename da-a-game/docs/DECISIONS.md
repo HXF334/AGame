@@ -508,3 +508,13 @@
 - 服务端 `room.js`：`deadline`（`config.turnSeconds>0` 时每步重置）；`tick(room, now)` 到点用 `engine/ai.chooseAction` 代当前玩家出牌/过牌，记 `afk`，再走结算；`setOffline` 在对局中把该座位标记 `ai=true`，`setOnline` 恢复。
 - `game-server/index.js`：新增 `tick`（可由定时触发器调用）、`offline`、`online` 三个动作。
 - 测试：`test-room-core.js` 29 断言（含 tick/离线）；`test-online-client.js` 15 断言（内存假云，5 人建房→准备→开局→断线）。
+
+## D-097 联网 P2：首页/创建/加入页面与单机入口（2026-11-16）
+
+- 页面状态机在 `game.js`：`uiPage` 取 `HOME|CREATE|JOIN|GAME`；真实 wx 启动落在 HOME，无头/测试环境落在 GAME（避免破坏既有渲染测试）。
+- `ui-render.js` 新增 `drawHomePage/drawCreatePage/drawJoinPage`，只绘制并返回命中区（`home*/chip/toggle/createConfirm/joinDigit/joinDel/joinConfirm`），不读写全局状态。
+- 首页：创建房间 / 加入房间 / 单机对局；单机入口直接 `uiPage='GAME'` + `newGame()`，沿用现有本地对局与战绩不上报（单机不计入云战绩）。
+- 创建页字段：对局数 6/12/18/30、基础分 1/2/5、出牌时间 无托管/30/60、剩余牌数、记牌器、空位 AI 补齐；语音房固定置灰。
+- 加入页：6 位数字键盘 + 删除。
+- 当前阶段创建/加入按钮只提示「联网对战页正在接入」，等对局页（netDriver）完成后接 `online.js`。
+- 测试：`tests/test-pages.js` 16 断言。

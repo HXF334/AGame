@@ -1321,7 +1321,153 @@ function drawHistoryPanel(ctx, st, m) {
   ];
 }
 
+// [2026-11-16 用户] 联网 P2：首页 / 创建房间 / 加入房间 三个页面（纯绘制 + 命中区）
+//   设计约束：
+//   - 只画与返回命中区，不读写全局状态；状态在 game.js（uiPage/uiCreateCfg/uiJoinDigits）。
+//   - 命中区统一 { id, x, y, w, h }，x/y 为画布坐标，和现有按钮体系一致。
+
+function _pageBtn(ctx, x, y, w, h, label, opt) {
+  opt = opt || {};
+  var fill = opt.active ? '#c8a24a' : (opt.disabled ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.38)');
+  var stroke = opt.active ? '#ffd98a' : (opt.disabled ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.35)');
+  ctx.save();
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(x + 8, y); ctx.lineTo(x + w - 8, y); ctx.quadraticCurveTo(x + w, y, x + w, y + 8);
+  ctx.lineTo(x + w, y + h - 8); ctx.quadraticCurveTo(x + w, y + h, x + w - 8, y + h);
+  ctx.lineTo(x + 8, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - 8);
+  ctx.lineTo(x, y + 8); ctx.quadraticCurveTo(x, y, x + 8, y);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+  text(ctx, label, x + w / 2, y + h / 2, Math.round(h * 0.34),
+    opt.active ? '#2b1a00' : (opt.disabled ? 'rgba(255,255,255,0.35)' : '#f2f2f2'), 'center', true);
+}
+
+function drawHomePage(ctx, st) {
+  var W = st.W, H = st.H;
+  ctx.fillStyle = '#173f2a'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.beginPath(); ctx.arc(W / 2, H * 0.36, Math.min(W * 0.42, H * 0.30), 0, Math.PI * 2); ctx.fill();
+  text(ctx, '内蒙古打大A', W / 2, H * 0.18, Math.round(H * 0.075), '#ffd98a', 'center', true);
+  text(ctx, '5 人 · 两副牌 · 好友建房', W / 2, H * 0.26, Math.round(H * 0.030), 'rgba(255,255,255,0.72)', 'center', false);
+  var bw = W * 0.46, bh = H * 0.105, bx = (W - bw) / 2;
+  var defs = [
+    { id: 'homeCreate', y: H * 0.42, label: '创建房间' },
+    { id: 'homeJoin', y: H * 0.545, label: '加入房间' },
+    { id: 'homeSolo', y: H * 0.67, label: '单机对局' }
+  ];
+  var hits = [];
+  for (var i = 0; i < defs.length; i++) {
+    _pageBtn(ctx, bx, defs[i].y, bw, bh, defs[i].label, {});
+    hits.push({ id: defs[i].id, x: bx, y: defs[i].y, w: bw, h: bh });
+  }
+  text(ctx, '好友建房：最多 5 个真人，空位可由 AI 补齐', W / 2, H * 0.86, Math.round(H * 0.024),
+    'rgba(255,255,255,0.55)', 'center', false);
+  text(ctx, '单机对局：本地 AI，不联网、不计入战绩', W / 2, H * 0.905, Math.round(H * 0.024),
+    'rgba(255,255,255,0.55)', 'center', false);
+  return hits;
+}
+
+function drawCreatePage(ctx, st) {
+  var W = st.W, H = st.H;
+  var cfg = st.cfg || {};
+  ctx.fillStyle = '#173f2a'; ctx.fillRect(0, 0, W, H);
+  text(ctx, '创建房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
+
+  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.16, h: H * 0.07 };
+  _pageBtn(ctx, back.x, back.y, back.w, back.h, '返回', {});
+  var hits = [back];
+
+  var rows = [
+    { key: 'rounds', label: '对局数', values: [6, 12, 18, 30], text: function (v) { return v + ' 局'; } },
+    { key: 'baseScore', label: '基础分', values: [1, 2, 5], text: function (v) { return String(v); } },
+    { key: 'turnSeconds', label: '出牌时间', values: [0, 30, 60], text: function (v) { return v === 0 ? '无托管' : v + 's'; } }
+  ];
+  var y0 = H * 0.18, rowH = H * 0.095;
+  var labelX = W * 0.08, chipX = W * 0.34, chipW = W * 0.135, chipGap = W * 0.022;
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r], y = y0 + r * rowH;
+    text(ctx, row.label, labelX, y + H * 0.030, Math.round(H * 0.032), 'rgba(255,255,255,0.85)', 'left', true);
+    for (var c = 0; c < row.values.length; c++) {
+      var val = row.values[c];
+      var cx = chipX + c * (chipW + chipGap);
+      var active = cfg[row.key] === val;
+      _pageBtn(ctx, cx, y, chipW, H * 0.062, row.text(val), { active: active });
+      hits.push({ id: 'chip', key: row.key, value: val, x: cx, y: y, w: chipW, h: H * 0.062 });
+    }
+  }
+
+  var toggles = [
+    { key: 'showRemain', label: '剩余牌数' },
+    { key: 'memo', label: '记牌器' },
+    { key: 'aiFill', label: '空位 AI 补齐' }
+  ];
+  var ty = y0 + rows.length * rowH + H * 0.01;
+  var tgW = W * 0.16, tgH = H * 0.060;
+  for (var t = 0; t < toggles.length; t++) {
+    var tyy = ty + t * (tgH + H * 0.018);
+    var on = !!cfg[toggles[t].key];
+    text(ctx, toggles[t].label, labelX, tyy + tgH / 2, Math.round(H * 0.032), 'rgba(255,255,255,0.85)', 'left', true);
+    _pageBtn(ctx, chipX, tyy, tgW, tgH, on ? '开' : '关', { active: on });
+    hits.push({ id: 'toggle', key: toggles[t].key, x: chipX, y: tyy, w: tgW, h: tgH });
+  }
+  var vy = ty + toggles.length * (tgH + H * 0.018);
+  text(ctx, '语音房', labelX, vy + tgH / 2, Math.round(H * 0.032), 'rgba(255,255,255,0.5)', 'left', true);
+  _pageBtn(ctx, chipX, vy, tgW, tgH, '暂不支持', { disabled: true });
+
+  var cw = W * 0.44, ch = H * 0.095, cx2 = (W - cw) / 2, cy = H * 0.885 - ch;
+  _pageBtn(ctx, cx2, cy, cw, ch, '创建房间', { active: true });
+  hits.push({ id: 'createConfirm', x: cx2, y: cy, w: cw, h: ch });
+  return hits;
+}
+
+function drawJoinPage(ctx, st) {
+  var W = st.W, H = st.H;
+  var digits = String(st.digits || '');
+  ctx.fillStyle = '#173f2a'; ctx.fillRect(0, 0, W, H);
+  text(ctx, '加入房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
+  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.16, h: H * 0.07 };
+  _pageBtn(ctx, back.x, back.y, back.w, back.h, '返回', {});
+  var hits = [back];
+
+  var bw = W * 0.115, bh = H * 0.095, gap = W * 0.02;
+  var total = 6 * bw + 5 * gap, bx = (W - total) / 2, by = H * 0.20;
+  for (var i = 0; i < 6; i++) {
+    var x = bx + i * (bw + gap);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(x + 6, by); ctx.lineTo(x + bw - 6, by); ctx.quadraticCurveTo(x + bw, by, x + bw, by + 6);
+    ctx.lineTo(x + bw, by + bh - 6); ctx.quadraticCurveTo(x + bw, by + bh, x + bw - 6, by + bh);
+    ctx.lineTo(x + 6, by + bh); ctx.quadraticCurveTo(x, by + bh, x, by + bh - 6);
+    ctx.lineTo(x, by + 6); ctx.quadraticCurveTo(x, by, x + 6, by); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+    if (digits[i]) text(ctx, digits[i], x + bw / 2, by + bh / 2, Math.round(bh * 0.55), '#ffd98a', 'center', true);
+  }
+
+  var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0'];
+  var kw = W * 0.15, kh = H * 0.105, kgap = W * 0.025;
+  var ky0 = H * 0.40;
+  for (var k = 0; k < keys.length; k++) {
+    var col = k % 3, row = Math.floor(k / 3);
+    var kx = W / 2 - (kw * 1.5 + kgap) + col * (kw + kgap);
+    var kyy = ky0 + row * (kh + H * 0.018);
+    var label = keys[k] === 'del' ? '删除' : keys[k];
+    _pageBtn(ctx, kx, kyy, kw, kh, label, {});
+    if (keys[k] === 'del') hits.push({ id: 'joinDel', x: kx, y: kyy, w: kw, h: kh });
+    else hits.push({ id: 'joinDigit', d: keys[k], x: kx, y: kyy, w: kw, h: kh });
+  }
+  var jw = W * 0.44, jh = H * 0.095, jx = (W - jw) / 2, jy = H * 0.885 - jh;
+  _pageBtn(ctx, jx, jy, jw, jh, '加入房间', { active: digits.length === 6 });
+  hits.push({ id: 'joinConfirm', x: jx, y: jy, w: jw, h: jh });
+  return hits;
+}
+
+
 function render(ctx, st) {
+  if (st.page === 'HOME') return { page: 'HOME', home: drawHomePage(ctx, st) };
+  if (st.page === 'CREATE') return { page: 'CREATE', createHits: drawCreatePage(ctx, st) };
+  if (st.page === 'JOIN') return { page: 'JOIN', joinHits: drawJoinPage(ctx, st) };
   var m = layout(st.W, st.H);
   drawTable(ctx, m);
   var memoIcon = { x: m.memo.iconX, y: m.memo.iconY, r: m.memo.iconR };
@@ -1363,7 +1509,8 @@ function noopCtx() {
 }
 
 module.exports = {
-  render: render, layout: layout, handLayout: handLayout, buttonLayout: buttonLayout,
+  render: render, layout: layout,
+  drawHomePage: drawHomePage, drawCreatePage: drawCreatePage, drawJoinPage: drawJoinPage, handLayout: handLayout, buttonLayout: buttonLayout,
   cardPower: cardPower, seatOrder: seatOrder, noopCtx: noopCtx,
   SEAT_IDS: SEAT_IDS, SUIT_CHAR: SUIT_CHAR, RANKS_DESC: RANKS_DESC,
   settlementLayout: settlementLayout

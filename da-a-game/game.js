@@ -168,7 +168,11 @@ var uiMarks = {};
 var uiTakenPlay = {};
 var _uiMarksWerePublic = false;   // [2026-11-08 16:24] 上次渲染时阵营是否已确定(次方亮明/明打/1V4)
 var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
-var uiMenuOpen = false;   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/战绩/退出)
+var uiMenuOpen = false;
+var uiPage = (typeof wx === 'undefined' || wx.__isMock) ? 'GAME' : 'HOME';
+var uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true };
+var uiJoinDigits = '';
+var btnPageHits = [];   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/战绩/退出)
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
 var uiHistoryConfirm = false;   // [2026-11-16] 清空二次确认
@@ -2067,6 +2071,9 @@ function draw() {
     autoPlay: uiAutoPlay,
     sfxOn: !!(_ensureAudio() && audioMgr.sfxOn()),
     bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
+    page: uiPage,
+    cfg: uiCreateCfg,
+    digits: uiJoinDigits,
     menuOpen: uiMenuOpen,
     historyOpen: uiHistoryOpen,
     historyConfirm: uiHistoryConfirm,
@@ -2087,6 +2094,7 @@ function draw() {
   btnMenu = out.menuIcon;
   btnMenuItems = out.menuItems || [];
   btnHistoryBoxes = out.historyBoxes || [];
+  btnPageHits = out.home || out.createHits || out.joinHits || [];
   btnHistoryClear = null; btnHistoryClose = null;
   for (var _hb = 0; _hb < btnHistoryBoxes.length; _hb++) {
     if (btnHistoryBoxes[_hb].id === 'historyClear') btnHistoryClear = btnHistoryBoxes[_hb];
@@ -2592,7 +2600,29 @@ function advanceCurrentPlayer() {
 
 // === 触摸事件处理 (WeChat 小游戏) ===
 if (typeof wx !== 'undefined') {
-  wx.onTouchStart(function (e) {
+  // [2026-11-16 用户] 联网 P2：首页/创建/加入三个页面的点击分发（GAME 页仍走原触摸逻辑）
+function _onPageTouch(x, y) {
+  for (var i = 0; i < (btnPageHits || []).length; i++) {
+    var b = btnPageHits[i];
+    if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) continue;
+    if (b.id === 'homeCreate') { uiPage = 'CREATE'; draw(); return; }
+    if (b.id === 'homeJoin') { uiPage = 'JOIN'; uiJoinDigits = ''; draw(); return; }
+    if (b.id === 'homeSolo') { uiPage = 'GAME'; log('单机对局'); newGame(); return; }
+    if (b.id === 'createBack' || b.id === 'joinBack') { uiPage = 'HOME'; draw(); return; }
+    if (b.id === 'chip') { uiCreateCfg[b.key] = b.value; draw(); return; }
+    if (b.id === 'toggle') { uiCreateCfg[b.key] = !uiCreateCfg[b.key]; draw(); return; }
+    if (b.id === 'createConfirm') { showToast('联网对战页正在接入，先用单机对局'); draw(); return; }
+    if (b.id === 'joinDigit') { if (uiJoinDigits.length < 6) uiJoinDigits += b.d; draw(); return; }
+    if (b.id === 'joinDel') { uiJoinDigits = uiJoinDigits.slice(0, -1); draw(); return; }
+    if (b.id === 'joinConfirm') {
+      if (uiJoinDigits.length !== 6) { showToast('请输入 6 位房间号'); draw(); return; }
+      showToast('联网对战页正在接入，先用单机对局'); draw(); return;
+    }
+    return;
+  }
+}
+
+wx.onTouchStart(function (e) {
     var touch = e.touches && e.touches[0];
     if (!touch) return;
     var x = touch.clientX || touch.x;
@@ -2601,6 +2631,8 @@ if (typeof wx !== 'undefined') {
     // [2026-11-15] 首次触摸后解锁音频(规避自动播放限制), 之后启动 BGM
     var _au = _ensureAudio();
     if (_au) _au.unlock();
+
+    if (uiPage !== 'GAME') { _onPageTouch(x, y); return; }
 
     // [2026-11-16 战绩页] 面板打开时，点任意位置关闭（含「关闭」按钮），不穿透到牌桌
     if (uiHistoryOpen) {
@@ -2849,6 +2881,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // [2026-11-16] 测试钩子: 左上角菜单开合与下拉项命中区
     __selected: function () { return selectedCards; },
     __menuOpen: function () { return uiMenuOpen; },
+  __page: function () { return uiPage; },
+  __setPage: function (p) { uiPage = p; draw(); },
+  __pageHits: function () { return btnPageHits; },
+  __createCfg: function () { return uiCreateCfg; },
+  __tapPage: function (x, y) { _onPageTouch(x, y); },
     __setMenuOpen: function (v) { uiMenuOpen = !!v; draw(); },
     __menuItems: function () { return btnMenuItems || []; },
   __historyOpen: function () { return uiHistoryOpen; },
