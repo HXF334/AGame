@@ -1,0 +1,9 @@
+{
+  "triggers": [
+    {
+      "name": "tickRooms",
+      "type": "timer",
+      "config": "0 */1 * * * * *"
+    }
+  ]
+}

@@ -1601,11 +1601,89 @@ function drawLobbyPage(ctx, st) {
   return hits;
 }
 
+// [2026-11-16 用户] 联网结算：单局/总结算积分榜 + 准备下一局
+function drawNetSettlePage(ctx, st) {
+  var view = st.room || null;
+  var W = st.W, H = st.H;
+  _pageBg(ctx, W, H);
+  var final = !!(view && view.status === 'FINISHED');
+  text(ctx, final ? '总积分榜' : '单局结算', W / 2, H * 0.12, Math.round(H * 0.062), '#ffd98a', 'center', true);
+  text(ctx, view ? ('第 ' + view.round + ' / ' + view.rounds + ' 局') : '', W / 2, H * 0.175, Math.round(H * 0.026), 'rgba(246,239,223,0.70)', 'center', false);
+  var px = W * 0.10, py = H * 0.22, pw = W * 0.80, ph = H * 0.44;
+  _panel(ctx, px, py, pw, ph, H * 0.03);
+  var rows = (view && view.lastRound) || [];
+  var bySeat = {};
+  ((view && view.players) || []).forEach(function (p) { bySeat[p.seat] = p; });
+  var rowH = ph / 5;
+  for (var i = 0; i < 5; i++) {
+    var rr = rows.filter(function (x) { return x.seat === i; })[0];
+    var pl = bySeat[i];
+    var cy = py + rowH * (i + 0.5);
+    if (i > 0) { ctx.beginPath(); ctx.moveTo(px + pw * 0.05, py + rowH * i); ctx.lineTo(px + pw * 0.95, py + rowH * i); ctx.strokeStyle = 'rgba(255,214,140,0.12)'; ctx.lineWidth = 1; ctx.stroke(); }
+    var nm = pl ? (pl.nick || ('玩家' + (i + 1))) : ('座位' + (i + 1));
+    text(ctx, nm, px + pw * 0.08, cy, Math.round(H * 0.032), '#f6efdf', 'left', false);
+    var sc = rr ? rr.score : 0;
+    text(ctx, (sc > 0 ? '+' : '') + sc, px + pw * 0.58, cy, Math.round(H * 0.034), sc > 0 ? '#c9f29a' : (sc < 0 ? '#ff9a8a' : '#f6efdf'), 'right', true);
+    var tot = rr ? rr.total : (pl ? pl.total : 0);
+    text(ctx, '累计 ' + (tot > 0 ? '+' : '') + tot, px + pw * 0.92, cy, Math.round(H * 0.028), 'rgba(246,239,223,0.70)', 'right', false);
+  }
+  var me = null; ((view && view.players) || []).forEach(function (p) { if (view && p.seat === view.you) me = p; });
+  var bw = W * 0.26, bh = H * 0.10, bx = W / 2 - bw / 2, by = H * 0.74;
+  if (final) {
+    _cardBtn(ctx, bx, by, bw, bh, '⌂', '返回首页', { primary: true });
+    return [{ id: 'settleHome', x: bx, y: by, w: bw, h: bh }];
+  }
+  var ready = !!(me && me.ready);
+  _cardBtn(ctx, bx, by, bw, bh, '✓', ready ? '已准备' : '准备下一局', { primary: !ready });
+  text(ctx, ready ? '等待其他玩家…' : '全员准备后自动开局', W / 2, H * 0.875, Math.round(H * 0.024), 'rgba(246,239,223,0.55)', 'center', false);
+  return [{ id: 'settleReady', x: bx, y: by, w: bw, h: bh }];
+}
+
+// [2026-11-16 用户] 联网闸门：亮A / 反A / 身份选择（等待窗口内可操作，超时服务端走默认）
+function drawNetGate(ctx, st) {
+  var g = st.netGate;
+  if (!g) return [];
+  var W = st.W, H = st.H;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, W, H);
+  var pw = W * 0.66, ph = H * 0.36, px = (W - pw) / 2, py = (H - ph) / 2;
+  _panel(ctx, px, py, pw, ph, H * 0.03);
+  var title = g.kind === 'LIANG_A' ? '亮A' : (g.kind === 'FAN_A' ? '反A' : '选择身份');
+  text(ctx, title, W / 2, py + ph * 0.16, Math.round(H * 0.052), '#ffd98a', 'center', true);
+  text(ctx, g.eligible ? '请选择（超时自动跳过）' : '等待其他玩家…', W / 2, py + ph * 0.30, Math.round(H * 0.024), 'rgba(246,239,223,0.65)', 'center', false);
+  var hits = [];
+  if (g.eligible && (g.kind === 'LIANG_A' || g.kind === 'FAN_A')) {
+    var suits = ['H', 'D', 'C', 'S'];
+    var labels = ['♥', '♦', '♣', '♠'];
+    var bw = W * 0.10, bh = H * 0.11;
+    var total = bw * 4 + W * 0.02 * 3;
+    var x0 = (W - total) / 2, by = py + ph * 0.46;
+    for (var i = 0; i < 4; i++) {
+      var bx = x0 + i * (bw + W * 0.02);
+      _cardBtn(ctx, bx, by, bw, bh, labels[i], '', {});
+      hits.push({ id: 'gateSuit', suit: suits[i], x: bx, y: by, w: bw, h: bh });
+    }
+  }
+  if (g.eligible && g.kind === 'IDENTITY_CHOICE') {
+    var bw2 = W * 0.20, bh2 = H * 0.11, by2 = py + ph * 0.46;
+    var b1 = W / 2 - bw2 - W * 0.015, b2 = W / 2 + W * 0.015;
+    _cardBtn(ctx, b1, by2, bw2, bh2, '', '公开（明打）', {});
+    _cardBtn(ctx, b2, by2, bw2, bh2, '', '隐藏（暗打）', { primary: true });
+    hits.push({ id: 'gateIdentity', choice: 'PUBLIC', x: b1, y: by2, w: bw2, h: bh2 });
+    hits.push({ id: 'gateIdentity', choice: 'HIDDEN', x: b2, y: by2, w: bw2, h: bh2 });
+  }
+  var lw = W * 0.16, lh = H * 0.07;
+  _cardBtn(ctx, W - lw - W * 0.05, py + ph - lh - H * 0.03, lw, lh, '', '跳过', {});
+  hits.push({ id: 'gateSkip', x: W - lw - W * 0.05, y: py + ph - lh - H * 0.03, w: lw, h: lh });
+  return hits;
+}
+
 function render(ctx, st) {
   if (st.page === 'HOME') return { page: 'HOME', home: drawHomePage(ctx, st) };
   if (st.page === 'CREATE') return { page: 'CREATE', createHits: drawCreatePage(ctx, st) };
   if (st.page === 'JOIN') return { page: 'JOIN', joinHits: drawJoinPage(ctx, st) };
   if (st.page === 'LOBBY') return { page: 'LOBBY', lobbyHits: drawLobbyPage(ctx, st) };
+  if (st.page === 'NETSETTLE') return { page: 'NETSETTLE', netSettleHits: drawNetSettlePage(ctx, st) };
   var m = layout(st.W, st.H);
   drawTable(ctx, m);
   var memoIcon = { x: m.memo.iconX, y: m.memo.iconY, r: m.memo.iconR };
@@ -1633,6 +1711,7 @@ function render(ctx, st) {
     switchHit: switchHit,
     settleBtn: settleBtn,
     cancelAutoPlayBox: (handBoxes || []).filter(function (b) { return b.cancelAutoPlay; })[0] || null,
+    netGateHits: st.netGate ? drawNetGate(ctx, st) : [],
   };
 }
 
@@ -1648,6 +1727,8 @@ function noopCtx() {
 
 module.exports = {
   drawLobbyPage: drawLobbyPage,
+  drawNetSettlePage: drawNetSettlePage,
+  drawNetGate: drawNetGate,
   render: render, layout: layout,
   drawHomePage: drawHomePage, drawCreatePage: drawCreatePage, drawJoinPage: drawJoinPage, handLayout: handLayout, buttonLayout: buttonLayout,
   cardPower: cardPower, seatOrder: seatOrder, noopCtx: noopCtx,

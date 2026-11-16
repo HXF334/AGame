@@ -151,7 +151,8 @@ function start(room, now) {
   room.round += 1;
   room.seq += 1;
   room.status = 'PLAYING';
-  advanceToPlay(room);
+  room.gateDeadline = 0;
+  gateTick(room, t);
   room.moveKeys = [];
   room.deadline = room.config.turnSeconds > 0 ? t + room.config.turnSeconds * 1000 : 0;
   room.players.forEach(function (p) { p.ready = false; });
@@ -187,6 +188,46 @@ function advanceToPlay(room) {
     room.seq += 1;
   }
   if (room.state && room.state.phase === 'PLAY' && !room.state.currentPlayer) {
+    room.state.currentPlayer = engine.determineFirstPlayer(room.state) || 'A';
+    room.seq += 1;
+  }
+  return room;
+}
+
+// [2026-11-16 用户] 联网闸门：亮A / 反A / 身份选择各开一个等待窗口（GATE_MS），
+// 超时走默认（强制排查 / 不反 / 隐藏身份）；其余闸门自动推进。
+var GATE_MS = 8000;
+function gateApply(room, type, payload) {
+  var r = engine.transition(room.state, { type: type, payload: payload || {} });
+  if (!r || !r.ok) return false;
+  room.state = r.state;
+  room.seq += 1;
+  return true;
+}
+function gateTick(room, now) {
+  if (!room.state) return room;
+  var t = now || Date.now();
+  var guard = 0;
+  while (guard++ < 10) {
+    var ph = room.state.phase;
+    if (ph === 'PLAY') break;
+    if (ph === 'LIANG_A' || ph === 'FAN_A' || ph === 'IDENTITY_CHOICE') {
+      if (!room.gateDeadline) { room.gateDeadline = t + GATE_MS; break; }
+      if (t < room.gateDeadline) break;
+      if (ph === 'LIANG_A') gateApply(room, 'FORCED_CHECK', {});
+      else if (ph === 'FAN_A') gateApply(room, 'REVEAL_BOTTOM', {});
+      else {
+        var who = engine.identityChooser(room.state);
+        if (who) gateApply(room, 'CHOOSE_IDENTITY', { playerId: who, choice: 'HIDDEN' });
+      }
+      room.gateDeadline = 0;
+      continue;
+    }
+    if (ph === 'LIANG_A_RESOLVED') { gateApply(room, 'ADVANCE', {}); room.gateDeadline = 0; continue; }
+    if (ph === 'REVEAL_BOTTOM') { gateApply(room, 'REVEAL_BOTTOM', {}); room.gateDeadline = 0; continue; }
+    break;
+  }
+  if (room.state.phase === 'PLAY' && !room.state.currentPlayer) {
     room.state.currentPlayer = engine.determineFirstPlayer(room.state) || 'A';
     room.seq += 1;
   }
@@ -310,6 +351,7 @@ function poll(room, viewerId) {
     rounds: room.config.rounds,
     seq: room.seq,
     deadline: room.deadline || 0,
+    gateDeadline: room.gateDeadline || 0,
     you: me ? me.seat : null,
     config: room.config,
     players: room.players.map(function (p) {
@@ -340,6 +382,7 @@ module.exports = {
   tick: tick,
   advanceToPlay: advanceToPlay,
   autoAi: autoAi,
+  gateTick: gateTick,
   setOffline: setOffline,
   setOnline: setOnline,
   poll: poll,

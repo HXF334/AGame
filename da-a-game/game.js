@@ -175,6 +175,7 @@ var uiPage = (typeof wx === 'undefined' || wx.__isMock) ? 'GAME' : 'HOME';
 var uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true };
 var uiJoinDigits = '';
 var btnPageHits = [];   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/战绩/退出)
+var btnNetGateHits = [];   // [2026-11-16 用户] 联网闸门按钮（亮A/反A/身份）
 // [2026-11-16 用户] 联网 P2：房间等待页状态
 var uiRoomView = null;
 var uiOnline = null;
@@ -953,10 +954,45 @@ gateAutoAdvance();   // 自动推进各阶段(遇真人决策则停下)
   if (ctx) draw();
 }
 
+// [2026-11-16 用户] 断线重连：房间号落本地，回到前台/冷启动时尝试恢复
+function _persistRoom(id) {
+  try { if (id && typeof wx !== 'undefined' && wx.setStorageSync) wx.setStorageSync('dada_room', String(id)); } catch (e) {}
+}
+function _clearPersistedRoom() {
+  try { if (typeof wx !== 'undefined' && wx.removeStorageSync) wx.removeStorageSync('dada_room'); } catch (e) {}
+}
+function _resumeRoom() {
+  if (uiOnline && uiOnline.roomId) return;
+  var id = null;
+  try { id = (typeof wx !== 'undefined' && wx.getStorageSync) ? wx.getStorageSync('dada_room') : null; } catch (e) {}
+  if (!id) return;
+  log('检测到未结束的房间 ' + id + '，尝试重连');
+  _ensureOnlineClient().joinRoom(String(id), uiNick || '玩家', '')['then'](function (r) {
+    if (r && r.ok) { log('重连成功: ' + id); _enterLobby(r.room); }
+    else { log('重连失败: ' + ((r && r.error) || '未知')); _clearPersistedRoom(); }
+  })['catch'](function (e) {
+    log('重连异常: ' + (e && e.message));
+    _clearPersistedRoom();
+  });
+}
+
 try {
   initGame();
 } catch (e) {
   log('初始化异常: ' + (e && e.message));
+}
+
+// [2026-11-16 用户] 前台/后台切换：联网时标记离线/在线；冷启动或回前台尝试重连
+if (typeof wx !== 'undefined' && wx.onShow) {
+  wx.onShow(function () {
+    if (uiOnline && uiOnline.roomId) { log('回到前台: 恢复在线'); uiOnline.online()['catch'](function () {}); }
+    else _resumeRoom();
+  });
+}
+if (typeof wx !== 'undefined' && wx.onHide) {
+  wx.onHide(function () {
+    if (uiOnline && uiOnline.roomId) { log('切到后台: 标记离线'); uiOnline.offline()['catch'](function () {}); }
+  });
 }
 
 // === 新一局（【下一局】按钮）===
@@ -2102,7 +2138,8 @@ function draw() {
     historyRows: uiHistoryRows,
     historySummary: uiHistorySummary,
     historyError: uiHistoryError,
-    phase: gameState.phase
+    phase: gameState.phase,
+    netGate: _netGateInfo()
   });
   btnLog = out.btnLog;
   btnStage = out.btnStage;
@@ -2115,7 +2152,8 @@ function draw() {
   btnMenu = out.menuIcon;
   btnMenuItems = out.menuItems || [];
   btnHistoryBoxes = out.historyBoxes || [];
-  btnPageHits = out.home || out.createHits || out.joinHits || out.lobbyHits || [];
+  btnPageHits = out.home || out.createHits || out.joinHits || out.lobbyHits || out.netSettleHits || [];
+  btnNetGateHits = out.netGateHits || [];
   btnHistoryClear = null; btnHistoryClose = null;
   for (var _hb = 0; _hb < btnHistoryBoxes.length; _hb++) {
     if (btnHistoryBoxes[_hb].id === 'historyClear') btnHistoryClear = btnHistoryBoxes[_hb];
@@ -2176,6 +2214,44 @@ function doPushWindIfPending(roundJustEnded) {
 function fmtResult(r) {
   if (!r || !r.winner || r.winner === 'draw') return '平局';
   return r.winner + ' 胜';
+}
+
+// [2026-11-16 用户] 联网闸门：判断当前阶段是否需要真人操作（亮A/反A/身份）
+function _netGateInfo() {
+  if (!uiNet || !gameState) return null;
+  var ph = gameState.phase;
+  if (ph === 'PLAY' || ph === 'GAME_END') return null;
+  var eng = require('./src/index.js');
+  var eligible = false;
+  try {
+    var _r = null;
+    if (ph === 'LIANG_A') _r = eng.canLiangA(gameState, humanPlayer);
+    else if (ph === 'FAN_A') _r = eng.canFanA(gameState, humanPlayer);
+    else if (ph === 'IDENTITY_CHOICE') _r = eng.canChooseIdentity(gameState, humanPlayer);
+    eligible = !!(_r && _r.ok);
+  } catch (e) { eligible = false; }
+  return { kind: ph, eligible: !!eligible };
+}
+
+function _onGateTap(hit) {
+  if (hit.id === 'gateSkip') { log('联网闸门: 等待服务端超时跳过'); return; }
+  if (hit.id === 'gateIdentity') {
+    log('联网闸门: 选择身份 ' + hit.choice);
+    _netSend('CHOOSE_IDENTITY', { choice: hit.choice });
+    return;
+  }
+  if (hit.id === 'gateSuit') {
+    if (gameState.phase === 'LIANG_A') {
+      log('联网闸门: 亮A ' + hit.suit);
+      _netSend('LIANG_A', { suit: hit.suit });
+      return;
+    }
+    var me = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    var aces = ((me && me.hand) || []).filter(function (c) { return c.rank === 14 && c.suit === hit.suit; });
+    if (aces.length < 2) { showToast('没有该花色两张A'); return; }
+    log('联网闸门: 反A ' + hit.suit);
+    _netSend('FAN_A', { suit: hit.suit, cardIds: [aces[0].id, aces[1].id] });
+  }
 }
 
 function doPlay() {
@@ -2657,8 +2733,10 @@ function _ensureOnlineClient() {
       return;
     }
     if (uiNet && view && (view.status === 'SETTLED' || view.status === 'FINISHED')) {
-      _applyNetView(view);
-      log('联网对局结束: round=' + view.round + '/' + view.rounds + ' status=' + view.status);
+      uiRoomView = view;
+      uiPage = 'NETSETTLE';
+      log('联网结算: round=' + view.round + '/' + view.rounds + ' status=' + view.status);
+      draw();
       return;
     }
     if (uiPage === 'LOBBY') draw();
@@ -2709,7 +2787,8 @@ function _stopRoomPolling() {
 function _startRoomPolling() {
   _stopRoomPolling();
   uiRoomTimer = setInterval(function () {
-    if (!uiOnline || !uiOnline.roomId || (uiPage !== 'LOBBY' && !(uiNet && uiPage === 'GAME'))) return;
+    var _keepRoom = uiPage === 'LOBBY' || (uiNet && (uiPage === 'GAME' || uiPage === 'NETSETTLE'));
+    if (!uiOnline || !uiOnline.roomId || !_keepRoom) return;
     uiOnline.poll()['catch'](function () { /* 轮询失败下轮再试 */ });
   }, 1500);
 }
@@ -2717,6 +2796,7 @@ function _startRoomPolling() {
 function _enterLobby(view) {
   uiRoomView = view;
   uiPage = 'LOBBY';
+  _persistRoom(view && view.id);
   _startRoomPolling();
   log('进入房间: ' + (view && view.id) + ' seat=' + (view && view.you));
   draw();
@@ -2763,6 +2843,8 @@ function _joinRoomNow(roomId) {
 function _leaveRoomNow() {
   var c = uiOnline;
   _stopRoomPolling();
+  _clearPersistedRoom();
+  uiNet = false;
   uiRoomView = null;
   uiPage = 'HOME';
   if (c && c.roomId && typeof c.leave === 'function') c.leave()['catch'](function () {});
@@ -2772,6 +2854,17 @@ function _leaveRoomNow() {
 // === 触摸事件处理 (WeChat 小游戏) ===
 if (typeof wx !== 'undefined') {
   // [2026-11-16 用户] 联网 P2：首页/创建/加入三个页面的点击分发（GAME 页仍走原触摸逻辑）
+function _netSettleReady() {
+  if (!uiOnline) return;
+  var me = null;
+  ((uiRoomView && uiRoomView.players) || []).forEach(function (p) { if (uiRoomView && p.seat === uiRoomView.you) me = p; });
+  var next = !(me && me.ready);
+  log('联网准备: ' + (next ? '准备下一局' : '取消准备'));
+  uiOnline.ready(next)['then'](function (r) {
+    if (r && r.ok) log('联网准备成功: seq=' + (r.room && r.room.seq));
+  })['catch'](function (e) { log('联网准备失败: ' + (e && e.message)); });
+}
+
 function _onPageTouch(x, y) {
   for (var i = 0; i < (btnPageHits || []).length; i++) {
     var b = btnPageHits[i];
@@ -2786,6 +2879,8 @@ function _onPageTouch(x, y) {
     if (b.id === 'joinDigit') { if (uiJoinDigits.length < 6) uiJoinDigits += b.d; draw(); return; }
     if (b.id === 'joinDel') { uiJoinDigits = uiJoinDigits.slice(0, -1); draw(); return; }
     if (b.id === 'joinConfirm') { _joinRoomNow(uiJoinDigits); return; }
+    if (b.id === 'settleReady') { _netSettleReady(); return; }
+    if (b.id === 'settleHome') { _leaveRoomNow(); return; }
     if (b.id === 'lobbyLeave') { _leaveRoomNow(); return; }
     if (b.id === 'lobbyReady') {
       var _my = uiRoomView ? require('./src/lobby.js').myRow(uiRoomView) : null;
@@ -2811,6 +2906,14 @@ wx.onTouchStart(function (e) {
     if (_au) _au.unlock();
 
     if (uiPage !== 'GAME') { _onPageTouch(x, y); return; }
+
+    // [2026-11-16 用户] 联网闸门浮层最优先（亮A/反A/身份）
+    if (uiNet && btnNetGateHits.length) {
+      for (var _gi = 0; _gi < btnNetGateHits.length; _gi++) {
+        var _gb = btnNetGateHits[_gi];
+        if (x >= _gb.x && x <= _gb.x + _gb.w && y >= _gb.y && y <= _gb.y + _gb.h) { _onGateTap(_gb); return; }
+      }
+    }
 
     // [2026-11-16 战绩页] 面板打开时，点任意位置关闭（含「关闭」按钮），不穿透到牌桌
     if (uiHistoryOpen) {
@@ -3025,7 +3128,8 @@ if (typeof module !== 'undefined' && module.exports) {
         fillText: function (t) { texts.push(String(t)); },
         save: function () {}, restore: function () {}, beginPath: function () {},
         closePath: function () {}, moveTo: function () {}, lineTo: function () {}, arcTo: function () {},
-        arc: function () {}, fill: function () {}, stroke: function () {},
+        arc: function () {}, arcTo: function () {}, quadraticCurveTo: function () {}, bezierCurveTo: function () {},
+        ellipse: function () {}, rect: function () {}, clip: function () {}, fill: function () {}, stroke: function () {},
         fillRect: function () {}, clearRect: function () {}, translate: function () {},
         rotate: function () {}, scale: function () {}, setLineDash: function () {},
         createLinearGradient: function () { return { addColorStop: function () {} }; },
@@ -3044,7 +3148,8 @@ if (typeof module !== 'undefined' && module.exports) {
         fillText: function (t, x, y) { out.push({ text: String(t), x: x, y: y }); },
         save: function () {}, restore: function () {}, beginPath: function () {},
         closePath: function () {}, moveTo: function () {}, lineTo: function () {}, arcTo: function () {},
-        arc: function () {}, fill: function () {}, stroke: function () {},
+        arc: function () {}, arcTo: function () {}, quadraticCurveTo: function () {}, bezierCurveTo: function () {},
+        ellipse: function () {}, rect: function () {}, clip: function () {}, fill: function () {}, stroke: function () {},
         fillRect: function () {}, clearRect: function () {}, translate: function () {},
         rotate: function () {}, scale: function () {}, setLineDash: function () {},
         createLinearGradient: function () { return { addColorStop: function () {} }; },
@@ -3060,8 +3165,10 @@ if (typeof module !== 'undefined' && module.exports) {
     __selected: function () { return selectedCards; },
     __menuOpen: function () { return uiMenuOpen; },
   __page: function () { return uiPage; },
+  __setNet: function (v) { uiNet = !!v; draw(); },
   __setPage: function (p) { uiPage = p; draw(); },
   __pageHits: function () { return btnPageHits; },
+  __netGateHits: function () { return btnNetGateHits; },
   __createCfg: function () { return uiCreateCfg; },
   __tapPage: function (x, y) { _onPageTouch(x, y); },
   __roomView: function () { return uiRoomView; },

@@ -538,3 +538,11 @@
   出牌/不出/提示改走 `online.send()`，本地不跑引擎推进、不跑 AI；联网对局禁用托管（提示仍可用，用穷举合法牌保证正确性）。
 - **日志**：联网关键路径统一 `log()`——进入对局、每次发送/成功/失败/异常、房间号与 seq、退出与结算，便于真机排查。
 - **边界**：服务端仍是唯一权威；客户端渲染状态只用于显示与选牌，全部动作经 `apply` 校验（baseSeq/幂等/座位）。
+
+## D-100 联网对局闭环：结算/准备、闸门窗口、触发器、重连
+
+- **单局/总结算**：`settle()` 写 `lastRound`（每座本局分与累计分），`round >= rounds` 置 `FINISHED`；客户端 `NETSETTLE` 页显示单局榜或总榜，`准备下一局` 调 `ready`，全员准备后 `start` 开下一局。
+- **闸门窗口**：`start()` 不再一路自动推进，改为 `gateTick()` 开窗：`LIANG_A`/`FAN_A`/`IDENTITY_CHOICE` 各 8s，窗口内对应玩家可 `LIANG_A`/`FAN_A`/`CHOOSE_IDENTITY`；超时走默认（强制排查 / 不反 / 隐藏），`LIANG_A_RESOLVED`、`REVEAL_BOTTOM` 自动推进。
+- **定时触发器**：`game-server/config.json` 每分钟触发；`tickAllRooms()` 扫描 PLAYING 房间，`gateTick` + `tick` 推进超时/AI 代打并落库。
+- **断线重连**：房间号写 `dada_room`，`onShow` 时优先 `online()`，否则 `joinRoom` 恢复；`onHide` 标记离线；离开房间清除。
+- 验证：`test-net-state` 17、`test-room-gates` 8、`test-ui-netgate` 7、`test-ui-netsettle` 8；全量 129/129；`game-server` 部署 37 files/96.9KB。

@@ -49,7 +49,8 @@ var room = roomMod.createRoom({ ownerId: 'u1', nick: '甲', config: { rounds: 6,
 for (var i = 0; i < 4; i++) roomMod.join(room, { openid: 'u' + (i + 2), nick: 'P' + (i + 2) });
 room.players.forEach(function (p) { p.ready = true; });
 roomMod.start(room);
-check('3.1 开局即 PLAY', room.state.phase === 'PLAY');
+for (var _g = 0; _g < 6; _g++) roomMod.gateTick(room, (room.gateDeadline || Date.now()) + 10);
+check('3.1 闸门窗口超时后进入 PLAY', room.state.phase === 'PLAY', room.state.phase);
 check('3.2 有当前玩家', !!room.state.currentPlayer);
 var pv = roomMod.poll(room, 'u1');
 check('3.3 poll 带 you', pv.you === 0);

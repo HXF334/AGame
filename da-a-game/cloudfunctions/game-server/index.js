@@ -35,7 +35,38 @@ async function ensureCollection() {
   }
 }
 
+// [2026-11-16 用户] 每次读房间前统一推进：闸门窗口到期 → 默认推进；AI 座位 → 代打。
+function advanceRoom(room) {
+  try { roomMod.gateTick(room, Date.now()); } catch (e) {}
+  try { roomMod.autoAi(room); } catch (e) {}
+  return room;
+}
+
+// [2026-11-16 用户] 定时触发器：扫描超时房间并推进（每 1 分钟）。
+async function tickAllRooms() {
+  var out = { scanned: 0, ticked: 0 };
+  try {
+    var res = await db.collection(COL).where({ status: 'PLAYING' }).limit(100).get();
+    var list = res.data || [];
+    out.scanned = list.length;
+    for (var i = 0; i < list.length; i++) {
+      var room = list[i];
+      var before = room.seq;
+      try { roomMod.gateTick(room, Date.now()); } catch (e) {}
+      try { roomMod.tick(room, Date.now()); } catch (e) {}
+      advanceRoom(room);
+      if (room.seq !== before) { await saveRoom(room); out.ticked += 1; }
+    }
+  } catch (e) {
+    out.error = String(e.errMsg || e.message || e);
+  }
+  return out;
+}
+
 exports.main = async function (event) {
+  if (event && (event.triggerName || event.Type === 'Timer')) {
+    return ok({ timer: await tickAllRooms() });
+  }
   var action = (event && event.action) || 'ping';
   var openid = ctxOpenid(event);
   if (action === 'ping') {
@@ -66,7 +97,7 @@ exports.main = async function (event) {
         return fail('WRITE_FAILED', { message: String(e.errMsg || e.message || e) });
       }
     }
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
 
   if (!event.roomId) return fail('NO_ROOM_ID');
@@ -81,26 +112,26 @@ exports.main = async function (event) {
     var jr = roomMod.join(room, { openid: openid, nick: event.nick || '', avatar: event.avatar || '' });
     if (!jr.ok) return fail(jr.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   if (action === 'ready') {
     var sr = roomMod.setReady(room, openid, event.ready !== false);
     if (!sr.ok) return fail(sr.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   if (action === 'start') {
     if (room.ownerId !== openid) return fail('NOT_OWNER');
     var tr = roomMod.start(room);
     if (!tr.ok) return fail(tr.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   if (action === 'apply') {
     var ar = roomMod.apply(room, event.env, openid);
     if (!ar.ok) return fail(ar.error, { seq: room.seq });
     await saveRoom(room);
-    roomMod.autoAi(room);
+    advanceRoom(room);
     return ok({ room: roomMod.poll(room, openid), seq: room.seq, ended: !!ar.ended });
   }
   if (action === 'tick') {
@@ -113,22 +144,22 @@ exports.main = async function (event) {
     var of = roomMod.setOffline(room, openid);
     if (!of.ok) return fail(of.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   if (action === 'online') {
     var on = roomMod.setOnline(room, openid);
     if (!on.ok) return fail(on.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   if (action === 'leave') {
     var lv = roomMod.leave(room, openid);
     if (!lv.ok) return fail(lv.error);
     await saveRoom(room);
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   if (action === 'poll') {
-    return ok({ room: roomMod.poll(roomMod.autoAi(room), openid) });
+    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   return fail('UNKNOWN_ACTION');
 };
