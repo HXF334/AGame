@@ -102,6 +102,24 @@ exports.main = async function (event) {
     await saveRoom(room);
     return ok({ room: roomMod.poll(room, openid), seq: room.seq, ended: !!ar.ended });
   }
+  if (action === 'tick') {
+    // 定时触发器/懒判定调用：到点由 AI 代当前玩家走一步
+    var tr2 = roomMod.tick(room, Date.now());
+    if (tr2.acted) await saveRoom(room);
+    return ok({ acted: !!tr2.acted, seq: room.seq });
+  }
+  if (action === 'offline') {
+    var of = roomMod.setOffline(room, openid);
+    if (!of.ok) return fail(of.error);
+    await saveRoom(room);
+    return ok({ room: roomMod.poll(room, openid) });
+  }
+  if (action === 'online') {
+    var on = roomMod.setOnline(room, openid);
+    if (!on.ok) return fail(on.error);
+    await saveRoom(room);
+    return ok({ room: roomMod.poll(room, openid) });
+  }
   if (action === 'poll') {
     return ok({ room: roomMod.poll(room, openid) });
   }

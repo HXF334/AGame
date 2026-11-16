@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **122 个套件 / 执行 122 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **123 个套件 / 执行 123 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 122/122 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 123/123 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,7 +39,7 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：122 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
+- **测试**：123 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
 
 ## 4. 本轮变更（2026-11-12～13，D-059～D-076）
 
@@ -123,7 +123,11 @@
 - `docs/history/OPENCLAW_HANDOFF.md` 保留，但已标注为历史资料（见文件头）。
 - **D-062**：`git-safe-workflow`、`windows-cn-batch-encoding` 合并进 `senior-dev-standard`（重写为开发工作流总纲），删除原目录；skills 由 5 份精简为 3 份。`da-a-game-rules/SKILL.md` 重排（术语速查、去重），章节号与 §13 用例不变。
 
-## 4.1 联网 P1（2026-11-16）
+## 4.1 联网 P1/P2/P3（2026-11-16）
+
+- P2：新增 `src/online.js`（客户端房间控制器：create/join/ready/start/send/poll/offline/online；`send` 自动带 `baseSeq`，遇 `STALE` 先 poll 再用新 seq 重试一次）；`tests/test-online-client.js`（15 断言，用内存假云跑 5 人建房→准备→开局→断线）。
+- P3：`room.js` 增加 `deadline`、`tick`（到点由服务端 AI 代当前玩家走一步并记 `afk`）、`setOffline/setOnline`（对局中离线即 AI 接管，回来可恢复）；`index.js` 增加 `tick/offline/online` 动作。
+- 打包清单 47 个文件（`src/online.js`）。
 
 - 新增 `cloudfunctions/game-server/room.js`：房间状态机 `WAITING → PLAYING → SETTLED → FINISHED`，`seq` 乐观锁 + `moveKeys` 幂等，空位 AI 补齐，全员准备自动开局，基础分累计，`poll` 只回 `publicView`（他人手牌只给张数）。
 - `cloudfunctions/game-server/index.js`：`ping/create/join/ready/start/apply/poll`，房间存 `rooms` 集合。
@@ -164,7 +168,7 @@
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
 5. **P4（单机收尾）**：~~AI 记牌（D-078）~~ 已完成；**残局搜索（D-080）** 已实现（全体剩牌 ≤10，抽样推演，含队友评估），只在 AI/托管启用。
 6. **下一阶段**：好友建房对战——方案已确认（D-093，见 `docs/plans/ONLINE_ROOM.md`），P0 已在 `main` 完成（protocol/timing/version、引擎副本同步、fake-cloud、测试）；后续在 `feature/online-room` 分支做 `game-server` 房间核心（P1）。云开发环境 `cloud1-d5g7uiwu9f7caacdc` 已开通；`init-db`/`record-game`/`list-records`/`clear-records` 已部署；上线前需确认棋牌类目/资质。
-7. **持续**：改动后更新本文件；保持 122+ 套件全绿。
+7. **持续**：改动后更新本文件；保持 123+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）
 

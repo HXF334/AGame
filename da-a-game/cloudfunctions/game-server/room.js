@@ -152,6 +152,7 @@ function start(room, now) {
   room.seq += 1;
   room.status = 'PLAYING';
   room.moveKeys = [];
+  room.deadline = room.config.turnSeconds > 0 ? t + room.config.turnSeconds * 1000 : 0;
   room.players.forEach(function (p) { p.ready = false; });
   room.updatedAt = t;
   return { ok: true, room: room };
@@ -169,6 +170,7 @@ function settle(room, now) {
   });
   room.lastRound = rows;
   room.status = (room.round >= room.config.rounds) ? 'FINISHED' : 'SETTLED';
+  room.deadline = 0;
   room.seq += 1;
   room.updatedAt = now || Date.now();
   return true;
@@ -191,8 +193,56 @@ function apply(room, env, actorId, now) {
   room.seq += 1;
   room.moveKeys.push(key);
   room.updatedAt = now || Date.now();
+  room.deadline = room.config.turnSeconds > 0 ? room.updatedAt + room.config.turnSeconds * 1000 : 0;
   var ended = settle(room, now);
   return { ok: true, room: room, ended: ended, seq: room.seq };
+}
+
+// 超时托管：到点后由服务端 AI 代当前玩家走一步；返回是否真的走了
+function tick(room, now) {
+  var t = now || Date.now();
+  if (room.status !== 'PLAYING' || !room.deadline || t < room.deadline) {
+    return { ok: true, acted: false, room: room };
+  }
+  var cur = room.state && room.state.currentPlayer;
+  if (!cur) return { ok: true, acted: false, room: room };
+  var me = null;
+  for (var i = 0; i < room.players.length; i++) {
+    if (seatId(room.players[i].seat) === cur) { me = room.players[i]; break; }
+  }
+  if (me) me.afk = (me.afk || 0) + 1;
+  var ai = require('./engine/ai.js');
+  var act = ai.chooseAction(room.state, cur, { endgame: true });
+  var type = (act && act.type === 'PLAY') ? 'PLAY' : 'PASS';
+  var payload = { playerId: cur };
+  if (type === 'PLAY') payload.cardIds = act.cardIds || [];
+  var r = engine.transition(room.state, { type: type, payload: payload });
+  if (!r.ok) return { ok: true, acted: false, room: room, error: (r.error && r.error.type) || 'AI_REJECTED' };
+  room.state = r.state;
+  room.seq += 1;
+  room.updatedAt = t;
+  room.deadline = room.config.turnSeconds > 0 ? t + room.config.turnSeconds * 1000 : 0;
+  var ended = settle(room, t);
+  return { ok: true, acted: true, room: room, ended: ended, seq: room.seq };
+}
+
+// 断线：标记离线；对局中由 AI 接管该座位（重连后可恢复）
+function setOffline(room, openid, now) {
+  var p = findPlayer(room, openid);
+  if (!p) return { ok: false, error: 'NOT_IN_ROOM' };
+  p.offline = true;
+  if (room.status === 'PLAYING') p.ai = true;
+  room.updatedAt = now || Date.now();
+  return { ok: true, room: room };
+}
+
+function setOnline(room, openid, now) {
+  var p = findPlayer(room, openid);
+  if (!p) return { ok: false, error: 'NOT_IN_ROOM' };
+  p.offline = false;
+  if (!p.isAi) p.ai = false;
+  room.updatedAt = now || Date.now();
+  return { ok: true, room: room };
 }
 
 function poll(room, viewerId) {
@@ -203,11 +253,12 @@ function poll(room, viewerId) {
     round: room.round,
     rounds: room.config.rounds,
     seq: room.seq,
+    deadline: room.deadline || 0,
     config: room.config,
     players: room.players.map(function (p) {
       return {
         seat: p.seat, nick: p.nick, avatar: p.avatar,
-        ready: p.ready, ai: p.ai, total: p.total
+        ready: p.ready, ai: p.ai, offline: !!p.offline, afk: p.afk || 0, total: p.total
       };
     }),
     lastRound: room.lastRound
@@ -228,6 +279,9 @@ module.exports = {
   start: start,
   settle: settle,
   apply: apply,
+  tick: tick,
+  setOffline: setOffline,
+  setOnline: setOnline,
   poll: poll,
   allReady: allReady
 };

@@ -501,3 +501,10 @@
 - 计分：每局结束用 `scoring.calculateScore`，按 `config.baseScore` 折算进 `players[].total`；局间只展示累计总分（不展示单局增减）。
 - 创建参数上限：对局数 **30**，基础分 / 出牌时间 **99**；语音房字段固定 false（暂不支持）。
 - 协议白名单扩到 8 个动作（含亮A/反A/推进/翻底牌/选身份），`PROTOCOL_VERSION` 仍为 1（仅在分支内演进）。
+
+## D-096 联网 P2/P3：客户端控制器、超时托管、断线接管（2026-11-16）
+
+- 客户端 `src/online.js`：不依赖 wx，注入 `call(name,data)`；维护 `roomId/seq/view/state`；`send(type,payload)` 自动带 `baseSeq`，收到 `STALE` 先 `poll` 再用新 seq 重试一次；`offline()/online()` 标记断线与恢复。
+- 服务端 `room.js`：`deadline`（`config.turnSeconds>0` 时每步重置）；`tick(room, now)` 到点用 `engine/ai.chooseAction` 代当前玩家出牌/过牌，记 `afk`，再走结算；`setOffline` 在对局中把该座位标记 `ai=true`，`setOnline` 恢复。
+- `game-server/index.js`：新增 `tick`（可由定时触发器调用）、`offline`、`online` 三个动作。
+- 测试：`test-room-core.js` 29 断言（含 tick/离线）；`test-online-client.js` 15 断言（内存假云，5 人建房→准备→开局→断线）。

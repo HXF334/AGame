@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "hash": "c6fafd0fb95d2bff661ad748e079316ff70ddb5a47cfcdc1899cd4989d4e6bc0",
+  "hash": "89b7a52c31785121c0dc12a5434d6310d906f23d208db85907e34439a526bf7b",
   "files": {
     "ai-memory.js": "2390600c339e959d3d1c99bc25ad4cace0b5d8ffdcc07fb09cccd25b2db41aa3",
     "ai-policy.js": "086b3d1d6aafd3be78f1b18a1ff5939346d9154df48f3e01fcea7e7f7efb50b9",
@@ -16,6 +16,7 @@
     "history.js": "6dcd15f170bec943e52780072d25ec9b091393a8f6a4e633b08ca9502e320b66",
     "index.js": "70d6c2b6de4cbbc292e363e63e986f14822d900f2225b786cca98f88f2c285b3",
     "lead-choice.js": "ddccc2add7294954427d26f690f6c77b5a057c7632b3fa08b77af5f3e57ee7cf",
+    "online.js": "d696b1322f3889bbeb7fa182c6185e69fca2bc8e4ff0f87e551287399e87fa73",
     "phases.js": "4e6c06afadf28513a75dcda1d80a1ed8fdd518ed91f83f96554fcde9df0021e0",
     "play.js": "7ebcb5844bd4743b750e751f8ba20ebe9a5bf0e4511c266e43f5185472cbf97d",
     "protocol.js": "67558129a3471a46a867027f58c4b48f37cc5ecfe763364e52ee6e2f03bf247d",

@@ -79,4 +79,27 @@ ok('lastRound rows', room.lastRound.length === 5);
 ok('totals accumulated', room.players.every(function (p) { return typeof p.total === 'number'; }));
 ok('settle status SETTLED', room.status === 'SETTLED');
 
+// 6) 超时托管：到点由 AI 代当前玩家走一步
+var stTick = SB.build({
+  handMap: { A: ['H-3-1', 'H-4-1'], B: ['D-5-1'], C: ['C-6-1'], D: ['S-7-1'], E: ['H-8-1'] },
+  table: [], phase: 'PLAY', mode: '2V3_暗打'
+});
+stTick.currentPlayer = 'A';
+room.state = stTick;
+room.status = 'PLAYING';
+room.seq = 200;
+room.deadline = NOW - 1;
+var before = room.seq;
+var tickRes = roomMod.tick(room, NOW);
+ok('tick acted', tickRes.acted === true);
+ok('tick seq advanced', room.seq === before + 1);
+ok('tick marks afk', room.players[0].afk >= 1);
+
+// 7) 断线交给 AI
+var offRes = roomMod.setOffline(room, 'u1', NOW);
+ok('offline ok', offRes.ok === true);
+ok('offline ai takeover', room.players[1].ai === true);
+var onRes = roomMod.setOnline(room, 'u1', NOW);
+ok('online restores', onRes.ok === true && room.players[1].ai === false);
+
 console.log('room core: ' + checks + ' checks passed');
