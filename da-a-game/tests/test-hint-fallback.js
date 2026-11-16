@@ -38,5 +38,20 @@ g.__setState(st2, { human: 'B', currentPlayer: 'B', clearLog: true });
 var cs2 = g.uiHintCandidates();
 check('2.1 真的无解时返回空', cs2.length === 0, 'count=' + cs2.length);
 
+// 3) 上家 KKK，我 444 + 9：点提示应该真的选中 44（取牌），而不是报错
+var f4 = [SB.C('H', 4), SB.C('D', 4), SB.C('C', 4)];
+var k3 = [SB.C('S', 13), SB.C('H', 13), SB.C('D', 13)];
+var st3 = SB.build({ handMap: { B: f4.concat([SB.C('S', 9)]) }, table: k3, lastPlayer: 'D' });
+trimHand(st3, 'B', f4.concat([SB.C('S', 9)]));
+g.__setState(st3, { human: 'B', currentPlayer: 'B', clearLog: true });
+var cs3 = g.uiHintCandidates();
+check('3.1 KKK 面前兜底出取牌', cs3.length >= 1 && cs3[0].label.indexOf('取牌') === 0, cs3[0] && cs3[0].label);
+check('3.2 候选带 ids（点击不炸）', !!cs3[0] && Array.isArray(cs3[0].ids) && cs3[0].ids.length === 2);
+var ok3 = g.uiHint();
+var sel = g.__selected() || [];
+var wantIds = {}; f4.forEach(function (c) { wantIds[c.id] = 1; });
+check('3.3 点提示选中 2 张 4', ok3 === true && sel.length === 2 && sel.every(function (id) { return !!wantIds[id]; }),
+  'ok=' + ok3 + ' sel=' + sel.join(','));
+
 console.log('\ntest-hint-fallback: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

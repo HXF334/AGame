@@ -1060,7 +1060,7 @@ function _bruteForceLegalPlays(me, table) {
       type: 'PLAY', payload: { playerId: humanPlayer, cardIds: cards.map(function (c) { return c.id; }) }
     });
     if (!r || !r.ok) return;
-    res.push({ label: labelOf(cards, kind), type: 'PLAY', cards: cards, len: cards.length, isFirst: false, value: 0 });
+    res.push({ label: labelOf(cards, kind), type: 'PLAY', cards: cards, ids: cards.map(function (c) { return c.id; }), len: cards.length, isFirst: false, value: 0 });
   }
   // 4 取牌优先穷举：目标 N 张 -> 用 N-1 张 4（444 取 333 = 44）
   var need = table.length - 1;
@@ -2684,6 +2684,7 @@ if (typeof module !== 'undefined' && module.exports) {
     __setObserver: function (pid) { uiObserver = pid || null; },
   __observer: function () { return uiObserver; },
     // [2026-11-16] 测试钩子: 左上角菜单开合与下拉项命中区
+    __selected: function () { return selectedCards; },
     __menuOpen: function () { return uiMenuOpen; },
     __setMenuOpen: function (v) { uiMenuOpen = !!v; draw(); },
     __menuItems: function () { return btnMenuItems || []; },
