@@ -569,6 +569,8 @@ function drawSeats(ctx, st, m) {
 // 积分(头像下方) —— [2026-10-25 用户] 数字后面加「分」
 function drawScore(ctx, st, pid, delta, x, y) {
   var v = (delta === undefined || delta === null) ? 0 : delta;
+  // [2026-11-16 用户] 单机累计分: 有 totals 时优先显示累计分（「下一局」不清零）
+  if (st.totals && Object.prototype.hasOwnProperty.call(st.totals, pid)) v = st.totals[pid];
   var col = v > 0 ? '#7ee08a' : (v < 0 ? '#ff8888' : '#bbbbbb');
   // [2026-10-27 用户] 头像下面的积分: **正分不带加号**(「2分」而不是「+2分」)
   text(ctx, (v > 0 ? '' : '') + v + '分', x, y,
@@ -1449,34 +1451,48 @@ function drawCreatePage(ctx, st) {
   var cfg = st.cfg || {};
   _pageBg(ctx, W, H);
   text(ctx, '创建房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-
   var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.19, h: H * 0.07 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
-  var px = W * 0.06, py = H * 0.135, pw = W * 0.88, ph = H * 0.645;
-  _panel(ctx, px, py, pw, ph, H * 0.03);
+  var px = W * 0.06, py = H * 0.135, pw = W * 0.88, ph = H * 0.655;
+  _panel(ctx, px, py, pw, ph, H * 0.028);
 
+  function chipLabel(key, v) {
+    if (key === 'turnSeconds') return v === 0 ? '无限制' : v + 's';
+    if (key === 'baseScore') return v + '分';
+    return v + '局';
+  }
   var rows = [
-    { key: 'rounds', label: '局数', values: [6, 12, 18, 30], text: function (v) { return v + '局'; } },
-    { key: 'baseScore', label: '底分', values: [1, 2, 5], text: function (v) { return v + '分'; } },
-    { key: 'turnSeconds', label: '出牌时间', values: [0, 30, 60], text: function (v) { return v === 0 ? '无托管' : v + 's'; } }
+    { key: 'rounds', label: '局数', values: [6, 12, 18, 30], max: 30, def: 12 },
+    { key: 'baseScore', label: '底分', values: [1, 2, 5], max: 99, def: 1 },
+    { key: 'turnSeconds', label: '出牌时间', values: [0, 30, 60], max: 99, def: 0 }
   ];
-  var rowH = ph / 6.2;
-  var labelX = px + pw * 0.05, optX = px + pw * 0.20;
+  var rowH = ph / 8.0;
+  var labelX = px + pw * 0.05;
+  var optX = px + pw * 0.155;
   for (var r = 0; r < rows.length; r++) {
-    var y = py + rowH * (0.55 + r);
-    text(ctx, rows[r].label, labelX, y, Math.round(H * 0.034), 'rgba(246,239,223,0.88)', 'left', true);
-    var step = pw * 0.185;
-    for (var c = 0; c < rows[r].values.length; c++) {
-      var val = rows[r].values[c];
-      var cx = optX + c * step + H * 0.016;
-      var on = cfg[rows[r].key] === val;
-      _radio(ctx, cx, y, H * 0.017, on);
-      text(ctx, rows[r].text(val), cx + H * 0.030, y, Math.round(H * 0.032),
+    var row = rows[r];
+    var y = py + rowH * (0.9 + r * 1.15);
+    text(ctx, row.label, labelX, y, Math.round(H * 0.033), 'rgba(246,239,223,0.88)', 'left', true);
+    var vals = row.values.slice();
+    var cur = cfg[row.key];
+    var custom = vals.indexOf(cur) < 0;
+    if (custom) vals.push(cur);
+    var step = pw * 0.150;
+    for (var c = 0; c < vals.length; c++) {
+      var val = vals[c];
+      var cx = optX + c * step;
+      var on = cur === val;
+      _radio(ctx, cx, y, H * 0.015, on);
+      text(ctx, chipLabel(row.key, val), cx + H * 0.026, y, Math.round(H * 0.030),
         on ? '#c9f29a' : 'rgba(246,239,223,0.78)', 'left', false);
-      hits.push({ id: 'chip', key: rows[r].key, value: val, x: cx - H * 0.017, y: y - H * 0.028, w: step * 0.92, h: H * 0.056 });
+      hits.push({ id: 'chip', key: row.key, value: val, x: cx - H * 0.016, y: y - H * 0.026, w: step * 0.95, h: H * 0.052 });
     }
+    var ccx = optX + vals.length * step;
+    _radio(ctx, ccx, y, H * 0.015, false);
+    text(ctx, '自定义', ccx + H * 0.026, y, Math.round(H * 0.028), 'rgba(255,214,140,0.85)', 'left', false);
+    hits.push({ id: 'chipCustom', key: row.key, max: row.max, def: row.def, x: ccx - H * 0.016, y: y - H * 0.026, w: step * 0.95, h: H * 0.052 });
   }
 
   var toggles = [
@@ -1485,20 +1501,17 @@ function drawCreatePage(ctx, st) {
     { key: 'aiFill', label: '空位 AI 补齐' }
   ];
   for (var t = 0; t < toggles.length; t++) {
-    var ty = py + rowH * (3.55 + t * 0.72);
+    var ty = py + rowH * (4.9 + t * 0.85);
     var on2 = !!cfg[toggles[t].key];
-    text(ctx, toggles[t].label, labelX, ty, Math.round(H * 0.032), 'rgba(246,239,223,0.82)', 'left', false);
-    var cx2 = optX + H * 0.016;
-    _radio(ctx, cx2, ty, H * 0.017, on2);
-    text(ctx, on2 ? '开' : '关', cx2 + H * 0.030, ty, Math.round(H * 0.030),
+    text(ctx, toggles[t].label, labelX, ty, Math.round(H * 0.031), 'rgba(246,239,223,0.82)', 'left', false);
+    var cx2 = optX + H * 0.004;
+    _radio(ctx, cx2, ty, H * 0.015, on2);
+    text(ctx, on2 ? '开' : '关', cx2 + H * 0.026, ty, Math.round(H * 0.029),
       on2 ? '#c9f29a' : 'rgba(246,239,223,0.60)', 'left', false);
-    hits.push({ id: 'toggle', key: toggles[t].key, x: cx2 - H * 0.017, y: ty - H * 0.026, w: W * 0.16, h: H * 0.052 });
+    hits.push({ id: 'toggle', key: toggles[t].key, x: cx2 - H * 0.016, y: ty - H * 0.024, w: W * 0.16, h: H * 0.048 });
   }
-  var vy = py + rowH * (5.55);
-  text(ctx, '语音房', labelX, vy, Math.round(H * 0.030), 'rgba(246,239,223,0.40)', 'left', false);
-  text(ctx, '暂不支持', optX + H * 0.016, vy, Math.round(H * 0.028), 'rgba(246,239,223,0.35)', 'left', false);
 
-  var cw = W * 0.40, chh = H * 0.105, cx3 = W * 0.55 - cw / 2, cy3 = H * 0.815;
+  var cw = W * 0.46, chh = H * 0.100, cx3 = (W - cw) / 2, cy3 = H * 0.825;
   _cardBtn(ctx, cx3, cy3, cw, chh, '▶', '创建房间', { primary: true });
   hits.push({ id: 'createConfirm', x: cx3, y: cy3, w: cw, h: chh });
   return hits;
@@ -1513,91 +1526,116 @@ function drawJoinPage(ctx, st) {
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
-  var bw = W * 0.095, bh = H * 0.105, gap = W * 0.022;
-  var total = 6 * bw + 5 * gap, bx = (W - total) / 2, by = H * 0.20;
+  var bw = W * 0.090, bh = H * 0.100, gap = W * 0.020;
+  var total = 6 * bw + 5 * gap, bx = (W - total) / 2, by = H * 0.175;
   for (var i = 0; i < 6; i++) {
     var x = bx + i * (bw + gap);
-    _rr(ctx, x, by, bw, bh, bh * 0.22);
-    ctx.fillStyle = digits[i] ? 'rgba(255,214,140,0.10)' : 'rgba(0,0,0,0.32)';
+    _rr(ctx, x, by, bw, bh, bh * 0.18);
+    ctx.fillStyle = digits[i] ? 'rgba(255,214,140,0.12)' : 'rgba(0,0,0,0.30)';
     ctx.fill();
-    ctx.strokeStyle = digits[i] ? 'rgba(255,214,140,0.85)' : 'rgba(255,214,140,0.35)';
+    ctx.strokeStyle = digits[i] ? 'rgba(255,214,140,0.85)' : 'rgba(255,214,140,0.30)';
     ctx.lineWidth = 2; ctx.stroke();
     if (digits[i]) text(ctx, digits[i], x + bw / 2, by + bh / 2, Math.round(bh * 0.50), '#ffd98a', 'center', true);
   }
 
-  var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0'];
-  var kr = H * 0.056, kGap = H * 0.022;
-  var kx0 = W / 2 - (kr * 3 + kGap);
-  var ky0 = H * 0.37;
-  for (var k = 0; k < keys.length; k++) {
-    var col = k % 3, row = Math.floor(k / 3);
-    var cx = kx0 + col * (kr * 2 + kGap) + kr;
-    var cy = ky0 + row * (kr * 2 + kGap) + kr;
-    ctx.beginPath(); ctx.arc(cx, cy, kr, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.34)'; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,214,140,0.40)'; ctx.lineWidth = 2; ctx.stroke();
-    text(ctx, keys[k] === 'del' ? '⌫' : keys[k], cx, cy + 1, Math.round(kr * 0.85), '#f6efdf', 'center', true);
-    if (keys[k] === 'del') hits.push({ id: 'joinDel', x: cx - kr, y: cy - kr, w: kr * 2, h: kr * 2 });
-    else hits.push({ id: 'joinDigit', d: keys[k], x: cx - kr, y: cy - kr, w: kr * 2, h: kr * 2 });
+  // [2026-11-16 用户] 小键盘 3 行 4 列, 且不能压住「加入房间」按钮
+  var keys = [['1', '2', '3', '4'], ['5', '6', '7', '8'], ['9', '0', 'del', 'clear']];
+  var kw = W * 0.115, kh = H * 0.092, kGapX = W * 0.022, kGapY = H * 0.020;
+  var kx0 = (W - (4 * kw + 3 * kGapX)) / 2;
+  var ky0 = H * 0.335;
+  for (var r = 0; r < keys.length; r++) {
+    for (var c = 0; c < keys[r].length; c++) {
+      var k = keys[r][c];
+      var x2 = kx0 + c * (kw + kGapX), y2 = ky0 + r * (kh + kGapY);
+      _rr(ctx, x2, y2, kw, kh, H * 0.022);
+      ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,214,140,0.34)'; ctx.lineWidth = 2; ctx.stroke();
+      var label = k === 'del' ? '⌫' : (k === 'clear' ? '清空' : k);
+      text(ctx, label, x2 + kw / 2, y2 + kh / 2, Math.round(kh * (k === 'clear' ? 0.32 : 0.44)), '#f6efdf', 'center', true);
+      if (k === 'del') hits.push({ id: 'joinDel', x: x2, y: y2, w: kw, h: kh });
+      else if (k === 'clear') hits.push({ id: 'joinClear', x: x2, y: y2, w: kw, h: kh });
+      else hits.push({ id: 'joinDigit', d: k, x: x2, y: y2, w: kw, h: kh });
+    }
   }
-  var jw = W * 0.40, jh = H * 0.105, jx = (W - jw) / 2, jy = H * 0.845 - jh / 2;
+  var jw = W * 0.42, jh = H * 0.095, jx = (W - jw) / 2, jy = H * 0.775;
   _cardBtn(ctx, jx, jy, jw, jh, '▶', '加入房间', { primary: digits.length === 6 });
   hits.push({ id: 'joinConfirm', x: jx, y: jy, w: jw, h: jh });
   return hits;
 }
 
-// [2026-11-16 用户] 联网 P2：房间等待页
 function drawLobbyPage(ctx, st) {
   var lobby = require('./src/lobby.js');
   var W = st.W, H = st.H;
   var view = st.room || null;
   var rows = lobby.seatRows(view);
   _pageBg(ctx, W, H);
+
   var back = { id: 'lobbyLeave', x: W * 0.03, y: H * 0.045, w: W * 0.17, h: H * 0.07 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '离开', {});
   var hits = [back];
 
-  text(ctx, view ? ('房间 ' + view.id) : '连接中…', W / 2, H * 0.085, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  text(ctx, lobby.statusText(view), W / 2, H * 0.145, Math.round(H * 0.028), 'rgba(246,239,223,0.70)', 'center', false);
+  text(ctx, view ? ('房间 ' + view.id) : '连接中…', W / 2, H * 0.075, Math.round(H * 0.050), '#ffd98a', 'center', true);
+  text(ctx, lobby.statusText(view), W / 2, H * 0.135, Math.round(H * 0.026), 'rgba(246,239,223,0.70)', 'center', false);
 
-  var px = W * 0.08, py = H * 0.185, pw = W * 0.84, ph = H * 0.50;
-  _panel(ctx, px, py, pw, ph, H * 0.03);
-  var rowH = ph / 5;
+  // 牌桌
+  var cx = W / 2, cy = H * 0.50, rx = W * 0.335, ry = H * 0.245;
+  if (ctx.ellipse) {
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,214,140,0.22)'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  var pos = [
+    { x: W * 0.18, y: H * 0.22 }, { x: W * 0.82, y: H * 0.22 },
+    { x: W * 0.09, y: H * 0.52 }, { x: W * 0.91, y: H * 0.52 },
+    { x: W * 0.50, y: H * 0.80 }
+  ];
+  var seatCol = ['#c98a5a', '#8a6fc9', '#5a9ac9', '#5ac98a', '#c95a7a'];
   for (var i = 0; i < 5; i++) {
-    var r = rows[i];
-    var cy = py + rowH * (i + 0.5);
-    if (i > 0) {
-      ctx.beginPath(); ctx.moveTo(px + pw * 0.05, py + rowH * i); ctx.lineTo(px + pw * 0.95, py + rowH * i);
-      ctx.strokeStyle = 'rgba(255,214,140,0.12)'; ctx.lineWidth = 1; ctx.stroke();
-    }
-    var cx = px + pw * 0.10;
-    ctx.beginPath(); ctx.arc(cx, cy, H * 0.030, 0, Math.PI * 2);
-    ctx.fillStyle = r.you ? 'rgba(255,214,140,0.85)' : 'rgba(0,0,0,0.30)';
+    var r = rows[i] || { seat: i, empty: true };
+    var p = pos[i];
+    var rr_ = H * 0.048;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr_, 0, Math.PI * 2);
+    ctx.fillStyle = r.empty ? 'rgba(0,0,0,0.28)' : seatCol[i];
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,214,140,0.50)'; ctx.lineWidth = 2; ctx.stroke();
-    text(ctx, String(r.seat + 1), cx, cy + 1, Math.round(H * 0.030), r.you ? '#123a28' : '#ffd98a', 'center', true);
-    text(ctx, r.label, px + pw * 0.20, cy, Math.round(H * 0.034), r.empty ? 'rgba(246,239,223,0.40)' : '#f6efdf', 'left', false);
-    if (r.owner) text(ctx, '房主', px + pw * 0.52, cy, Math.round(H * 0.026), '#ffd98a', 'left', false);
-    text(ctx, r.you ? (r.status + '（我）') : r.status, px + pw * 0.95, cy, Math.round(H * 0.028),
-      r.ready ? '#c9f29a' : (r.empty ? 'rgba(246,239,223,0.35)' : 'rgba(246,239,223,0.65)'), 'right', false);
+    ctx.strokeStyle = r.you ? '#ffd98a' : 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = r.you ? 3 : 2; ctx.stroke();
+    var nm = r.empty ? '空位' : (r.nick || ('玩家' + (r.seat + 1)));
+    if (r.empty) {
+      text(ctx, '+', p.x, p.y + 1, Math.round(rr_ * 0.8), 'rgba(255,255,255,0.35)', 'center', true);
+    } else {
+      text(ctx, nm.slice(0, 1), p.x, p.y + 1, Math.round(rr_ * 0.72), '#12301f', 'center', true);
+    }
+    text(ctx, nm, p.x, p.y + rr_ + H * 0.030, Math.round(H * 0.026), r.empty ? 'rgba(246,239,223,0.40)' : '#f6efdf', 'center', false);
+    if (!r.empty) {
+      if (r.owner) {
+        text(ctx, '房主', p.x + rr_ * 0.98, p.y - rr_ * 0.72, Math.round(H * 0.021), '#ffd98a', 'left', true);
+      }
+      var tag = r.ready ? '已准备' : '未准备';
+      var tw = W * 0.10, th = H * 0.038;
+      var ty = p.y - rr_ - H * 0.052;
+      _rr(ctx, p.x - tw / 2, ty, tw, th, th / 2);
+      ctx.fillStyle = r.ready ? 'rgba(126,224,138,0.20)' : 'rgba(0,0,0,0.25)';
+      ctx.fill();
+      ctx.strokeStyle = r.ready ? 'rgba(126,224,138,0.85)' : 'rgba(255,255,255,0.20)'; ctx.lineWidth = 1.5; ctx.stroke();
+      text(ctx, tag, p.x, ty + th / 2, Math.round(H * 0.021), r.ready ? '#9ff2a8' : 'rgba(246,239,223,0.55)', 'center', false);
+      if (r.offline) text(ctx, '离线', p.x + rr_ * 0.98, p.y + rr_ * 0.20, Math.round(H * 0.020), '#ff9a8a', 'left', true);
+    }
   }
 
   var me = lobby.myRow(view);
-  var by = H * 0.735, bh = H * 0.105;
-  var bw2 = W * 0.22;
-  var rx = W * 0.14;
-  _cardBtn(ctx, rx, by, bw2, bh, '✓', me && me.ready ? '取消' : '准备', { primary: !(me && me.ready) });
-  hits.push({ id: 'lobbyReady', x: rx, y: by, w: bw2, h: bh });
+  var by = H * 0.885, bh = H * 0.085;
+  var bw2 = W * 0.20;
+  var rx2 = W * 0.16;
+  _cardBtn(ctx, rx2, by, bw2, bh, '✓', me && me.ready ? '取消准备' : '准备', { primary: !(me && me.ready) });
+  hits.push({ id: 'lobbyReady', x: rx2, y: by, w: bw2, h: bh });
   if (lobby.canStart(view)) {
-    var sx = W * 0.38;
+    var sx = W * 0.42;
     _cardBtn(ctx, sx, by, bw2, bh, '▶', '开始', { primary: true });
     hits.push({ id: 'lobbyStart', x: sx, y: by, w: bw2, h: bh });
   } else {
-    var sx2 = W * 0.38;
-    _cardBtn(ctx, sx2, by, bw2, bh, '▶', '开始', {});
-    text(ctx, '等待房主/满员', sx2 + bw2 / 2, by + bh + H * 0.030, Math.round(H * 0.022), 'rgba(246,239,223,0.40)', 'center', false);
+    text(ctx, '等待房主开始（空位由 AI 补齐）', W * 0.64, by + bh / 2, Math.round(H * 0.022), 'rgba(246,239,223,0.45)', 'center', false);
   }
-  text(ctx, '房间号可复制给好友；空位在开局时由 AI 补齐（按创建时设置）', W / 2, H * 0.895, Math.round(H * 0.022), 'rgba(246,239,223,0.45)', 'center', false);
   return hits;
 }
 

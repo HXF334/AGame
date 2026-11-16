@@ -174,6 +174,9 @@ var uiMenuOpen = false;
 var uiPage = (typeof wx === 'undefined' || wx.__isMock) ? 'GAME' : 'HOME';
 var uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true };
 var uiJoinDigits = '';
+// [2026-11-16 用户] 单机「下一局」保留头像下方累计分, 只有重新进入(回首页再进)才清零
+var uiTotals = {};
+var uiTotalsApplied = false;
 var btnPageHits = [];   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/战绩/退出)
 var btnNetGateHits = [];   // [2026-11-16 用户] 联网闸门按钮（亮A/反A/身份）
 // [2026-11-16 用户] 联网 P2：房间等待页状态
@@ -977,7 +980,9 @@ function _resumeRoom() {
 }
 
 try {
-  initGame();
+  // [2026-11-16 用户] 真机/开发者工具默认进首页: 不能在首页就开局(会听到发牌音、控制台刷对局日志)
+  if (uiPage === 'GAME') initGame();
+  else log('首页就绪（未开局）');
 } catch (e) {
   log('初始化异常: ' + (e && e.message));
 }
@@ -1021,6 +1026,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiLastPhase = '';                 // [2026-11-09] 新局 -> 阶段重新记
   uiPrevPhaseSfx = null;            // [2026-11-15] 新局 -> 允许再次放胜负音
   uiRecordSubmitted = false;        // [P3 2026-11-16] 新局 -> 允许再次上报
+  uiTotalsApplied = false;          // [2026-11-16] 新局 -> 本局尚未累加累计分
   uiTickLastSec = -1;
   uiDealSfxRound = 0;                 // [2026-11-15] 新局发牌音重新计数
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
@@ -2081,6 +2087,14 @@ function _drawImpl() {
   if (gameState && gameState.phase === PHASES.GAME_END && uiPrevPhaseSfx !== PHASES.GAME_END) {
     // 先落状态, 避免副作用里重入 draw 时又走一遍
     uiPrevPhaseSfx = PHASES.GAME_END;
+    // [2026-11-16 用户] 单机累计分: 每局结算只累加一次; 「下一局」保留, 回首页再进才清零
+    if (!uiTotalsApplied) {
+      uiTotalsApplied = true;
+      try {
+        var _sc = _uiScores();
+        Object.keys(_sc).forEach(function (k) { uiTotals[k] = (uiTotals[k] || 0) + _sc[k]; });
+      } catch (e) {}
+    }
     _sfxEnd();
     // [2026-11-16] 战绩上报移出渲染帧: 云调用/日志回调不应发生在 draw 里
     if (typeof setTimeout === 'function') setTimeout(function () { _submitGameRecord(); }, 0);
@@ -2131,6 +2145,7 @@ function _drawImpl() {
     uiPassed: uiPassed,
     captureFx: uiCaptureFx,
     scores: _uiScores(),
+    totals: uiTotals,
     settlement: _uiSettleForDraw(),
     // [2026-10-27] 亮A 阶段用**亮A 倒计时**(5 秒); 出牌阶段用回合倒计时(20 秒)
     // [2026-11-03] 倒计时闹钟: 亮A 用亮A 的, 真人回合用回合的, **AI 回合用 AI 等待的**
@@ -2822,13 +2837,16 @@ function _createRoomNow() {
   if (uiRoomBusy) return;
   uiRoomBusy = true;
   showToast('创建房间…');
+  log('联网创建: 请求 config=' + JSON.stringify(uiCreateCfg));
   draw();
   _ensureOnlineClient().createRoom(uiCreateCfg, uiNick, '')['then'](function (r) {
     uiRoomBusy = false;
-    if (!r || !r.ok) { showToast('创建失败: ' + ((r && r.error) || '网络错误')); draw(); return; }
+    if (!r || !r.ok) { log('联网创建失败: ' + ((r && r.error) || '网络错误')); showToast('创建失败: ' + ((r && r.error) || '网络错误')); draw(); return; }
+    log('联网创建成功: 房间 ' + (r.room && r.room.id));
     _enterLobby(r.room);
   })['catch'](function (e) {
     uiRoomBusy = false;
+    log('联网创建异常: ' + (e && e.message));
     showToast('创建失败: ' + (e && e.message === 'NO_CLOUD' ? '当前环境不支持联网' : '网络错误'));
     draw();
   });
@@ -2839,18 +2857,22 @@ function _joinRoomNow(roomId) {
   if (!/^\d{6}$/.test(roomId)) { showToast('请输入 6 位房间号'); draw(); return; }
   uiRoomBusy = true;
   showToast('加入房间…');
+  log('联网加入: 请求 ' + roomId);
   draw();
   _ensureOnlineClient().joinRoom(roomId, uiNick, '')['then'](function (r) {
     uiRoomBusy = false;
     if (!r || !r.ok) {
       var map = { ROOM_NOT_FOUND: '房间不存在', ROOM_FULL: '房间已满', ROOM_STARTED: '房间已开局' };
+      log('联网加入失败: ' + ((r && r.error) || '网络错误'));
       showToast('加入失败: ' + (map[r && r.error] || (r && r.error) || '网络错误'));
       draw();
       return;
     }
+    log('联网加入成功: 房间 ' + (r.room && r.room.id) + ' seat=' + (r.room && r.room.you));
     _enterLobby(r.room);
   })['catch'](function (e) {
     uiRoomBusy = false;
+    log('联网加入异常: ' + (e && e.message));
     showToast('加入失败: ' + (e && e.message === 'NO_CLOUD' ? '当前环境不支持联网' : '网络错误'));
     draw();
   });
@@ -2881,30 +2903,78 @@ function _netSettleReady() {
   })['catch'](function (e) { log('联网准备失败: ' + (e && e.message)); });
 }
 
+var uiNumPrompt = null;
+// [2026-11-16 用户] 创建页「自定义」数字输入（微信数字键盘）
+function _promptNumber(key, max, def) {
+  var pending = { key: key, max: max || 99, def: def };
+  if (typeof wx === 'undefined' || !wx.showKeyboard) { _applyNumber(pending, def); return; }
+  uiNumPrompt = pending;
+  try {
+    wx.showKeyboard({
+      defaultValue: String(uiCreateCfg[key] == null ? def : uiCreateCfg[key]),
+      maxLength: 2, multiple: false, confirmHold: false, confirmType: 'done'
+    });
+  } catch (e) { uiNumPrompt = null; _applyNumber(pending, def); }
+}
+function _applyNumber(pending, value) {
+  var v = parseInt(value, 10);
+  if (isNaN(v)) return;
+  v = Math.max(0, Math.min(v, pending.max));
+  uiCreateCfg[pending.key] = v;
+  log('配置: ' + pending.key + '=' + v);
+  draw();
+}
+
 function _onPageTouch(x, y) {
+  // 数字键盘确认回调（只注册一次，取当前 pending）
+  if (typeof wx !== 'undefined' && wx.onKeyboardConfirm && !_onPageTouch._kbBound) {
+    _onPageTouch._kbBound = true;
+    wx.onKeyboardConfirm(function (res) {
+      if (!uiNumPrompt) return;
+      var p = uiNumPrompt; uiNumPrompt = null;
+      try { wx.hideKeyboard(); } catch (e) {}
+      _applyNumber(p, res && res.value);
+    });
+  }
   for (var i = 0; i < (btnPageHits || []).length; i++) {
     var b = btnPageHits[i];
     if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) continue;
-    if (b.id === 'homeCreate') { uiPage = 'CREATE'; draw(); return; }
-    if (b.id === 'homeJoin') { uiPage = 'JOIN'; uiJoinDigits = ''; draw(); return; }
-    if (b.id === 'homeSolo') { uiPage = 'GAME'; log('单机对局'); newGame(); return; }
+    if (b.id === 'homeCreate') { log('点击: 创建房间'); uiPage = 'CREATE'; draw(); return; }
+    if (b.id === 'homeJoin') { log('点击: 加入房间'); uiPage = 'JOIN'; uiJoinDigits = ''; draw(); return; }
+    if (b.id === 'homeSolo') { uiPage = 'GAME'; log('进入单机对局（分数清零）'); uiTotals = {}; uiTotalsApplied = false; newGame(); return; }
     if (b.id === 'createBack' || b.id === 'joinBack') { uiPage = 'HOME'; draw(); return; }
-    if (b.id === 'chip') { uiCreateCfg[b.key] = b.value; draw(); return; }
-    if (b.id === 'toggle') { uiCreateCfg[b.key] = !uiCreateCfg[b.key]; draw(); return; }
-    if (b.id === 'createConfirm') { _createRoomNow(); return; }
+    if (b.id === 'chip') { uiCreateCfg[b.key] = b.value; log('配置: ' + b.key + '=' + b.value); draw(); return; }
+    if (b.id === 'chipCustom') { _promptNumber(b.key, b.max, b.def); return; }
+    if (b.id === 'toggle') { uiCreateCfg[b.key] = !uiCreateCfg[b.key]; log('配置: ' + b.key + '=' + (uiCreateCfg[b.key] ? '开' : '关')); draw(); return; }
+    if (b.id === 'createConfirm') { log('点击: 创建房间'); _createRoomNow(); return; }
     if (b.id === 'joinDigit') { if (uiJoinDigits.length < 6) uiJoinDigits += b.d; draw(); return; }
     if (b.id === 'joinDel') { uiJoinDigits = uiJoinDigits.slice(0, -1); draw(); return; }
-    if (b.id === 'joinConfirm') { _joinRoomNow(uiJoinDigits); return; }
+    if (b.id === 'joinClear') { uiJoinDigits = ''; draw(); return; }
+    if (b.id === 'joinConfirm') { log('点击: 加入房间 ' + (uiJoinDigits || '(空)')); _joinRoomNow(uiJoinDigits); return; }
     if (b.id === 'settleReady') { _netSettleReady(); return; }
     if (b.id === 'settleHome') { _leaveRoomNow(); return; }
     if (b.id === 'lobbyLeave') { _leaveRoomNow(); return; }
     if (b.id === 'lobbyReady') {
       var _my = uiRoomView ? require('./src/lobby.js').myRow(uiRoomView) : null;
-      if (uiOnline && uiRoomView && uiRoomView.status === 'WAITING') uiOnline.ready(!(_my && _my.ready))['catch'](function () {});
+      if (!uiOnline) { log('准备失败: 未连接'); showToast('未连接房间'); return; }
+      if (!uiRoomView || uiRoomView.status !== 'WAITING') { log('准备失败: 当前状态 ' + (uiRoomView && uiRoomView.status)); return; }
+      var _nextReady = !(_my && _my.ready);
+      log('联网准备: ' + (_nextReady ? '准备' : '取消'));
+      uiOnline.ready(_nextReady)['then'](function (r) {
+        if (r && r.ok) { log('准备成功: seq=' + (r.room && r.room.seq)); }
+        else { log('准备失败: ' + ((r && r.error) || '未知')); showToast('准备失败: ' + ((r && r.error) || '未知')); }
+        draw();
+      })['catch'](function (e) { log('准备异常: ' + (e && e.message)); showToast('准备失败'); draw(); });
       return;
     }
     if (b.id === 'lobbyStart') {
-      if (uiOnline) uiOnline.start()['catch'](function () {});
+      if (!uiOnline) { log('开始失败: 未连接'); return; }
+      log('联网开始: 请求开局');
+      uiOnline.start()['then'](function (r) {
+        if (r && r.ok) log('开始成功: seq=' + (r.room && r.room.seq));
+        else { log('开始失败: ' + ((r && r.error) || '未知')); showToast('开始失败: ' + ((r && r.error) || '未知')); }
+        draw();
+      })['catch'](function (e) { log('开始异常: ' + (e && e.message)); showToast('开始失败'); draw(); });
       return;
     }
     return;

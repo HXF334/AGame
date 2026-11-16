@@ -19,12 +19,18 @@ function fail(error, extra) { return Object.assign({ ok: false, error: error }, 
 
 async function loadRoom(id) {
   var r = await db.collection(COL).doc(String(id)).get();
-  return r.data;
+  var room = r.data || null;
+  // [2026-11-16] 云数据库 doc().get() 会带 _id；房间对象再 set() 回去会报
+  //   "document.set:fail -501007 invalid parameters. 不能更新 _id 的值"
+  if (room) delete room._id;
+  return room;
 }
 
 async function saveRoom(room) {
   room.updatedAt = Date.now();
-  await db.collection(COL).doc(String(room.id)).set({ data: room });
+  var data = Object.assign({}, room);
+  delete data._id;
+  await db.collection(COL).doc(String(room.id)).set({ data: data });
 }
 
 async function ensureCollection() {
