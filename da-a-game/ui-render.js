@@ -1232,7 +1232,7 @@ function drawMenuPanel(ctx, st, m) {
   var rows = [
     { id: 'menuBgm', text: '音乐：' + (st.bgmOn ? '开' : '关') },
     { id: 'menuSfx', text: '音效：' + (st.sfxOn ? '开' : '关') },
-    { id: 'menuHistory', text: '战绩' },
+    { id: 'menuHistory', text: '最近战绩' },
     { id: 'menuExit', text: '退出游戏' }
   ];
   var items = [];

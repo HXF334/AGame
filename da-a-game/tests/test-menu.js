@@ -25,11 +25,11 @@ var texts = g.__renderTexts();
 function has(re) { return texts.some(function (t) { return re.test(t); }); }
 check('2.2 含音乐项', has(/^音乐：/), texts.join(' | '));
 check('2.3 含音效项', has(/^音效：/), texts.join(' | '));
-check('2.4 含战绩项', has(/^战绩$/), texts.join(' | '));
+check('2.4 含最近战绩项', has(/^最近战绩$/), texts.join(' | '));
 check('2.5 含退出游戏项', has(/退出游戏/), texts.join(' | '));
 
-// 3. 四项顺序：音乐 → 音效 → 战绩 → 退出
-check('3.1 顺序为 音乐→音效→战绩→退出',
+// 3. 四项顺序：音乐 → 音效 → 最近战绩 → 退出
+check('3.1 顺序为 音乐→音效→最近战绩→退出',
   items[0].y < items[1].y && items[1].y < items[2].y && items[2].y < items[3].y,
   items.map(function (i) { return i.id + '@' + Math.round(i.y); }).join(','));
 
