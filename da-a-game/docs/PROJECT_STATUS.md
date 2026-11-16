@@ -135,6 +135,8 @@
 - `tests/test-room-core.js`（23 断言）。
 - 对局数上限 **30**；局间只显示累计总分（D-094 修订）。
 
+- 云端：game-server 已部署（34 文件 / 93.2 KB），与 init-db/ecord-game/list-records/clear-records 同环境；rooms 集合首次写入时自愈创建。
+
 ## 5. 冒烟记录（开发者工具）
 
 - `tools/wechat-cli.ps1 islogin` → `{"login":true}`。
