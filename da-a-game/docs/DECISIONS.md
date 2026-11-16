@@ -477,3 +477,11 @@
 - 删除通过云函数 clear-records 执行：openid 只取服务端上下文，客户端不能指定删谁；分批（每批 100 条）删除自己的 game_records。
 - 清空成功后本地列表/汇总立即置空并提示「还没有战绩」；失败只提示错误，不影响对局。
 - 验证：	ests/test-ui-history.js 19 断言（清空命中区/文案/与关闭不重叠/二次确认态）；模拟器实点两次 → 控制台「战绩已清空: 1 条」，面板转为空态。
+## D-093 好友建房方案与 P0 前置（2026-11-16）
+
+- 分支：`feature/online-room` 独立开发，验收后合并 `main`；旧分支不采用。
+- 已确认：房间号 6 位；语音房暂不支持（置灰）；轮询 1.5–2s；创建页可勾选「空位 AI 补齐」；基础分 × 每局得分累计、6/12/18 局后总结算。
+- 架构：服务端权威（云函数 game-server + 云数据库 rooms/moves），客户端只提交动作/渲染视图；`src/public-view.js` 是唯一投影；发牌在服务端。
+- P0（main 上完成）：`tools/sync-engine.js`（engine 副本 + MANIFEST hash，`--check` 校验）、`src/protocol.js`（信封/白名单/baseSeq/actionKey）、`tests/lib/fake-cloud.js`（假云端 + 权威 server 骨架）、`src/timing.js`（计时集中）、`src/version.js`（协议/规则版本）、`docs/plans/ONLINE_ROOM.md`。
+- 验证：`tests/test-engine-sync.js`、`tests/test-protocol.js`、`tests/test-online-harness.js`、`tests/test-pack-manifest.js` 含新增 src 文件。
+- 后续 P1 起在分支上做 game-server 房间核心。

@@ -69,7 +69,10 @@ var EXPECTED_PACK = [
   'src/turn.js',
   'src/ui-mirror.js',
   'src/public-view.js',
+  'src/protocol.js',
+  'src/timing.js',
   'src/util.js',
+  'src/version.js',
   'src/win-loss.js'
 ];
 

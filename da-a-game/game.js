@@ -35,6 +35,8 @@ var canFanA = engine.canFanA;
 var canChooseIdentity = engine.canChooseIdentity;
 var calculateScore = require('./src/scoring.js').calculateScore;
 var uiMirror = require('./src/ui-mirror.js');
+// [2026-11-16 用户] 联网对战 P0：计时参数集中到 src/timing.js（客户端/服务端共用）
+var timing = require('./src/timing.js');
 // [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
 var uiRender = require('./ui-render.js');
 // [2026-11-15 用户] 音效 + 背景音乐(各有独立开关, 持久化)
@@ -133,7 +135,7 @@ var uiAiWaitPlan = 0;        // 当前 AI 回合的等待时长(ms); 0 = 还没�
 function _computeAiDelay(wxObj) {
   if (!wxObj) return 0;              // node 无头且没装 mock -> 本来就没有 ctx, AI 也不跑
   if (wxObj.__isMock) return 0;      // node 无头 + mock-wx -> 不能等(setTimeout 会让无头断言不稳)
-  return 1000;                       // 真机 / 微信开发者工具模拟器
+  return timing.AI_STEP;             // 真机 / 微信开发者工具模拟器
 }
 
 // [2026-11-11 用户] 「对局结束时的结算画面等一秒再弹出」
@@ -142,7 +144,7 @@ function _computeAiDelay(wxObj) {
 function _computeSettleDelay(wxObj) {
   if (!wxObj) return 0;
   if (wxObj.__isMock) return 0;
-  return 1000;
+  return timing.SETTLE;
 }
 var SETTLE_DELAY_MS = _computeSettleDelay(typeof wx !== 'undefined' ? wx : null);
 
@@ -290,7 +292,7 @@ let handCardHitboxes = [];
 // [2026-11-04 用户] 「发牌速度改为0.3秒」-> 500ms 改 300ms
 // [2026-11-06 用户] 「发牌速度改为0.2秒」-> 300ms 改 200ms(22 轮总时长 6.6s -> 4.4s)
 // 发牌期间**不设 5 秒闸门倒计时**(发牌本身就有时间窗); 发完后的亮A阶段仍保留 5 秒。
-var DEAL_STEP_MS = 200;            // 每轮间隔(真机/模拟器)
+var DEAL_STEP_MS = timing.DEAL_STEP;            // 每轮间隔(真机/模拟器)
 var uiDealTimer = null;           // 发牌定时器
 var uiDealAces = [];              // 发牌期间真人手里**已发的** A(可亮的候选)
 var uiDealSfxRound = 0;           // [2026-11-15] 发牌音效节流: 每 3 轮响一次
@@ -1348,11 +1350,11 @@ function uiHint() {
 // ===== 回合倒计时 (2026-10-24) =====
 // **只显示, 不代替玩家操作** —— 到 0 只提示「请尽快出牌」, 不自动过牌(不发明规则)。
 var uiTurnDeadline = 0;
-var uiTurnTotal = 20000;
+var uiTurnTotal = timing.TURN;
 // [2026-11-03 用户] 其他玩家行动时 -> **先显示倒计时闹钟**, 等他出牌/过牌后才隐藏
 //   (原来只有真人回合才有闹钟 -> AI 思考期间画面是静的, 不知道在等谁)
 var uiAiWaitDeadline = 0;   // 当前 AI 的等待截止时间(0 = 没有 AI 在等)
-var uiAiWaitTotal = 1000;   // 等待总时长(展示用)
+var uiAiWaitTotal = timing.AI_STEP;   // 等待总时长(展示用)
 var uiAiTurnAt = 0;         // 当前 AI 变成当前玩家的时间(算还要等多久)
 var uiTicker = null;
 
@@ -1387,7 +1389,7 @@ function uiStartTicker() {
 // ===== 亮A 决策倒计时 (2026-10-27 用户) =====
 // 亮A 阶段取消【不亮】按钮, 改成 5 秒倒计时; 到点没人亮 -> 自动跳过亮A进入强制排查
 var uiLiangDeadline = 0;
-var uiLiangTotal = 5000;
+var uiLiangTotal = timing.LIANG;
 var uiLiangTimer = null;
 // [2026-11-03 用户] 「亮A 有 5 秒倒计时, 给反A、次方亮明身份也加 5 秒倒计时」
 //   -> 三种**闸门**统一 5 秒; 超时按「等价于按了默认按钮」处理(亮A=不亮 / 反A=不反 / 身份=隐藏)。

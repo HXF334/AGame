@@ -56,11 +56,12 @@
 ## 5. 常用命令（都在 `da-a-game/` 下执行）
 
 ```powershell
-node tests/_runall.js            # 全量套件（当前 118 个，失败 0）
+node tests/_runall.js            # 全量套件（当前 121 个，失败 0）
 node tests/_runall.js 10 20      # 只跑第 10~20 个
 node tests/test-xxx.js           # 单套件
 node scripts/preflight.js --fast # 12 项静态体检（不含全量测试）
 node scripts/preflight.js        # 14 项（含全量测试 + AI 口径机检）
+node tools/sync-engine.js        # 改过 src/ 后：同步云函数引擎副本（--check 只校验）
 node tools/stress-games.js 50    # 随机整局压测（纯 node，50 局）
 node tools/gen-audio.js          # 重新生成占位音效/BGM（assets/audio/*.wav）
 node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账（只读）
@@ -90,7 +91,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 提交前至少满足：
 
-- `node tests/_runall.js` → `失败 0 次`（当前 **118 个套件**）。
+- `node tests/_runall.js` → `失败 0 次`（当前 **121 个套件**）。
 - `node scripts/preflight.js --fast` → 12/12。
 - 触及 UI / 流程：用开发者工具 `open` 后截图确认能进 PLAY、无运行时报错（见 `PROJECT_STATUS.md` 冒烟记录）。
 - 触及规则：跑 `audit-rules-vs-impl`。
@@ -115,6 +116,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 | `docs/ai/AI_POLICY.md` | AI 决策口径（排序键、阵营、取牌限制） |
 | `skills/da-a-game-rules/SKILL.md` | 游戏规则唯一来源 |
 | `docs/history/OPENCLAW_HANDOFF.md` | 历史迁移资料，**不是现行规范** |
+| `docs/plans/ONLINE_ROOM.md` | 好友建房对战方案（联网实施依据） |
 
 ### 文档更新节奏
 
@@ -125,7 +127,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 ## 11. 当前状态（摘要，详见 PROJECT_STATUS.md）
 
-- 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **118 套件 / 0 失败**。
+- 规则引擎、UI、AI、托管、结算已可完整跑通；全量 **121 套件 / 0 失败**。
 - 2026-11-12 已修：托管出完牌推风丢失（P0）、QKAA 优先普通 A 失效（P1）、`doPlay` 约 80 行死代码 + `isRoundOver` 口径不一致（P2）；轮次归属先由 D-059 让引擎持有并校验，再由 **D-061（方案 A）完全接管推进**（`src/turn.js` + `transition` 写入 `state.currentPlayer`，game.js 只镜像）；基础库统一为 3.17.6（D-060）；UI 镜像（`uiPlays`/`uiTakenPlay`/`uiPassed`/`uiTrickId`）改由引擎出牌流水派生（D-064）；点提示的候选枚举改为「不含大A → 双大A → 大A混出」（D-065）。
 - 2026-11-13 已修：点提示拆组排序（D-066）、AI 头像「AI」标志（D-067/D-068）、拆龙权重（D-069）、1V4/反A 整局 E2E（D-070）、压测工具（D-071）、UI 派生外移 `src/ui-mirror.js`（D-072）、devtools 改写配置自动还原（D-073）、拆龙只统计单张（D-074）。**跟牌分层以 D-076 为准**：同型不拆 → 同型拆 1 组 → 蛋子+ → 拆龙 → 拆对子；拆 ≥2 组硬禁。D-075 已被 D-076 修正。
 - 2026-11-15 已做：音效与背景音乐（D-077）——11 种音效分档播放、BGM 循环、顶栏「音」「乐」两个独立开关并持久化；素材为 `assets/audio/` 占位 WAV，可用同名文件替换；首次触摸解锁播放（微信自动播放限制）。
@@ -158,7 +160,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 - 改规则相关代码前，**读 `skills/da-a-game-rules/SKILL.md` 对应章节原文**。
 - 改任何文件前，**读目标文件的相关段落**；不凭记忆改代码。
-- 改完**跑受影响套件**；收尾**跑全量**（当前 118 套件）与 `preflight --fast`。
+- 改完**跑受影响套件**；收尾**跑全量**（当前 121 套件）与 `preflight --fast`。
 - 用户明确要求的验收点（画面/交互/真机）**必须验证**，不能用「应该没问题」代替。
 - 不确定时**宁可多花 token 确认**：读原文、跑测试、问用户，都不算浪费。
 - 视觉类改动：至少自己核对坐标/命中区/文字是否越界（单测断言或 1 张截图）。

@@ -1,0 +1,9 @@
+{
+  "name": "game-server",
+  "version": "1.0.0",
+  "description": "打大A 联网对战房间核心（P1 骨架）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}
