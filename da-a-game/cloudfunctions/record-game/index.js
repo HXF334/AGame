@@ -44,6 +44,18 @@ exports.main = async (event) => {
     openid: ctx.OPENID || '',
     createdAt: db.serverDate()
   };
-  const r = await db.collection('game_records').add({ data });
+  // 集合不存在时自愈（避免必须手动跑 init-db）：创建后重试一次
+  let r;
+  try {
+    r = await db.collection('game_records').add({ data });
+  } catch (e) {
+    const msg = (e && (e.errMsg || e.message)) || '';
+    if (e && (e.errCode === -502005 || /collection not exist|not exist/i.test(msg))) {
+      await db.createCollection('game_records');
+      r = await db.collection('game_records').add({ data });
+    } else {
+      return { ok: false, error: 'WRITE_FAILED', message: msg };
+    }
+  }
   return { ok: true, id: r._id };
 };
