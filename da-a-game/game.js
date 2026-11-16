@@ -39,6 +39,7 @@ var uiMirror = require('./src/ui-mirror.js');
 var timing = require('./src/timing.js');
 // [2026-10-24 UI 重做] 渲染层单独成文件: 纯几何, 可无头测试; **不含任何规则判断**
 var uiRender = require('./ui-render.js');
+var onlineMod = require('./src/online.js');   // [2026-11-16 用户] 联网 P2：房间控制器
 // [2026-11-15 用户] 音效 + 背景音乐(各有独立开关, 持久化)
 var audioMod = require('./audio.js');
 var audioMgr = null;
@@ -173,6 +174,12 @@ var uiPage = (typeof wx === 'undefined' || wx.__isMock) ? 'GAME' : 'HOME';
 var uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true };
 var uiJoinDigits = '';
 var btnPageHits = [];   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/战绩/退出)
+// [2026-11-16 用户] 联网 P2：房间等待页状态
+var uiRoomView = null;
+var uiOnline = null;
+var uiRoomTimer = null;
+var uiRoomBusy = false;
+var uiNick = '';
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
 var uiHistoryConfirm = false;   // [2026-11-16] 清空二次确认
@@ -2072,6 +2079,7 @@ function draw() {
     sfxOn: !!(_ensureAudio() && audioMgr.sfxOn()),
     bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
     page: uiPage,
+    room: uiRoomView,
     cfg: uiCreateCfg,
     digits: uiJoinDigits,
     menuOpen: uiMenuOpen,
@@ -2094,7 +2102,7 @@ function draw() {
   btnMenu = out.menuIcon;
   btnMenuItems = out.menuItems || [];
   btnHistoryBoxes = out.historyBoxes || [];
-  btnPageHits = out.home || out.createHits || out.joinHits || [];
+  btnPageHits = out.home || out.createHits || out.joinHits || out.lobbyHits || [];
   btnHistoryClear = null; btnHistoryClose = null;
   for (var _hb = 0; _hb < btnHistoryBoxes.length; _hb++) {
     if (btnHistoryBoxes[_hb].id === 'historyClear') btnHistoryClear = btnHistoryBoxes[_hb];
@@ -2598,6 +2606,99 @@ function advanceCurrentPlayer() {
   logStateIfChanged('换手');
 }
 
+// [2026-11-16 用户] 联网 P2：房间创建/加入/准备/轮询（不依赖 UI 绘制）
+function _cloudCall(name, data) {
+  return new Promise(function (resolve, reject) {
+    if (typeof wx === 'undefined' || !wx.cloud || !wx.cloud.callFunction) {
+      reject(new Error('NO_CLOUD'));
+      return;
+    }
+    if (!uiCloudInited) {
+      try { wx.cloud.init({ env: CLOUD_ENV, traceUser: true }); uiCloudInited = true; } catch (e) { /* 初始化失败由 callFunction 报错 */ }
+    }
+    wx.cloud.callFunction({ name: name, data: data }).then(function (r) {
+      resolve(r && r.result);
+    }, reject);
+  });
+}
+
+function _ensureOnlineClient() {
+  if (uiOnline) return uiOnline;
+  uiOnline = onlineMod.createClient({ call: _cloudCall, now: function () { return Date.now(); } });
+  uiOnline.onUpdate(function (view) {
+    uiRoomView = view;
+    if (uiPage === 'LOBBY') draw();
+  });
+  return uiOnline;
+}
+
+function _stopRoomPolling() {
+  if (uiRoomTimer) { clearInterval(uiRoomTimer); uiRoomTimer = null; }
+}
+
+function _startRoomPolling() {
+  _stopRoomPolling();
+  uiRoomTimer = setInterval(function () {
+    if (!uiOnline || !uiOnline.roomId || uiPage !== 'LOBBY') return;
+    uiOnline.poll()['catch'](function () { /* 轮询失败下轮再试 */ });
+  }, 1500);
+}
+
+function _enterLobby(view) {
+  uiRoomView = view;
+  uiPage = 'LOBBY';
+  _startRoomPolling();
+  log('进入房间: ' + (view && view.id) + ' seat=' + (view && view.you));
+  draw();
+}
+
+function _createRoomNow() {
+  if (uiRoomBusy) return;
+  uiRoomBusy = true;
+  showToast('创建房间…');
+  draw();
+  _ensureOnlineClient().createRoom(uiCreateCfg, uiNick, '')['then'](function (r) {
+    uiRoomBusy = false;
+    if (!r || !r.ok) { showToast('创建失败: ' + ((r && r.error) || '网络错误')); draw(); return; }
+    _enterLobby(r.room);
+  })['catch'](function (e) {
+    uiRoomBusy = false;
+    showToast('创建失败: ' + (e && e.message === 'NO_CLOUD' ? '当前环境不支持联网' : '网络错误'));
+    draw();
+  });
+}
+
+function _joinRoomNow(roomId) {
+  if (uiRoomBusy) return;
+  if (!/^\d{6}$/.test(roomId)) { showToast('请输入 6 位房间号'); draw(); return; }
+  uiRoomBusy = true;
+  showToast('加入房间…');
+  draw();
+  _ensureOnlineClient().joinRoom(roomId, uiNick, '')['then'](function (r) {
+    uiRoomBusy = false;
+    if (!r || !r.ok) {
+      var map = { ROOM_NOT_FOUND: '房间不存在', ROOM_FULL: '房间已满', ROOM_STARTED: '房间已开局' };
+      showToast('加入失败: ' + (map[r && r.error] || (r && r.error) || '网络错误'));
+      draw();
+      return;
+    }
+    _enterLobby(r.room);
+  })['catch'](function (e) {
+    uiRoomBusy = false;
+    showToast('加入失败: ' + (e && e.message === 'NO_CLOUD' ? '当前环境不支持联网' : '网络错误'));
+    draw();
+  });
+}
+
+function _leaveRoomNow() {
+  var c = uiOnline;
+  _stopRoomPolling();
+  uiRoomView = null;
+  uiPage = 'HOME';
+  if (c && c.roomId && typeof c.leave === 'function') c.leave()['catch'](function () {});
+  draw();
+}
+
 // === 触摸事件处理 (WeChat 小游戏) ===
 if (typeof wx !== 'undefined') {
   // [2026-11-16 用户] 联网 P2：首页/创建/加入三个页面的点击分发（GAME 页仍走原触摸逻辑）
@@ -2611,12 +2712,19 @@ function _onPageTouch(x, y) {
     if (b.id === 'createBack' || b.id === 'joinBack') { uiPage = 'HOME'; draw(); return; }
     if (b.id === 'chip') { uiCreateCfg[b.key] = b.value; draw(); return; }
     if (b.id === 'toggle') { uiCreateCfg[b.key] = !uiCreateCfg[b.key]; draw(); return; }
-    if (b.id === 'createConfirm') { showToast('联网对战页正在接入，先用单机对局'); draw(); return; }
+    if (b.id === 'createConfirm') { _createRoomNow(); return; }
     if (b.id === 'joinDigit') { if (uiJoinDigits.length < 6) uiJoinDigits += b.d; draw(); return; }
     if (b.id === 'joinDel') { uiJoinDigits = uiJoinDigits.slice(0, -1); draw(); return; }
-    if (b.id === 'joinConfirm') {
-      if (uiJoinDigits.length !== 6) { showToast('请输入 6 位房间号'); draw(); return; }
-      showToast('联网对战页正在接入，先用单机对局'); draw(); return;
+    if (b.id === 'joinConfirm') { _joinRoomNow(uiJoinDigits); return; }
+    if (b.id === 'lobbyLeave') { _leaveRoomNow(); return; }
+    if (b.id === 'lobbyReady') {
+      var _my = uiRoomView ? require('./src/lobby.js').myRow(uiRoomView) : null;
+      if (uiOnline && uiRoomView && uiRoomView.status === 'WAITING') uiOnline.ready(!(_my && _my.ready))['catch'](function () {});
+      return;
+    }
+    if (b.id === 'lobbyStart') {
+      if (uiOnline) uiOnline.start()['catch'](function () {});
+      return;
     }
     return;
   }
@@ -2886,6 +2994,15 @@ if (typeof module !== 'undefined' && module.exports) {
   __pageHits: function () { return btnPageHits; },
   __createCfg: function () { return uiCreateCfg; },
   __tapPage: function (x, y) { _onPageTouch(x, y); },
+  __roomView: function () { return uiRoomView; },
+  __setRoomView: function (v) { uiRoomView = v; if (v) uiPage = 'LOBBY'; draw(); },
+  __setOnlineClient: function (c) { uiOnline = c; },
+  __onlineClient: function () { return uiOnline; },
+  __createRoom: function () { _createRoomNow(); },
+  __joinRoom: function (id) { _joinRoomNow(id); },
+  __leaveRoom: function () { _leaveRoomNow(); },
+  __stopRoomPolling: function () { _stopRoomPolling(); },
+  __setNick: function (n) { uiNick = n || ''; },
     __setMenuOpen: function (v) { uiMenuOpen = !!v; draw(); },
     __menuItems: function () { return btnMenuItems || []; },
   __historyOpen: function () { return uiHistoryOpen; },

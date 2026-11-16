@@ -120,6 +120,12 @@ exports.main = async function (event) {
     await saveRoom(room);
     return ok({ room: roomMod.poll(room, openid) });
   }
+  if (action === 'leave') {
+    var lv = roomMod.leave(room, openid);
+    if (!lv.ok) return fail(lv.error);
+    await saveRoom(room);
+    return ok({ room: roomMod.poll(room, openid) });
+  }
   if (action === 'poll') {
     return ok({ room: roomMod.poll(room, openid) });
   }

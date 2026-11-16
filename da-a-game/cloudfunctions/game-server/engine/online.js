@@ -67,6 +67,7 @@ function createClient(opt) {
   c.poll = function () { return invoke('poll', { roomId: c.roomId }); };
   c.offline = function () { return invoke('offline', { roomId: c.roomId }); };
   c.online = function () { return invoke('online', { roomId: c.roomId }); };
+  c.leave = function () { return invoke('leave', { roomId: c.roomId }); };
 
   // 发动作：自动带 baseSeq；STALE 时先 poll 再重试一次
   c.send = function (type, payload) {

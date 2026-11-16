@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **124 个套件 / 执行 124 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **125 个套件 / 执行 124 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 124/124 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 124/125 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,7 +39,7 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：124 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
+- **测试**：125 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
 
 ## 4. 本轮变更（2026-11-12～13，D-059～D-076）
 
@@ -127,7 +127,8 @@
 
 - P2：新增 `src/online.js`（客户端房间控制器：create/join/ready/start/send/poll/offline/online；`send` 自动带 `baseSeq`，遇 `STALE` 先 poll 再用新 seq 重试一次）；`tests/test-online-client.js`（15 断言，用内存假云跑 5 人建房→准备→开局→断线）。
 - P3：`room.js` 增加 `deadline`、`tick`（到点由服务端 AI 代当前玩家走一步并记 `afk`）、`setOffline/setOnline`（对局中离线即 AI 接管，回来可恢复）；`index.js` 增加 `tick/offline/online` 动作。
-- 打包清单 47 个文件（`src/online.js`）。
+- 打包清单 48 个文件（`src/online.js`、`src/lobby.js`）。
+- **D-098**：创建/加入接真 —— `game.js` 调 `game-server` 的 `create/join/ready/start/leave/poll`，成功进入房间等待页（LOBBY）；新增 `src/lobby.js`（座位行/房主/可开局判断）与 `ui-render.drawLobbyPage`；服务端补 `leave`，`poll` 增加 `you` 与 `players[].owner`；`tests/test-lobby.js` 22 断言。
 
 - 新增 `cloudfunctions/game-server/room.js`：房间状态机 `WAITING → PLAYING → SETTLED → FINISHED`，`seq` 乐观锁 + `moveKeys` 幂等，空位 AI 补齐，全员准备自动开局，基础分累计，`poll` 只回 `publicView`（他人手牌只给张数）。
 - `cloudfunctions/game-server/index.js`：`ping/create/join/ready/start/apply/poll`，房间存 `rooms` 集合。
@@ -135,7 +136,7 @@
 - `tests/test-room-core.js`（23 断言）。
 - 对局数上限 **30**；局间只显示累计总分（D-094 修订）。
 
-- 云端：game-server 已部署（34 文件 / 93.2 KB），与 init-db/ecord-game/list-records/clear-records 同环境；rooms 集合首次写入时自愈创建。
+- 云端：game-server 已部署（35 文件 / 94.4 KB），与 init-db/record-game/list-records/clear-records 同环境；rooms 集合首次写入时自愈创建。
 
 ## 5. 冒烟记录（开发者工具）
 
@@ -146,6 +147,7 @@
 - **真机**：2V3 由用户验证正常（2026-11-12）；1V4 / 反A 由用户验证正常（2026-11-15）。
 - **2026-11-15 音效（D-077）**：模拟器重编译后顶栏显示「音」「乐」两个金色开关；点「音」变灰并输出 `音效: 关`，控制台无音频报错；再点恢复。BGM 在首次触摸后启动。
 - **2026-11-15 音效修复**：发牌音改为**每 3 轮**随发牌播放（原来只在发牌结束响一次；每轮又太急促）；BGM 采样率 12000→16000（非常规采样率部分平台解码失败）、合成振幅 0.055→0.16、音量 0.22→0.35；110/110 通过。
+- **2026-11-16 联网房间（D-098）**：开发者工具「创建房间」真实调用 `game-server`，进入房间 `164721` 等待页（5 座位、房主、未准备）；控制台 `进入房间: 164721 seat=0`，无红色报错。
 - **未做**：无（真机与模拟器整局均已覆盖；剩余只差发布前回归）。
 
 ## 6. 已知问题

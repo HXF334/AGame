@@ -254,11 +254,13 @@ function poll(room, viewerId) {
     rounds: room.config.rounds,
     seq: room.seq,
     deadline: room.deadline || 0,
+    you: me ? me.seat : null,
     config: room.config,
     players: room.players.map(function (p) {
       return {
         seat: p.seat, nick: p.nick, avatar: p.avatar,
-        ready: p.ready, ai: p.ai, offline: !!p.offline, afk: p.afk || 0, total: p.total
+        ready: p.ready, ai: p.ai, offline: !!p.offline, afk: p.afk || 0, total: p.total,
+        owner: p.openid === room.ownerId
       };
     }),
     lastRound: room.lastRound

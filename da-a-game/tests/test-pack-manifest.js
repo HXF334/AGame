@@ -46,6 +46,7 @@ var EXPECTED_PACK = [
   'project.config.json',
   'ui-render.js',
   'src/ai.js',
+  'src/lobby.js',
   'src/ai-memory.js',
   'src/endgame.js',
   'src/flow.js',

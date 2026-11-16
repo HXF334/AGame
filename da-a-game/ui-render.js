@@ -1408,7 +1408,7 @@ function _cardBtn(ctx, x, y, w, h, glyph, label, opt) {
   ctx.fillStyle = 'rgba(255,214,140,0.16)'; ctx.fill();
   ctx.strokeStyle = 'rgba(255,214,140,0.65)'; ctx.lineWidth = 2; ctx.stroke();
   text(ctx, glyph, cx, cy + 1, Math.round(r * 1.05), '#ffd98a', 'center', true);
-  text(ctx, label, x + h * 1.02, cy, Math.round(h * 0.30), '#f6efdf', 'left', true);
+  text(ctx, label, x + h * 1.42, cy, Math.round(h * 0.30), '#f6efdf', 'left', true);
 }
 
 function _radio(ctx, cx, cy, r, on) {
@@ -1450,7 +1450,7 @@ function drawCreatePage(ctx, st) {
   _pageBg(ctx, W, H);
   text(ctx, '创建房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
 
-  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.15, h: H * 0.07 };
+  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.19, h: H * 0.07 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
@@ -1509,7 +1509,7 @@ function drawJoinPage(ctx, st) {
   var digits = String(st.digits || '');
   _pageBg(ctx, W, H);
   text(ctx, '加入房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.15, h: H * 0.07 };
+  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.19, h: H * 0.07 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
@@ -1546,10 +1546,66 @@ function drawJoinPage(ctx, st) {
   return hits;
 }
 
+// [2026-11-16 用户] 联网 P2：房间等待页
+function drawLobbyPage(ctx, st) {
+  var lobby = require('./src/lobby.js');
+  var W = st.W, H = st.H;
+  var view = st.room || null;
+  var rows = lobby.seatRows(view);
+  _pageBg(ctx, W, H);
+  var back = { id: 'lobbyLeave', x: W * 0.03, y: H * 0.045, w: W * 0.17, h: H * 0.07 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '离开', {});
+  var hits = [back];
+
+  text(ctx, view ? ('房间 ' + view.id) : '连接中…', W / 2, H * 0.085, Math.round(H * 0.058), '#ffd98a', 'center', true);
+  text(ctx, lobby.statusText(view), W / 2, H * 0.145, Math.round(H * 0.028), 'rgba(246,239,223,0.70)', 'center', false);
+
+  var px = W * 0.08, py = H * 0.185, pw = W * 0.84, ph = H * 0.50;
+  _panel(ctx, px, py, pw, ph, H * 0.03);
+  var rowH = ph / 5;
+  for (var i = 0; i < 5; i++) {
+    var r = rows[i];
+    var cy = py + rowH * (i + 0.5);
+    if (i > 0) {
+      ctx.beginPath(); ctx.moveTo(px + pw * 0.05, py + rowH * i); ctx.lineTo(px + pw * 0.95, py + rowH * i);
+      ctx.strokeStyle = 'rgba(255,214,140,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    var cx = px + pw * 0.10;
+    ctx.beginPath(); ctx.arc(cx, cy, H * 0.030, 0, Math.PI * 2);
+    ctx.fillStyle = r.you ? 'rgba(255,214,140,0.85)' : 'rgba(0,0,0,0.30)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,214,140,0.50)'; ctx.lineWidth = 2; ctx.stroke();
+    text(ctx, String(r.seat + 1), cx, cy + 1, Math.round(H * 0.030), r.you ? '#123a28' : '#ffd98a', 'center', true);
+    text(ctx, r.label, px + pw * 0.20, cy, Math.round(H * 0.034), r.empty ? 'rgba(246,239,223,0.40)' : '#f6efdf', 'left', false);
+    if (r.owner) text(ctx, '房主', px + pw * 0.52, cy, Math.round(H * 0.026), '#ffd98a', 'left', false);
+    text(ctx, r.you ? (r.status + '（我）') : r.status, px + pw * 0.95, cy, Math.round(H * 0.028),
+      r.ready ? '#c9f29a' : (r.empty ? 'rgba(246,239,223,0.35)' : 'rgba(246,239,223,0.65)'), 'right', false);
+  }
+
+  var me = lobby.myRow(view);
+  var by = H * 0.735, bh = H * 0.105;
+  var bw2 = W * 0.22;
+  var rx = W * 0.14;
+  _cardBtn(ctx, rx, by, bw2, bh, '✓', me && me.ready ? '取消' : '准备', { primary: !(me && me.ready) });
+  hits.push({ id: 'lobbyReady', x: rx, y: by, w: bw2, h: bh });
+  if (lobby.canStart(view)) {
+    var sx = W * 0.38;
+    _cardBtn(ctx, sx, by, bw2, bh, '▶', '开始', { primary: true });
+    hits.push({ id: 'lobbyStart', x: sx, y: by, w: bw2, h: bh });
+  } else {
+    var sx2 = W * 0.38;
+    _cardBtn(ctx, sx2, by, bw2, bh, '▶', '开始', {});
+    text(ctx, '等待房主/满员', sx2 + bw2 / 2, by + bh + H * 0.030, Math.round(H * 0.022), 'rgba(246,239,223,0.40)', 'center', false);
+  }
+  text(ctx, '房间号可复制给好友；空位在开局时由 AI 补齐（按创建时设置）', W / 2, H * 0.895, Math.round(H * 0.022), 'rgba(246,239,223,0.45)', 'center', false);
+  return hits;
+}
+
 function render(ctx, st) {
   if (st.page === 'HOME') return { page: 'HOME', home: drawHomePage(ctx, st) };
   if (st.page === 'CREATE') return { page: 'CREATE', createHits: drawCreatePage(ctx, st) };
   if (st.page === 'JOIN') return { page: 'JOIN', joinHits: drawJoinPage(ctx, st) };
+  if (st.page === 'LOBBY') return { page: 'LOBBY', lobbyHits: drawLobbyPage(ctx, st) };
   var m = layout(st.W, st.H);
   drawTable(ctx, m);
   var memoIcon = { x: m.memo.iconX, y: m.memo.iconY, r: m.memo.iconR };
@@ -1591,6 +1647,7 @@ function noopCtx() {
 }
 
 module.exports = {
+  drawLobbyPage: drawLobbyPage,
   render: render, layout: layout,
   drawHomePage: drawHomePage, drawCreatePage: drawCreatePage, drawJoinPage: drawJoinPage, handLayout: handLayout, buttonLayout: buttonLayout,
   cardPower: cardPower, seatOrder: seatOrder, noopCtx: noopCtx,

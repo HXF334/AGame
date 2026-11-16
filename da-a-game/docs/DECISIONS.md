@@ -518,3 +518,13 @@
 - 加入页：6 位数字键盘 + 删除。
 - 当前阶段创建/加入按钮只提示「联网对战页正在接入」，等对局页（netDriver）完成后接 `online.js`。
 - 测试：`tests/test-pages.js` 16 断言。
+
+## D-098 联网 P2：房间等待页与创建/加入接真（2026-11-16）
+
+- 创建/加入不再只是提示：`game.js` 用 `src/online.js` 真调 `game-server`（`create`/`join`/`ready`/`start`/`leave`/`poll`），成功后进入房间等待页（`uiPage='LOBBY'`）。
+- 新增 `src/lobby.js`（纯函数）：`seatRows(view)`（固定 5 行，标记空位/AI/离线/房主/我）、`myRow`、`canStart`（房主 + 满员或创建时勾了 AI 补齐）、`statusText`。
+- `ui-render.js` 新增 `drawLobbyPage`：房间号、状态、5 个座位（座位号/昵称/房主/准备状态）、准备（可取消）、开始（仅房主且条件满足）、离开；命中区 `lobbyReady/lobbyStart/lobbyLeave`。
+- `game.js`：`uiRoomView/uiOnline/uiRoomTimer`；`_cloudCall` 包 `wx.cloud.callFunction`（懒 `wx.cloud.init`）；`_ensureOnlineClient` 注入 `onUpdate`；进入房间后 1.5s 轮询（离开/回首页停止）；`_leaveRoomNow` 调 `leave` 并回 HOME。
+- 服务端 `game-server` 补 `leave` action；`room.poll` 增加 `you`（当前座位）与 `players[].owner`，供等待页展示。
+- 轮询到 `status=PLAYING` 时暂仍停在等待页并显示「对局中（第 x/y 局）」，对局页 netDriver 下一阶段接。
+- 测试：`tests/test-lobby.js` 22 断言；全量 125/125；`preflight --fast` 12/12。
