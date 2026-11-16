@@ -47,5 +47,20 @@ check('5.1 关闭命中区存在', !!close);
 if (close) {
   check('5.2 命中区在画布内', close.x >= 0 && close.y >= 0 && close.x + close.w <= 2000 && close.y + close.h <= 2000);
 }
+
+// 6. [2026-11-16 用户] 清空按钮：默认「清空」，点击后变「确认清空」，且与关闭不重叠
+g.__setHistory([{ key: 'r1', time: '11-16 13:00', mode: '2V3暗打', result: '胜', delta: '+6' }], 'ok', '最近 1 局：1 胜 0 负 0 平');
+var clearBox = g.__historyClear ? g.__historyClear() : null;
+check('6.1 清空命中区存在', !!clearBox);
+check('6.2 文案为清空', g.__renderTexts().indexOf('清空') >= 0, g.__renderTexts().join(' | '));
+if (clearBox && close) {
+  check('6.3 清空与关闭不重叠', clearBox.x + clearBox.w <= close.x || close.x + close.w <= clearBox.x);
+}
+g.__setHistoryConfirm(true);
+check('6.4 确认态文案', g.__renderTexts().indexOf('确认清空') >= 0);
+check('6.5 确认态标记', g.__historyConfirm() === true);
+g.__setHistoryConfirm(false);
+check('6.6 取消确认恢复', g.__renderTexts().indexOf('清空') >= 0 && g.__historyConfirm() === false);
+
 console.log('\ntest-ui-history: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

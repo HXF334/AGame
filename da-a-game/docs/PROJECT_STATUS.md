@@ -108,6 +108,8 @@
 | `da-a-game/src/history.js` | **新增（D-091）**：战绩页格式化（模式/胜负/时间/得分 + 汇总），纯函数、无 wx。 |
 | `da-a-game/cloudfunctions/list-records/` | **新增（D-091）**：按 `openid` 查最近 N 局，只回传白名单字段；集合不存在按空列表处理。 |
 | `da-a-game/ui-render.js` / `game.js`（D-091） | 菜单加「战绩」项；`drawHistoryPanel` 居中面板（标题/汇总/行/关闭），打开时拉取并渲染，点击任意处关闭。 |
+| da-a-game/tests/test-ui-history.js（D-092） | 清空按钮：命中区/文案/与关闭不重叠/二次确认态，19 断言。 |
+| da-a-game/cloudfunctions/clear-records/（D-092） | **新增**：按 openid 分批删除自己的 game_records，返回 {ok,removed}。 |
 | `da-a-game/tests/test-history.js` / `test-ui-history.js` | **新增（20 / 13 断言）**：格式化与汇总、面板文本、空态与错误态、关闭命中区。 |
 
 ### 文档与 skills

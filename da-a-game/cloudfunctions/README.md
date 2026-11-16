@@ -23,3 +23,9 @@
 
 - 环境 ID：`cloud1-d5g7uiwu9f7caacdc`
 - 客户端初始化（已接在 `game.js` 的 `_submitGameRecord`）：`wx.cloud.init({ env: 'cloud1-d5g7uiwu9f7caacdc', traceUser: true })`
+
+## clear-records（清空我的战绩）
+
+1. 右键 \clear-records\ → **上传并部署：云端安装依赖**。
+2. 不需要参数；openid 由服务端上下文取，只删当前用户自己的记录。
+3. 返回 \{ ok: true, removed: N }\。

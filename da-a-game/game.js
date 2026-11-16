@@ -169,6 +169,7 @@ var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
 var uiMenuOpen = false;   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/战绩/退出)
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
+var uiHistoryConfirm = false;   // [2026-11-16] 清空二次确认
 var uiHistoryState = 'idle';       // idle | loading | ok | err
 var uiHistoryRows = [];
 var uiHistorySummary = '';
@@ -1655,7 +1656,9 @@ var btnMemo = null;
 var btnPlayerHits = null;
 var btnMenu = null;     // [2026-11-16] 左上角菜单按钮
 var btnMenuItems = [];  // [2026-11-16] 菜单下拉项
-var btnHistoryClose = null;  // [2026-11-16 战绩页] 面板关闭按钮
+var btnHistoryBoxes = [];   // [2026-11-16 战绩页] 面板底部按钮(清空/关闭)
+var btnHistoryClear = null;
+var btnHistoryClose = null;
 var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
 // [2026-10-25] 「不出」的 UI 层状态: 引擎的 passedPlayers 语义是「有人出牌就清全员」,
 //   但用户要的是「只在**该玩家自己**出牌时才清」+ 推风/新一轮时全清 -> 这里独立维护
@@ -1903,6 +1906,7 @@ function _uiMemoOpenNow() {
 function _openHistory() {
   uiMenuOpen = false;
   uiHistoryOpen = true;
+  uiHistoryConfirm = false;
   uiHistoryState = 'loading';
   uiHistoryRows = [];
   uiHistorySummary = '';
@@ -1952,6 +1956,33 @@ function _loadHistory() {
   }
 }
 
+// [2026-11-16 用户] 清空当前用户的战绩（二次确认后调用云函数）
+function _clearHistory() {
+  if (typeof wx === 'undefined' || !wx || !wx.cloud || wx.__isMock) {
+    uiHistoryState = 'err'; uiHistoryError = '当前环境不支持云端战绩'; draw();
+    return false;
+  }
+  try {
+    if (!uiCloudInited) { wx.cloud.init({ env: CLOUD_ENV, traceUser: true }); uiCloudInited = true; }
+    uiHistoryState = 'loading'; uiHistoryConfirm = false; uiHistoryError = ''; draw();
+    wx.cloud.callFunction({
+      name: 'clear-records', data: {},
+      success: function (r) {
+        var res = (r && r.result) || {};
+        if (!res.ok) { uiHistoryState = 'err'; uiHistoryError = '清空失败: ' + (res.error || 'unknown'); draw(); return; }
+        uiHistoryState = 'ok'; uiHistoryRows = []; uiHistorySummary = '';
+        log('战绩已清空: ' + (res.removed || 0) + ' 条'); draw();
+      },
+      fail: function (e) {
+        uiHistoryState = 'err'; uiHistoryError = '清空失败: ' + ((e && e.errMsg) || e); draw();
+      }
+    });
+    return true;
+  } catch (e) {
+    uiHistoryState = 'err'; uiHistoryError = '清空异常: ' + e.message; draw();
+    return false;
+  }
+}
 function _submitGameRecord() {
   if (uiRecordSubmitted) return false;
   uiRecordSubmitted = true;
@@ -2036,6 +2067,7 @@ function draw() {
     bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
     menuOpen: uiMenuOpen,
     historyOpen: uiHistoryOpen,
+    historyConfirm: uiHistoryConfirm,
     historyState: uiHistoryState,
     historyRows: uiHistoryRows,
     historySummary: uiHistorySummary,
@@ -2052,7 +2084,12 @@ function draw() {
   btnAutoPlay = out.autoPlayIcon;
   btnMenu = out.menuIcon;
   btnMenuItems = out.menuItems || [];
-  btnHistoryClose = out.historyClose || null;
+  btnHistoryBoxes = out.historyBoxes || [];
+  btnHistoryClear = null; btnHistoryClose = null;
+  for (var _hb = 0; _hb < btnHistoryBoxes.length; _hb++) {
+    if (btnHistoryBoxes[_hb].id === 'historyClear') btnHistoryClear = btnHistoryBoxes[_hb];
+    if (btnHistoryBoxes[_hb].id === 'historyClose') btnHistoryClose = btnHistoryBoxes[_hb];
+  }
   btnAutoPlayCancel = out.cancelAutoPlayBox;
 }
 
@@ -2565,7 +2602,19 @@ if (typeof wx !== 'undefined') {
 
     // [2026-11-16 战绩页] 面板打开时，点任意位置关闭（含「关闭」按钮），不穿透到牌桌
     if (uiHistoryOpen) {
+      // [2026-11-16 用户] 面板内「清空」需点两次确认；其它位置点击直接关闭
+      var _hbHit = null;
+      for (var hi = 0; hi < (btnHistoryBoxes || []).length; hi++) {
+        var hbb = btnHistoryBoxes[hi];
+        if (x >= hbb.x && x <= hbb.x + hbb.w && y >= hbb.y && y <= hbb.y + hbb.h) { _hbHit = hbb; break; }
+      }
+      if (_hbHit && _hbHit.id === 'historyClear') {
+        if (!uiHistoryConfirm) { uiHistoryConfirm = true; draw(); return; }
+        _clearHistory();
+        return;
+      }
       uiHistoryOpen = false;
+      uiHistoryConfirm = false;
       draw();
       return;
     }
@@ -2799,10 +2848,14 @@ if (typeof module !== 'undefined' && module.exports) {
     uiHistoryState = state || 'ok';
     uiHistoryRows = rows || [];
     uiHistorySummary = summary || '';
+    uiHistoryConfirm = false;
     draw();
   },
   __openHistory: function () { _openHistory(); },
   __historyClose: function () { return btnHistoryClose; },
+  __historyClear: function () { return btnHistoryClear; },
+  __setHistoryConfirm: function (v) { uiHistoryConfirm = !!v; draw(); },
+  __historyConfirm: function () { return uiHistoryConfirm; },
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)

@@ -1292,14 +1292,27 @@ function drawHistoryPanel(ctx, st, m) {
     });
   }
 
-  var bw = Math.round(w * 0.44), bh = closeH;
-  var bx = x + (w - bw) / 2, by = y + h - pad - bh;
+  // [2026-11-16 用户] 底部两个按钮：清空(二次确认) + 关闭
+  var bh = closeH, by = y + h - pad - bh;
+  var gap = Math.round(w * 0.04);
+  var bw = Math.round((w - pad * 2 - gap) / 2);
+  var clearX = x + pad, closeX = clearX + bw + gap;
+  var confirm = !!st.historyConfirm;
+  ctx.fillStyle = confirm ? '#a8322c' : '#5a3a22';
+  rr(ctx, clearX, by, bw, bh, Math.round(bh * 0.30)); ctx.fill();
+  ctx.strokeStyle = confirm ? '#ff9a9a' : '#ffd98a'; ctx.lineWidth = 2;
+  rr(ctx, clearX, by, bw, bh, Math.round(bh * 0.30)); ctx.stroke();
+  text(ctx, confirm ? '确认清空' : '清空', clearX + bw / 2, by + bh / 2, Math.round(bh * 0.38), '#ffffff', 'center', true);
+
   ctx.fillStyle = '#8a5a2b';
-  rr(ctx, bx, by, bw, bh, Math.round(bh * 0.30)); ctx.fill();
+  rr(ctx, closeX, by, bw, bh, Math.round(bh * 0.30)); ctx.fill();
   ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 2;
-  rr(ctx, bx, by, bw, bh, Math.round(bh * 0.30)); ctx.stroke();
-  text(ctx, '关闭', bx + bw / 2, by + bh / 2, Math.round(bh * 0.42), '#ffffff', 'center', true);
-  return { x: bx, y: by, w: bw, h: bh, id: 'historyClose' };
+  rr(ctx, closeX, by, bw, bh, Math.round(bh * 0.30)); ctx.stroke();
+  text(ctx, '关闭', closeX + bw / 2, by + bh / 2, Math.round(bh * 0.42), '#ffffff', 'center', true);
+  return [
+    { x: clearX, y: by, w: bw, h: bh, id: 'historyClear' },
+    { x: closeX, y: by, w: bw, h: bh, id: 'historyClose' }
+  ];
 }
 
 function render(ctx, st) {
@@ -1326,7 +1339,7 @@ function render(ctx, st) {
     seatHitboxes: seatInfo.boxes, markHits: seatInfo.markHits,
     memoIcon: memoIcon, autoPlayIcon: autoIcon, layout: m,
     menuIcon: menuIcon, menuItems: menuItems,
-    historyClose: historyHit,
+    historyBoxes: historyHit,
     switchHit: switchHit,
     settleBtn: settleBtn,
     cancelAutoPlayBox: (handBoxes || []).filter(function (b) { return b.cancelAutoPlay; })[0] || null,

@@ -471,3 +471,9 @@
 - 云端：新增 `cloudfunctions/list-records`，按 `getWXContext().OPENID` 查询，`orderBy('createdAt','desc').limit(10)`，只回传白名单字段、不回传 openid；集合不存在时按空列表返回。
 - 记录补充：`record.js` 增加 `humanId`（本局真人座位），`record-game` 白名单同步接收，历史行据此显示「我这局得分」。
 - 胜负口径：按「我方阵营 vs winner」判定（`perspective`），不看分数正负；无 `humanId` 的旧记录计为「未知」、不混进平局。- 验证：`tests/test-history.js`（22 断言）、`tests/test-ui-history.js`（13 断言）；全量 118/118、preflight 12/12；已部署 `list-records` 并在模拟器打开面板验证。
+## D-092 战绩清空（2026-11-16）
+
+- 菜单 →「最近战绩」面板底部新增「清空」按钮，**点一次变「确认清空」，再点才真正删除**，避免误触。
+- 删除通过云函数 clear-records 执行：openid 只取服务端上下文，客户端不能指定删谁；分批（每批 100 条）删除自己的 game_records。
+- 清空成功后本地列表/汇总立即置空并提示「还没有战绩」；失败只提示错误，不影响对局。
+- 验证：	ests/test-ui-history.js 19 断言（清空命中区/文案/与关闭不重叠/二次确认态）；模拟器实点两次 → 控制台「战绩已清空: 1 条」，面板转为空态。
