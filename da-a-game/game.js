@@ -1005,7 +1005,8 @@ if (typeof wx !== 'undefined' && wx.onHide) {
 //   漏掉任何一项都会让上一局残留污染新局(历史上出过的对局是其中一种)。
 function newGame() {
   log('=== 点击【下一局】===');
-humanPlayer = _randomSeat();      // 真人每局随机座位
+  // [2026-11-17 用户] 座位本次启动固定：下一局保持同一玩家，重启小程序才换。
+  humanPlayer = humanPlayer || _randomSeat();
   uiStopTicker();                   // 清理倒计时定时器
   uiStartTicker();                  // [2026-10-27] 重新起 ticker(原来只停不启 -> 下一局后倒计时不刷新, 玩家看不到)
   uiToast = null;                   // 清残留提示
@@ -2159,6 +2160,7 @@ function _drawImpl() {
     sfxOn: !!(_ensureAudio() && audioMgr.sfxOn()),
     bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
     page: uiPage,
+    prompt: uiCreatePrompt,
     room: uiRoomView,
     cfg: uiCreateCfg,
     digits: uiJoinDigits,
@@ -2889,6 +2891,18 @@ function _leaveRoomNow() {
   draw();
 }
 
+// [2026-11-17 用户] 菜单「退出游戏」= 回首页（单机/联网都一样），不是退出小程序。
+function _exitToHome() {
+  uiMenuOpen = false;
+  if (uiNet || uiRoomView) { _leaveRoomNow(); return; }
+  log('退出游戏 → 回首页');
+  _stopRoomPolling();
+  uiAutoPlay = false;
+  if (uiAutoPlayTimer) { clearTimeout(uiAutoPlayTimer); uiAutoPlayTimer = null; }
+  uiPage = 'HOME';
+  draw();
+}
+
 // === 触摸事件处理 (WeChat 小游戏) ===
 if (typeof wx !== 'undefined') {
   // [2026-11-16 用户] 联网 P2：首页/创建/加入三个页面的点击分发（GAME 页仍走原触摸逻辑）
@@ -2903,38 +2917,36 @@ function _netSettleReady() {
   })['catch'](function (e) { log('联网准备失败: ' + (e && e.message)); });
 }
 
-var uiNumPrompt = null;
-// [2026-11-16 用户] 创建页「自定义」数字输入（微信数字键盘）
+var uiCreatePrompt = null; // [2026-11-17 用户] 画布内数字键盘浮层 {key,max,label,text}
 function _promptNumber(key, max, def) {
-  var pending = { key: key, max: max || 99, def: def };
-  if (typeof wx === 'undefined' || !wx.showKeyboard) { _applyNumber(pending, def); return; }
-  uiNumPrompt = pending;
-  try {
-    wx.showKeyboard({
-      defaultValue: String(uiCreateCfg[key] == null ? def : uiCreateCfg[key]),
-      maxLength: 2, multiple: false, confirmHold: false, confirmType: 'done'
-    });
-  } catch (e) { uiNumPrompt = null; _applyNumber(pending, def); }
+  var label = key === 'rounds' ? '局数' : (key === 'baseScore' ? '底分' : '出牌时间');
+  uiCreatePrompt = { key: key, max: max || 99, def: def, label: label, text: '' };
+  log('打开自定义输入: ' + label);
+  draw();
 }
-function _applyNumber(pending, value) {
-  var v = parseInt(value, 10);
-  if (isNaN(v)) return;
-  v = Math.max(0, Math.min(v, pending.max));
-  uiCreateCfg[pending.key] = v;
-  log('配置: ' + pending.key + '=' + v);
+function _applyPrompt() {
+  if (!uiCreatePrompt) return;
+  var v = parseInt(uiCreatePrompt.text, 10);
+  if (isNaN(v) || v < 1) { showToast('请输入 1–' + uiCreatePrompt.max); return; }
+  v = Math.min(v, uiCreatePrompt.max);
+  uiCreateCfg[uiCreatePrompt.key] = v;
+  log('配置: ' + uiCreatePrompt.key + '=' + v);
+  uiCreatePrompt = null;
   draw();
 }
 
 function _onPageTouch(x, y) {
-  // 数字键盘确认回调（只注册一次，取当前 pending）
-  if (typeof wx !== 'undefined' && wx.onKeyboardConfirm && !_onPageTouch._kbBound) {
-    _onPageTouch._kbBound = true;
-    wx.onKeyboardConfirm(function (res) {
-      if (!uiNumPrompt) return;
-      var p = uiNumPrompt; uiNumPrompt = null;
-      try { wx.hideKeyboard(); } catch (e) {}
-      _applyNumber(p, res && res.value);
-    });
+  if (uiCreatePrompt) {
+    for (var pi = 0; pi < (btnPageHits || []).length; pi++) {
+      var pb = btnPageHits[pi];
+      if (x < pb.x || x > pb.x + pb.w || y < pb.y || y > pb.y + pb.h) continue;
+      if (pb.id === 'promptDigit') { if (uiCreatePrompt.text.length < 2) uiCreatePrompt.text += pb.d; draw(); return; }
+      if (pb.id === 'promptDel') { uiCreatePrompt.text = uiCreatePrompt.text.slice(0, -1); draw(); return; }
+      if (pb.id === 'promptClear') { uiCreatePrompt.text = ''; draw(); return; }
+      if (pb.id === 'promptCancel') { uiCreatePrompt = null; draw(); return; }
+      if (pb.id === 'promptOk') { _applyPrompt(); return; }
+    }
+    return;
   }
   for (var i = 0; i < (btnPageHits || []).length; i++) {
     var b = btnPageHits[i];
@@ -2945,7 +2957,8 @@ function _onPageTouch(x, y) {
     if (b.id === 'createBack' || b.id === 'joinBack') { uiPage = 'HOME'; draw(); return; }
     if (b.id === 'chip') { uiCreateCfg[b.key] = b.value; log('配置: ' + b.key + '=' + b.value); draw(); return; }
     if (b.id === 'chipCustom') { _promptNumber(b.key, b.max, b.def); return; }
-    if (b.id === 'toggle') { uiCreateCfg[b.key] = !uiCreateCfg[b.key]; log('配置: ' + b.key + '=' + (uiCreateCfg[b.key] ? '开' : '关')); draw(); return; }
+    if (b.id === 'toggleOn') { uiCreateCfg[b.key] = true; log('配置: ' + b.key + '=开'); draw(); return; }
+    if (b.id === 'toggleOff') { uiCreateCfg[b.key] = false; log('配置: ' + b.key + '=关'); draw(); return; }
     if (b.id === 'createConfirm') { log('点击: 创建房间'); _createRoomNow(); return; }
     if (b.id === 'joinDigit') { if (uiJoinDigits.length < 6) uiJoinDigits += b.d; draw(); return; }
     if (b.id === 'joinDel') { uiJoinDigits = uiJoinDigits.slice(0, -1); draw(); return; }
@@ -3035,10 +3048,7 @@ wx.onTouchStart(function (e) {
             _openHistory();
             return;
           } else if (mit.id === 'menuExit') {
-            log('退出游戏');
-            uiMenuOpen = false;
-            if (wx && typeof wx.exitMiniProgram === 'function') wx.exitMiniProgram({});
-            draw();
+            _exitToHome();
             return;
           }
           uiMenuOpen = false;
@@ -3256,6 +3266,7 @@ if (typeof module !== 'undefined' && module.exports) {
   __pageHits: function () { return btnPageHits; },
   __netGateHits: function () { return btnNetGateHits; },
   __createCfg: function () { return uiCreateCfg; },
+  __prompt: function () { return uiCreatePrompt; },
   __tapPage: function (x, y) { _onPageTouch(x, y); },
   __roomView: function () { return uiRoomView; },
   __setRoomView: function (v) { uiRoomView = v; if (v) uiPage = 'LOBBY'; draw(); },
@@ -3268,6 +3279,8 @@ if (typeof module !== 'undefined' && module.exports) {
   __setNick: function (n) { uiNick = n || ''; },
     __setMenuOpen: function (v) { uiMenuOpen = !!v; draw(); },
     __menuItems: function () { return btnMenuItems || []; },
+  __human: function () { return humanPlayer; },
+  __exitHome: function () { _exitToHome(); },
   __historyOpen: function () { return uiHistoryOpen; },
   __setHistory: function (rows, state, summary) {
     uiHistoryOpen = true;

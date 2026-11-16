@@ -196,7 +196,85 @@ function advanceToPlay(room) {
 
 // [2026-11-16 用户] 联网闸门：亮A / 反A / 身份选择各开一个等待窗口（GATE_MS），
 // 超时走默认（强制排查 / 不反 / 隐藏身份）；其余闸门自动推进。
-var GATE_MS = 8000;
+// [2026-11-17 用户] 联网闸门与单机一致：AI 座位像单机 AI 一样自己决定亮A/反A/身份；
+// 只有真人可操作时才开窗口（5 秒），无人可操作立即走默认，避免停在「等待其他玩家」。
+var GATE_MS = 5000;
+
+function seatPlayer(room, id) {
+  var seat = SEATS.indexOf(id);
+  return room.players.filter(function (p) { return p.seat === seat; })[0];
+}
+function handOf(room, id) {
+  var st = room.state;
+  for (var i = 0; i < st.players.length; i++) if (st.players[i].id === id) return st.players[i].hand || [];
+  return [];
+}
+function isAiSeat(room, id) {
+  var p = seatPlayer(room, id);
+  return !p || p.ai || p.offline;
+}
+function humanCanGate(room) {
+  var st = room.state;
+  var i, p, id;
+  if (st.phase === 'LIANG_A') {
+    for (i = 0; i < room.players.length; i++) {
+      p = room.players[i]; id = seatId(p.seat);
+      if (!(p.ai || p.offline) && engine.canLiangA(st, id).ok) return true;
+    }
+    return false;
+  }
+  if (st.phase === 'FAN_A') {
+    for (i = 0; i < room.players.length; i++) {
+      p = room.players[i]; id = seatId(p.seat);
+      if (!(p.ai || p.offline) && engine.canFanA(st, id).ok) return true;
+    }
+    return false;
+  }
+  if (st.phase === 'IDENTITY_CHOICE') {
+    var who = engine.identityChooser(st);
+    return !!who && !isAiSeat(room, who);
+  }
+  return false;
+}
+function aiGate(room) {
+  var st = room.state;
+  if (!st) return false;
+  var i, p, id, hand, aces, suit, ids, acted = false;
+  if (st.phase === 'LIANG_A') {
+    for (i = 0; i < room.players.length; i++) {
+      p = room.players[i];
+      if (!(p.ai || p.offline)) continue;
+      id = seatId(p.seat);
+      if (!engine.canLiangA(st, id).ok) continue;
+      hand = handOf(room, id);
+      aces = hand.filter(function (c) { return c.suit && c.rank === 14; });
+      if (!aces.length) continue;
+      if (gateApply(room, 'LIANG_A', { playerId: id, suit: aces[0].suit })) acted = true;
+    }
+    return acted;
+  }
+  if (st.phase === 'FAN_A') {
+    var mainSuit = st['主A'] && st['主A'].suit;
+    for (i = 0; i < room.players.length; i++) {
+      p = room.players[i];
+      if (!(p.ai || p.offline)) continue;
+      id = seatId(p.seat);
+      if (!engine.canFanA(st, id).ok) continue;
+      hand = handOf(room, id);
+      aces = hand.filter(function (c) { return c.suit && c.rank === 14 && c.suit !== mainSuit; });
+      if (aces.length < 2) continue;
+      suit = aces[0].suit;
+      ids = hand.filter(function (c) { return c.suit === suit && c.rank === 14; }).map(function (c) { return c.id; });
+      if (gateApply(room, 'FAN_A', { playerId: id, suit: suit, cardIds: ids })) acted = true;
+    }
+    return acted;
+  }
+  if (st.phase === 'IDENTITY_CHOICE') {
+    var who = engine.identityChooser(st);
+    if (who && isAiSeat(room, who)) return gateApply(room, 'CHOOSE_IDENTITY', { playerId: who, choice: 'HIDDEN' });
+  }
+  return false;
+}
 function gateApply(room, type, payload) {
   var r = engine.transition(room.state, { type: type, payload: payload || {} });
   if (!r || !r.ok) return false;
@@ -208,12 +286,15 @@ function gateTick(room, now) {
   if (!room.state) return room;
   var t = now || Date.now();
   var guard = 0;
-  while (guard++ < 10) {
+  while (guard++ < 12) {
     var ph = room.state.phase;
     if (ph === 'PLAY') break;
     if (ph === 'LIANG_A' || ph === 'FAN_A' || ph === 'IDENTITY_CHOICE') {
-      if (!room.gateDeadline) { room.gateDeadline = t + GATE_MS; break; }
-      if (t < room.gateDeadline) break;
+      if (aiGate(room)) { room.gateDeadline = 0; continue; }
+      if (humanCanGate(room)) {
+        if (!room.gateDeadline) { room.gateDeadline = t + GATE_MS; break; }
+        if (t < room.gateDeadline) break;
+      }
       if (ph === 'LIANG_A') gateApply(room, 'FORCED_CHECK', {});
       else if (ph === 'FAN_A') gateApply(room, 'REVEAL_BOTTOM', {});
       else {

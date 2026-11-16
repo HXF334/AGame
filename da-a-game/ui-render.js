@@ -1458,41 +1458,42 @@ function drawCreatePage(ctx, st) {
   var px = W * 0.06, py = H * 0.135, pw = W * 0.88, ph = H * 0.655;
   _panel(ctx, px, py, pw, ph, H * 0.028);
 
+  var labelX = px + pw * 0.045;
+  var optX = px + pw * 0.205;
+  var step = pw * 0.132;
+  var fsLabel = Math.round(H * 0.033);
+  var fsValue = Math.round(H * 0.031);
+  var rowH = ph / 7.4;
+
   function chipLabel(key, v) {
     if (key === 'turnSeconds') return v === 0 ? '无限制' : v + 's';
     if (key === 'baseScore') return v + '分';
     return v + '局';
   }
   var rows = [
-    { key: 'rounds', label: '局数', values: [6, 12, 18, 30], max: 30, def: 12 },
+    { key: 'rounds', label: '局数', values: [6, 12, 18], max: 30, def: 12 },
     { key: 'baseScore', label: '底分', values: [1, 2, 5], max: 99, def: 1 },
     { key: 'turnSeconds', label: '出牌时间', values: [0, 30, 60], max: 99, def: 0 }
   ];
-  var rowH = ph / 8.0;
-  var labelX = px + pw * 0.05;
-  var optX = px + pw * 0.155;
   for (var r = 0; r < rows.length; r++) {
     var row = rows[r];
-    var y = py + rowH * (0.9 + r * 1.15);
-    text(ctx, row.label, labelX, y, Math.round(H * 0.033), 'rgba(246,239,223,0.88)', 'left', true);
-    var vals = row.values.slice();
+    var y = py + rowH * (0.85 + r * 1.0);
+    text(ctx, row.label, labelX, y, fsLabel, 'rgba(246,239,223,0.88)', 'left', true);
     var cur = cfg[row.key];
-    var custom = vals.indexOf(cur) < 0;
-    if (custom) vals.push(cur);
-    var step = pw * 0.150;
-    for (var c = 0; c < vals.length; c++) {
-      var val = vals[c];
-      var cx = optX + c * step;
-      var on = cur === val;
+    var custom = row.values.indexOf(cur) < 0;
+    var c = 0;
+    for (c = 0; c < row.values.length; c++) {
+      var val = row.values[c], cx = optX + c * step, on = cur === val;
       _radio(ctx, cx, y, H * 0.015, on);
-      text(ctx, chipLabel(row.key, val), cx + H * 0.026, y, Math.round(H * 0.030),
+      text(ctx, chipLabel(row.key, val), cx + H * 0.027, y, fsValue,
         on ? '#c9f29a' : 'rgba(246,239,223,0.78)', 'left', false);
-      hits.push({ id: 'chip', key: row.key, value: val, x: cx - H * 0.016, y: y - H * 0.026, w: step * 0.95, h: H * 0.052 });
+      hits.push({ id: 'chip', key: row.key, value: val, x: cx - H * 0.015, y: y - H * 0.026, w: step * 0.94, h: H * 0.052 });
     }
-    var ccx = optX + vals.length * step;
-    _radio(ctx, ccx, y, H * 0.015, false);
-    text(ctx, '自定义', ccx + H * 0.026, y, Math.round(H * 0.028), 'rgba(255,214,140,0.85)', 'left', false);
-    hits.push({ id: 'chipCustom', key: row.key, max: row.max, def: row.def, x: ccx - H * 0.016, y: y - H * 0.026, w: step * 0.95, h: H * 0.052 });
+    var ccx = optX + c * step;
+    _radio(ctx, ccx, y, H * 0.015, custom);
+    var cl = custom ? '自定义 ' + chipLabel(row.key, cur) : '自定义';
+    text(ctx, cl, ccx + H * 0.027, y, fsValue, custom ? '#c9f29a' : 'rgba(255,214,140,0.88)', 'left', false);
+    hits.push({ id: 'chipCustom', key: row.key, max: row.max, def: row.def, x: ccx - H * 0.015, y: y - H * 0.026, w: step * 1.25, h: H * 0.052 });
   }
 
   var toggles = [
@@ -1500,20 +1501,57 @@ function drawCreatePage(ctx, st) {
     { key: 'memo', label: '记牌器' },
     { key: 'aiFill', label: '空位 AI 补齐' }
   ];
-  for (var t = 0; t < toggles.length; t++) {
-    var ty = py + rowH * (4.9 + t * 0.85);
-    var on2 = !!cfg[toggles[t].key];
-    text(ctx, toggles[t].label, labelX, ty, Math.round(H * 0.031), 'rgba(246,239,223,0.82)', 'left', false);
-    var cx2 = optX + H * 0.004;
-    _radio(ctx, cx2, ty, H * 0.015, on2);
-    text(ctx, on2 ? '开' : '关', cx2 + H * 0.026, ty, Math.round(H * 0.029),
-      on2 ? '#c9f29a' : 'rgba(246,239,223,0.60)', 'left', false);
-    hits.push({ id: 'toggle', key: toggles[t].key, x: cx2 - H * 0.016, y: ty - H * 0.024, w: W * 0.16, h: H * 0.048 });
+  for (var t2 = 0; t2 < toggles.length; t2++) {
+    var ty = py + rowH * (3.85 + t2 * 0.92);
+    var on2 = !!cfg[toggles[t2].key];
+    text(ctx, toggles[t2].label, labelX, ty, fsLabel, 'rgba(246,239,223,0.82)', 'left', false);
+    _radio(ctx, optX, ty, H * 0.015, on2);
+    text(ctx, '开', optX + H * 0.027, ty, fsValue, on2 ? '#c9f29a' : 'rgba(246,239,223,0.60)', 'left', false);
+    hits.push({ id: 'toggleOn', key: toggles[t2].key, x: optX - H * 0.015, y: ty - H * 0.026, w: step * 0.9, h: H * 0.052 });
+    var ox = optX + step * 1.35;
+    _radio(ctx, ox, ty, H * 0.015, !on2);
+    text(ctx, '关', ox + H * 0.027, ty, fsValue, !on2 ? '#c9f29a' : 'rgba(246,239,223,0.60)', 'left', false);
+    hits.push({ id: 'toggleOff', key: toggles[t2].key, x: ox - H * 0.015, y: ty - H * 0.026, w: step * 0.9, h: H * 0.052 });
   }
 
   var cw = W * 0.46, chh = H * 0.100, cx3 = (W - cw) / 2, cy3 = H * 0.825;
   _cardBtn(ctx, cx3, cy3, cw, chh, '▶', '创建房间', { primary: true });
   hits.push({ id: 'createConfirm', x: cx3, y: cy3, w: cw, h: chh });
+
+  // [2026-11-17 用户] 自定义数字键盘（画布内浮层，不依赖 wx.showKeyboard）
+  if (st.prompt) {
+    var pr = st.prompt;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+    var bw2 = W * 0.55, bh2 = H * 0.72, bx2 = (W - bw2) / 2, by2 = (H - bh2) / 2;
+    _panel(ctx, bx2, by2, bw2, bh2, H * 0.030);
+    text(ctx, pr.label + '（1–' + pr.max + '）', bx2 + bw2 / 2, by2 + H * 0.065, Math.round(H * 0.036), '#ffd98a', 'center', true);
+    text(ctx, pr.text || '—', bx2 + bw2 / 2, by2 + H * 0.135, Math.round(H * 0.056), '#f6efdf', 'center', true);
+    var ks = [['1','2','3'],['4','5','6'],['7','8','9'],['⌫','0','清空']];
+    var kw = bw2 * 0.20, kh = H * 0.068, gx = bw2 * 0.06, gy = H * 0.010;
+    var kx0 = bx2 + (bw2 - (3 * kw + 2 * gx)) / 2;
+    var ky0 = by2 + H * 0.185;
+    for (var r3 = 0; r3 < ks.length; r3++) {
+      for (var c3 = 0; c3 < 3; c3++) {
+        var kk = ks[r3][c3];
+        var x3 = kx0 + c3 * (kw + gx), y3 = ky0 + r3 * (kh + gy);
+        _rr(ctx, x3, y3, kw, kh, H * 0.018);
+        ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,214,140,0.34)'; ctx.lineWidth = 2; ctx.stroke();
+        text(ctx, kk, x3 + kw / 2, y3 + kh / 2, Math.round(kh * (kk === '清空' ? 0.34 : 0.46)), '#f6efdf', 'center', true);
+        if (kk === '⌫') hits.push({ id: 'promptDel', x: x3, y: y3, w: kw, h: kh });
+        else if (kk === '清空') hits.push({ id: 'promptClear', x: x3, y: y3, w: kw, h: kh });
+        else hits.push({ id: 'promptDigit', d: kk, x: x3, y: y3, w: kw, h: kh });
+      }
+    }
+    var bw3 = bw2 * 0.34, bh3 = H * 0.075;
+    var bx3 = bx2 + bw2 * 0.10, by3 = by2 + bh2 - bh3 - H * 0.025;
+    _cardBtn(ctx, bx3, by3, bw3, bh3, '×', '取消', {});
+    hits.push({ id: 'promptCancel', x: bx3, y: by3, w: bw3, h: bh3 });
+    var ox3 = bx2 + bw2 - bw3 - bw2 * 0.10;
+    _cardBtn(ctx, ox3, by3, bw3, bh3, '✓', '确定', { primary: true });
+    hits.push({ id: 'promptOk', x: ox3, y: by3, w: bw3, h: bh3 });
+  }
   return hits;
 }
 
@@ -1568,73 +1606,65 @@ function drawLobbyPage(ctx, st) {
   var W = st.W, H = st.H;
   var view = st.room || null;
   var rows = lobby.seatRows(view);
+  var m = layout(W, H);
   _pageBg(ctx, W, H);
 
   var back = { id: 'lobbyLeave', x: W * 0.03, y: H * 0.045, w: W * 0.17, h: H * 0.07 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '离开', {});
   var hits = [back];
 
-  text(ctx, view ? ('房间 ' + view.id) : '连接中…', W / 2, H * 0.075, Math.round(H * 0.050), '#ffd98a', 'center', true);
-  text(ctx, lobby.statusText(view), W / 2, H * 0.135, Math.round(H * 0.026), 'rgba(246,239,223,0.70)', 'center', false);
+  text(ctx, view ? ('房间 ' + view.id) : '连接中…', W / 2, H * 0.072, Math.round(H * 0.048), '#ffd98a', 'center', true);
+  text(ctx, lobby.statusText(view), W / 2, H * 0.128, Math.round(H * 0.026), 'rgba(246,239,223,0.70)', 'center', false);
 
-  // 牌桌
-  var cx = W / 2, cy = H * 0.50, rx = W * 0.335, ry = H * 0.245;
-  if (ctx.ellipse) {
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,214,140,0.22)'; ctx.lineWidth = 2; ctx.stroke();
-  }
-
-  var pos = [
-    { x: W * 0.18, y: H * 0.22 }, { x: W * 0.82, y: H * 0.22 },
-    { x: W * 0.09, y: H * 0.52 }, { x: W * 0.91, y: H * 0.52 },
-    { x: W * 0.50, y: H * 0.80 }
-  ];
+  // [2026-11-17 用户] 等待页直接用正式对局的牌桌与座位位置，不再单独设计一套
+  drawTable(ctx, m);
+  var slots = [m.me, m.seats[0], m.seats[1], m.seats[2], m.seats[3]];
   var seatCol = ['#c98a5a', '#8a6fc9', '#5a9ac9', '#5ac98a', '#c95a7a'];
   for (var i = 0; i < 5; i++) {
     var r = rows[i] || { seat: i, empty: true };
-    var p = pos[i];
-    var rr_ = H * 0.048;
+    var p = slots[i] || { x: W / 2, y: H * 0.5 };
+    var rr_ = Math.round(m.vh * 0.052);
     ctx.beginPath(); ctx.arc(p.x, p.y, rr_, 0, Math.PI * 2);
-    ctx.fillStyle = r.empty ? 'rgba(0,0,0,0.28)' : seatCol[i];
+    ctx.fillStyle = r.empty ? 'rgba(0,0,0,0.30)' : seatCol[i];
     ctx.fill();
-    ctx.strokeStyle = r.you ? '#ffd98a' : 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = r.you ? 3 : 2; ctx.stroke();
+    ctx.strokeStyle = r.you ? '#ffd98a' : 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = r.you ? 3 : 1.5; ctx.stroke();
     var nm = r.empty ? '空位' : (r.nick || ('玩家' + (r.seat + 1)));
     if (r.empty) {
-      text(ctx, '+', p.x, p.y + 1, Math.round(rr_ * 0.8), 'rgba(255,255,255,0.35)', 'center', true);
+      text(ctx, '+', p.x, p.y + 1, Math.round(rr_ * 0.9), 'rgba(255,255,255,0.40)', 'center', true);
     } else {
-      text(ctx, nm.slice(0, 1), p.x, p.y + 1, Math.round(rr_ * 0.72), '#12301f', 'center', true);
+      text(ctx, (nm || '?').slice(0, 1), p.x, p.y + 1, Math.round(rr_ * 0.66), '#12301f', 'center', true);
     }
-    text(ctx, nm, p.x, p.y + rr_ + H * 0.030, Math.round(H * 0.026), r.empty ? 'rgba(246,239,223,0.40)' : '#f6efdf', 'center', false);
+    text(ctx, nm, p.x, p.y + rr_ + H * 0.030, Math.round(H * 0.025), r.empty ? 'rgba(246,239,223,0.40)' : '#f6efdf', 'center', false);
     if (!r.empty) {
-      if (r.owner) {
-        text(ctx, '房主', p.x + rr_ * 0.98, p.y - rr_ * 0.72, Math.round(H * 0.021), '#ffd98a', 'left', true);
-      }
       var tag = r.ready ? '已准备' : '未准备';
-      var tw = W * 0.10, th = H * 0.038;
-      var ty = p.y - rr_ - H * 0.052;
+      var tw = W * 0.095, th = H * 0.034;
+      var ty = p.y - rr_ - H * 0.050;
       _rr(ctx, p.x - tw / 2, ty, tw, th, th / 2);
-      ctx.fillStyle = r.ready ? 'rgba(126,224,138,0.20)' : 'rgba(0,0,0,0.25)';
+      ctx.fillStyle = r.ready ? 'rgba(126,224,138,0.20)' : 'rgba(0,0,0,0.28)';
       ctx.fill();
-      ctx.strokeStyle = r.ready ? 'rgba(126,224,138,0.85)' : 'rgba(255,255,255,0.20)'; ctx.lineWidth = 1.5; ctx.stroke();
-      text(ctx, tag, p.x, ty + th / 2, Math.round(H * 0.021), r.ready ? '#9ff2a8' : 'rgba(246,239,223,0.55)', 'center', false);
-      if (r.offline) text(ctx, '离线', p.x + rr_ * 0.98, p.y + rr_ * 0.20, Math.round(H * 0.020), '#ff9a8a', 'left', true);
+      ctx.strokeStyle = r.ready ? 'rgba(126,224,138,0.85)' : 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1.5; ctx.stroke();
+      text(ctx, tag, p.x, ty + th / 2, Math.round(H * 0.020), r.ready ? '#9ff2a8' : 'rgba(246,239,223,0.60)', 'center', false);
+      if (r.owner) text(ctx, '房主', p.x + rr_ * 0.98, p.y - rr_ * 0.70, Math.round(H * 0.020), '#ffd98a', 'left', true);
+      if (r.offline) text(ctx, '离线', p.x + rr_ * 0.98, p.y + rr_ * 0.18, Math.round(H * 0.019), '#ff9a8a', 'left', true);
     }
   }
 
+  // [2026-11-17 用户] 按钮整体居中：开始在上、准备在下，都水平居中
   var me = lobby.myRow(view);
-  var by = H * 0.885, bh = H * 0.085;
-  var bw2 = W * 0.20;
-  var rx2 = W * 0.16;
-  _cardBtn(ctx, rx2, by, bw2, bh, '✓', me && me.ready ? '取消准备' : '准备', { primary: !(me && me.ready) });
-  hits.push({ id: 'lobbyReady', x: rx2, y: by, w: bw2, h: bh });
+  var bw2 = W * 0.34, bh = H * 0.080;
   if (lobby.canStart(view)) {
-    var sx = W * 0.42;
-    _cardBtn(ctx, sx, by, bw2, bh, '▶', '开始', { primary: true });
-    hits.push({ id: 'lobbyStart', x: sx, y: by, w: bw2, h: bh });
+    var sy = H * 0.795;
+    _cardBtn(ctx, (W - bw2) / 2, sy, bw2, bh, '▶', '开始', { primary: true });
+    hits.push({ id: 'lobbyStart', x: (W - bw2) / 2, y: sy, w: bw2, h: bh });
+    var ry = H * 0.885;
+    _cardBtn(ctx, (W - bw2) / 2, ry, bw2, bh, '✓', me && me.ready ? '取消准备' : '准备', {});
+    hits.push({ id: 'lobbyReady', x: (W - bw2) / 2, y: ry, w: bw2, h: bh });
   } else {
-    text(ctx, '等待房主开始（空位由 AI 补齐）', W * 0.64, by + bh / 2, Math.round(H * 0.022), 'rgba(246,239,223,0.45)', 'center', false);
+    var ry2 = H * 0.855;
+    _cardBtn(ctx, (W - bw2) / 2, ry2, bw2, bh, '✓', me && me.ready ? '取消准备' : '准备', { primary: !(me && me.ready) });
+    hits.push({ id: 'lobbyReady', x: (W - bw2) / 2, y: ry2, w: bw2, h: bh });
+    text(ctx, '等待房主开始（空位可由 AI 补齐）', W / 2, ry2 - H * 0.040, Math.round(H * 0.022), 'rgba(246,239,223,0.50)', 'center', false);
   }
   return hits;
 }

@@ -24,12 +24,20 @@ g.__setPage('HOME');
 tap(hit('homeCreate'));
 ok('to CREATE', g.__page() === 'CREATE');
 ok('default rounds 12', g.__createCfg().rounds === 12);
-var chips = (g.__pageHits() || []).filter(function (b) { return b.id === 'chip' && b.key === 'rounds' && b.value === 30; });
-ok('rounds chip 30 exists', chips.length === 1);
-tap(chips[0]);
-ok('rounds set 30', g.__createCfg().rounds === 30);
+var chips30 = (g.__pageHits() || []).filter(function (b) { return b.id === 'chip' && b.key === 'rounds' && b.value === 30; });
+ok('no preset 30 (must use custom)', chips30.length === 0);
+var custom = (g.__pageHits() || []).filter(function (b) { return b.id === 'chipCustom' && b.key === 'rounds'; })[0];
+ok('rounds custom chip exists', !!custom);
+tap(custom);
+ok('custom prompt opens', !!g.__prompt());
+['3', '0'].forEach(function (d) {
+  var b = (g.__pageHits() || []).filter(function (h) { return h.id === 'promptDigit' && h.d === d; })[0];
+  tap(b);
+});
+tap(hit('promptOk'));
+ok('rounds custom set 30', g.__createCfg().rounds === 30);
 
-var memo = (g.__pageHits() || []).filter(function (b) { return b.id === 'toggle' && b.key === 'memo'; })[0];
+var memo = (g.__pageHits() || []).filter(function (b) { return b.id === 'toggleOn' && b.key === 'memo'; })[0];
 ok('memo default off', g.__createCfg().memo === false);
 tap(memo);
 ok('memo toggled on', g.__createCfg().memo === true);
@@ -55,6 +63,15 @@ ok('back HOME from JOIN', g.__page() === 'HOME');
 tap(hit('homeSolo'));
 ok('solo enters GAME', g.__page() === 'GAME');
 ok('solo starts a game', !!g.gameState() && typeof g.gameState().phase === 'string');
+
+
+// 7) [2026-11-17] 座位本次启动固定 + 退出回首页
+var h0 = g.__human();
+g.newGame();
+g.newGame();
+ok('human seat fixed across next rounds', g.__human() === h0);
+g.__exitHome();
+ok('exit menu returns HOME', g.__page() === 'HOME');
 
 console.log('pages: ' + checks + ' checks passed');
 process.exit(0);
