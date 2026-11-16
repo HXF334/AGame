@@ -1,0 +1,9 @@
+{
+  "name": "record-game",
+  "version": "1.0.0",
+  "description": "写入一局战绩到 game_records（字段白名单）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

@@ -447,3 +447,19 @@
 - 收益：闸门顺序只有一个定义点；后续把「自动/真人决策判定」「发牌推进」搬进 flow 时有稳定落点。
 - 边界：本次只搬表与顺序查询，定时器、UI、transition 调用仍留在 `game.js`；行为零变化（115/115 全绿）。
 - 验证：`tests/test-flow.js`（10 断言：顺序、索引、下一档、末档、越界、game.js 引用同一张表）；`test-pack-manifest` 入包 41 个文件。
+
+## D-089 发牌推进收进 `src/flow.js`（2026-11-16）
+
+- 背景：P1 的第二步——发牌仍由 `game.js` 直接拼 `transition(START_GAME/DEAL_ROUND)`。
+- 做法：`src/flow.js` 增加 `startDeal(state)`、`dealRound(state)`、`isDealing(state)`；`game.js` 的 DEAL 档、`_dealOneRound`、无头同步循环改调这三个函数，定时器与 UI 仍留在游戏壳。
+- 边界：引擎契约不变（仍是 START_GAME{progressive:true} + 22 轮 DEAL_ROUND）；`game.js` 不再关心发牌动作细节。
+- 验证：`tests/test-flow.js` 增加发牌断言（进入 DEALING、22 轮发完、手牌 21/21/20/20/21 + 5 张底牌 = 108），全量 116/116。
+
+## D-090 战绩落库：客户端整理 + 云函数白名单写入（2026-11-16）
+
+- 背景：P3 要把每局结果存下来，供后续战绩/回放使用；不能把整份对局状态（含手牌）上传。
+- 客户端：新增 `src/record.js`，`buildRecord(state, view)` 只输出公开信息——`schemaVersion/mode/winner/reason/mainSuit/mainBy/firstOut/players[{id,name,camp,score}]/totalScore/playsCount/createdAt`；阵营来自 `util.camps`；不含手牌/底牌。
+- 上报时机：`game.js` 的 `draw()` 首次进入 `GAME_END` 时调 `_submitGameRecord()`，每局一次；`wx.cloud.init({env:'cloud1-d5g7uiwu9f7caacdc'})` 懒初始化；无 `wx.cloud` 或 `wx.__isMock` 时跳过；失败只写日志，不阻塞结算。
+- 云端：新增 `cloudfunctions/record-game`，服务端再次做结构校验、字段白名单、长度截断，写入 `game_records`；`init-db` 的集合表加入 `game_records`。
+- 安全：`game_records` 建议只允许云函数写入、关闭客户端直写；`openid` 由云函数取 `getWXContext()`，不信客户端。
+- 验证：`tests/test-record.js`（11 断言：字段齐全、阵营标注、零和、无手牌/底牌泄漏、平局与缺主A不崩）；全量 116/116、preflight 12/12。

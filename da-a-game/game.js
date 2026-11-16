@@ -73,6 +73,10 @@ function _sfxAfterPlays(prevLen) {
 }
 // [2026-11-15] 胜负音: 按真人所在阵营与最终 winner 比对
 var uiPrevPhaseSfx = null;
+// [P3 2026-11-16] 战绩上报：每局只报一次；失败只记日志，不影响牌局
+var uiRecordSubmitted = false;
+var CLOUD_ENV = 'cloud1-d5g7uiwu9f7caacdc';
+var uiCloudInited = false;
 function _sfxEnd() {
   var end = null;
   try { end = checkGameEnd(gameState); } catch (e) { end = null; }
@@ -294,7 +298,7 @@ var DEAL_STEP = _computeDealStep(typeof wx !== 'undefined' ? wx : null);
 
 // 发一轮牌(只发牌, 不做收尾) -> 返回是否成功
 function _dealOneRound() {
-  var r = transition(gameState, { type: ACTIONS.DEAL_ROUND, payload: {} });
+  var r = flowMod.dealRound(gameState);
   if (r && r.ok) {
     gameState = r.state;
   } else {
@@ -592,7 +596,9 @@ let btnSelectPlayers = null;
 //   发牌 → [强制排查] → 反A → 翻底牌 → 次方身份 → 出牌
 // 强制排查仅在「主A 未确立」时执行 —— 真人亮了 A 就跳过(符合 §4.2)。
 // [P1 2026-11-16] 阶段闸门表收口到 src/flow.js，顺序只在那里定义
-var GATE_PLAN = require('./src/flow.js').GATE_PLAN;
+var flowMod = require('./src/flow.js');
+var recordMod = require('./src/record.js');
+var GATE_PLAN = flowMod.GATE_PLAN;
 var gateIdx = 0;
 var gateChoice = null;   // { kind, eligible, reason, cards?, suit? } 待真人决策
 
@@ -647,7 +653,7 @@ function runGateStage() {
       //   progressive = true -> 引擎只洗牌, phase=DEALING; 之后每 0.5 秒发一轮(5张),
       //   发牌期间真人手里有 A 就能亮(四个花色按钮, 有A的可点、没有的置灰)。
       //   引擎侧 hand 只含**已发的牌** -> 只能亮「已摸到的 A」; 底牌直接进底牌槽 -> 天然不可亮。
-      r = transition(gameState, { type: ACTIONS.START_GAME, payload: { progressive: true } });
+      r = flowMod.startDeal(gameState);
       if (r && r.ok) {
         gameState = r.state;
         log('  开始逐轮发牌(' + (gameState.dealRoundsTotal || 0) + ' 轮, 每轮 ' + (DEAL_STEP_MS / 1000) + ' 秒)');
@@ -659,7 +665,7 @@ function runGateStage() {
         uiDealSfxRound = 0;   // [2026-11-16 用户] 发牌音每轮一声（素材改成 0.07s 短音，不再急促）
         if (DEAL_STEP <= 0) {
           // 无头: **同步**把 22 轮发完(只发牌, 收尾在循环后做一次)
-          while (gameState && gameState.phase === PHASES.DEALING) {
+          while (flowMod.isDealing(gameState)) {
             if (!_dealOneRound()) break;
           }
           if (gameState && gameState.phase !== PHASES.DEALING) _afterDeal();
@@ -953,6 +959,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiPassed = {};                    // [2026-10-27] 清掉上一局的「不出」标记(否则新局还挂着)
   uiLastPhase = '';                 // [2026-11-09] 新局 -> 阶段重新记
   uiPrevPhaseSfx = null;            // [2026-11-15] 新局 -> 允许再次放胜负音
+  uiRecordSubmitted = false;        // [P3 2026-11-16] 新局 -> 允许再次上报
   uiTickLastSec = -1;
   uiDealSfxRound = 0;                 // [2026-11-15] 新局发牌音重新计数
   uiAutoPlay = false;                 // [2026-11-04] 托管**不跨局保留**(新局重置为关)
@@ -1879,9 +1886,33 @@ function _uiMemoOpenNow() {
   return uiMemoOpen;
 }
 
+
+// ===== [P3 2026-11-16] 战绩上报 =====
+//   只在真机/有 wx.cloud 时执行；无头测试（wx.__isMock）与开发者工具未初始化云时自动跳过。
+//   失败只写日志，绝不阻塞结算/下一局。
+function _submitGameRecord() {
+  if (uiRecordSubmitted) return false;
+  uiRecordSubmitted = true;
+  if (typeof wx === 'undefined' || !wx || !wx.cloud || wx.__isMock) return false;
+  try {
+    if (!uiCloudInited) { wx.cloud.init({ env: CLOUD_ENV, traceUser: true }); uiCloudInited = true; }
+    var view = _settlementData();
+    var rec = recordMod.buildRecord(gameState, view);
+    wx.cloud.callFunction({
+      name: 'record-game',
+      data: { record: rec },
+      success: function (r) { log('  战绩已上报: ' + ((r && r.result && r.result.ok) ? 'ok' : 'fail')); },
+      fail: function (e) { log('  战绩上报失败: ' + ((e && e.errMsg) || e)); }
+    });
+    return true;
+  } catch (e) {
+    log('  战绩上报异常: ' + e.message);
+    return false;
+  }
+}
 function draw() {
   // [2026-11-15] 首次进入 GAME_END 时按真人阵营放胜负音(结算面板 1 秒后才弹)
-  if (gameState && gameState.phase === PHASES.GAME_END && uiPrevPhaseSfx !== PHASES.GAME_END) _sfxEnd();
+  if (gameState && gameState.phase === PHASES.GAME_END && uiPrevPhaseSfx !== PHASES.GAME_END) { _sfxEnd(); _submitGameRecord(); }
   if (gameState) uiPrevPhaseSfx = gameState.phase;
   // [P2 2026-11-12] 桌面/不出/取/轮次统一从引擎流水派生(D-064)
   _uiProjectPlays();

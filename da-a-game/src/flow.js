@@ -34,3 +34,23 @@ module.exports = {
   nextStage: nextStage,
   isFinalStage: isFinalStage
 };
+// ===== 发牌推进（P1 第二步 2026-11-16）=====
+// 引擎只接受 START_GAME / DEAL_ROUND；这里把「怎么发」的细节收口成两三个调用，
+// game.js 只负责定时器与 UI。
+var transitionMod = require('./transition.js');
+
+function startDeal(state) {
+  return transitionMod.transition(state, { type: 'START_GAME', payload: { progressive: true } });
+}
+
+function dealRound(state) {
+  return transitionMod.transition(state, { type: 'DEAL_ROUND', payload: {} });
+}
+
+function isDealing(state) {
+  return !!state && state.phase === 'DEALING';
+}
+
+module.exports.startDeal = startDeal;
+module.exports.dealRound = dealRound;
+module.exports.isDealing = isDealing;

@@ -49,6 +49,7 @@ var EXPECTED_PACK = [
   'src/ai-memory.js',
   'src/endgame.js',
   'src/flow.js',
+  'src/record.js',
   'src/ai-policy.js',
   'src/camp.js',
   'src/capture.js',

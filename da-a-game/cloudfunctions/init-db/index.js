@@ -12,7 +12,8 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const COLLECTIONS = [
   'rooms',        // 房间: 房间码、座位、状态、版本号
-  'room_logs'     // 可选: 房间操作流水(排查/回放)
+  'room_logs',    // 可选: 房间操作流水(排查/回放)
+  'game_records'  // 战绩: 每局结束后由 record-game 写入（只含公开信息）
 ];
 
 exports.main = async () => {
