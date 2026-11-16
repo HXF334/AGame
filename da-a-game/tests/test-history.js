@@ -28,19 +28,20 @@ check('3.2 空时间不崩', H.timeText('') === '');
 
 // 4. rows：自己得分按 humanId 取
 var recs = [
-  { _id: 'r1', mode: '2V3_暗打', winner: '主方', humanId: 'A', createdAt: '2026-11-16T05:03:00.000Z', players: [{ id: 'A', score: -3 }, { id: 'B', score: 6 }] },
-  { _id: 'r2', mode: '1V4_明打', winner: '抓方', humanId: 'A', createdAt: '2026-11-15T09:00:00.000Z', players: [{ id: 'A', score: 16 }, { id: 'B', score: -4 }] }
+  { _id: 'r1', mode: '2V3_暗打', winner: '主方', humanId: 'A', createdAt: '2026-11-16T05:03:00.000Z', players: [{ id: 'A', score: -3, camp: 'taker' }, { id: 'B', score: 6, camp: 'main' }] },
+  { _id: 'r2', mode: '1V4_明打', winner: '抓方', humanId: 'A', createdAt: '2026-11-15T09:00:00.000Z', players: [{ id: 'A', score: 16, camp: 'taker' }, { id: 'B', score: -4, camp: 'main' }] }
 ];
 var rows = H.rows(recs);
 check('4.1 行数', rows.length === 2, String(rows.length));
-check('4.2 第一行模式/结果/得分', rows[0].mode === '2V3暗打' && rows[0].result === '主胜' && rows[0].delta === '-3', JSON.stringify(rows[0]));
-check('4.3 第二行得分', rows[1].delta === '+16', JSON.stringify(rows[1]));
+check('4.2 第一行模式/我方结果/得分', rows[0].mode === '2V3暗打' && rows[0].result === '负' && rows[0].delta === '-3', JSON.stringify(rows[0]));
+check('4.3 第二行胜/得分', rows[1].result === '胜' && rows[1].delta === '+16', JSON.stringify(rows[1]));
 check('4.4 无 humanId 时显示 —', H.rows([{ _id: 'z', mode: '2V3_暗打', winner: '主方', players: [{ id: 'A', score: 5 }] }])[0].delta === '—');
 check('4.5 key 使用 _id', rows[0].key === 'r1');
 
 // 5. summary
 var sum = H.summary(recs);
-check('5.1 汇总一胜一负', /1 胜 1 负 0 平/.test(sum), sum);
+check('5.1 汇总一胜一负（按阵营）', /1 胜 1 负 0 平/.test(sum), sum);
+check('5.3 未知记录单独计数、不混算成平', /0 胜 1 负 0 平，1 局身份未知/.test(H.summary([recs[0], { _id: 'u', mode: '2V3_暗打', winner: '主方', players: [{ id: 'A', score: 5 }] }])), H.summary([recs[0], { _id: 'u', mode: '2V3_暗打', winner: '主方' }]));
 check('5.2 空记录汇总', /0 胜 0 负 0 平/.test(H.summary([])));
 
 // 6. 脏数据不崩

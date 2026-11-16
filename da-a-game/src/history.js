@@ -27,6 +27,13 @@ function timeText(createdAt) {
   return pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 }
 
+function perspText(p) {
+  if (p === 'win') return '胜';
+  if (p === 'lose') return '负';
+  if (p === 'draw') return '平';
+  return '—';
+}
+
 function deltaText(n) {
   var v = Number(n) || 0;
   if (v > 0) return '+' + v;
@@ -55,31 +62,53 @@ function rows(records) {
       key: String(rec._id || i),
       time: timeText(rec.createdAt || rec.clientCreatedAt),
       mode: modeText(rec.mode),
-      result: resultText(rec.winner),
+      result: perspText(perspective(rec)),
       delta: sc == null ? '—' : deltaText(sc)
     });
   });
   return out;
 }
 
-// summary(records) -> '最近 N 局：X 胜 Y 负 Z 平'
+// perspective(rec) -> 'win' | 'lose' | 'draw' | 'unknown'
+//   [2026-11-16 修正] 胜负看「我方阵营」而不是分数正负：
+//   平局得 0 分、旧记录没有 humanId 时得分未知，都不能混算成「平」。
+function perspective(rec) {
+  if (!rec || !rec.humanId || !rec.players) return 'unknown';
+  var camp = null;
+  for (var i = 0; i < rec.players.length; i++) {
+    if (rec.players[i] && rec.players[i].id === rec.humanId) { camp = rec.players[i].camp; break; }
+  }
+  if (!camp || camp === 'unknown') return 'unknown';
+  var w = String(rec.winner || '');
+  if (w === '主方') return camp === 'main' ? 'win' : 'lose';
+  if (w === '抓方') return camp === 'taker' ? 'win' : 'lose';
+  return 'draw';
+}
+
+// summary(records) -> '最近 N 局：X 胜 Y 负 Z 平[，U 局身份未知]'
 function summary(records) {
-  var win = 0, lose = 0, draw = 0;
+  var win = 0, lose = 0, draw = 0, unknown = 0;
   (records || []).forEach(function (rec) {
     if (!rec) return;
-    var sc = selfScore(rec);
-    if (sc == null) { draw++; return; }
-    if (sc > 0) win++; else if (sc < 0) lose++; else draw++;
+    var p = perspective(rec);
+    if (p === 'win') win++;
+    else if (p === 'lose') lose++;
+    else if (p === 'draw') draw++;
+    else unknown++;
   });
-  return '最近 ' + (records || []).length + ' 局：' + win + ' 胜 ' + lose + ' 负 ' + draw + ' 平';
+  var s = '最近 ' + (records || []).length + ' 局：' + win + ' 胜 ' + lose + ' 负 ' + draw + ' 平';
+  if (unknown) s += '，' + unknown + ' 局身份未知';
+  return s;
 }
 
 module.exports = {
   modeText: modeText,
   resultText: resultText,
+  perspText: perspText,
   timeText: timeText,
   deltaText: deltaText,
   selfScore: selfScore,
   rows: rows,
+  perspective: perspective,
   summary: summary
 };

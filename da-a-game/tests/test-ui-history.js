@@ -18,8 +18,8 @@ check('1.1 默认不显示面板', g.__historyOpen() === false);
 
 // 2. 有数据：标题、汇总、三行内容
 g.__setHistory([
-  { time: '11-16 13:00', mode: '2V3暗打', result: '主胜', delta: '+6' },
-  { time: '11-15 09:00', mode: '1V4明打', result: '抓胜', delta: '-4' }
+  { time: '11-16 13:00', mode: '2V3暗打', result: '胜', delta: '+6' },
+  { time: '11-15 09:00', mode: '1V4明打', result: '负', delta: '-4' }
 ], 'ok', '最近 2 局：1 胜 1 负 0 平');
 var texts = g.__renderTexts();
 function has(re) { return texts.some(function (t) { return re.test(t); }); }
@@ -27,7 +27,7 @@ check('2.1 面板已打开', g.__historyOpen() === true);
 check('2.2 标题', has(/^最近战绩$/), texts.join(' | '));
 check('2.3 汇总行', has(/最近 2 局：1 胜 1 负 0 平/));
 check('2.4 模式文本', has(/^2V3暗打$/));
-check('2.5 结果文本', has(/^主胜$/));
+check('2.5 结果文本', has(/^胜$/));
 check('2.6 得分 +6', has(/^\+6$/));
 check('2.7 得分 -4', has(/^-4$/));
 check('2.8 关闭按钮', has(/^关闭$/));

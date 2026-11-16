@@ -470,4 +470,4 @@
 - 入口：左上角 ☰ 菜单增加「战绩」项；点击打开居中面板（标题 + 汇总 + 最多 10 行 + 关闭），加载中/空列表/失败各有文案；点击任意位置关闭，遮挡层不穿透到牌桌。
 - 云端：新增 `cloudfunctions/list-records`，按 `getWXContext().OPENID` 查询，`orderBy('createdAt','desc').limit(10)`，只回传白名单字段、不回传 openid；集合不存在时按空列表返回。
 - 记录补充：`record.js` 增加 `humanId`（本局真人座位），`record-game` 白名单同步接收，历史行据此显示「我这局得分」。
-- 验证：`tests/test-history.js`（20 断言）、`tests/test-ui-history.js`（13 断言）；全量 118/118、preflight 12/12；已部署 `list-records` 并在模拟器打开面板验证。
+- 胜负口径：按「我方阵营 vs winner」判定（`perspective`），不看分数正负；无 `humanId` 的旧记录计为「未知」、不混进平局。- 验证：`tests/test-history.js`（22 断言）、`tests/test-ui-history.js`（13 断言）；全量 118/118、preflight 12/12；已部署 `list-records` 并在模拟器打开面板验证。
