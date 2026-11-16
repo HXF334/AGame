@@ -2645,6 +2645,13 @@ if (typeof wx !== 'undefined') {
           return;
         }
       }
+      // [2026-11-16 用户] 点下拉列表以外的地方 → 收起菜单，并吃掉这次点击
+      var _onMenuBtn = btnMenu && (x - btnMenu.x) * (x - btnMenu.x) + (y - btnMenu.y) * (y - btnMenu.y) <= btnMenu.r * btnMenu.r;
+      if (!_onMenuBtn) {
+        uiMenuOpen = false;
+        draw();
+        return;
+      }
     }
     if (btnMenu && x >= btnMenu.x - btnMenu.r && x <= btnMenu.x + btnMenu.r &&
         y >= btnMenu.y - btnMenu.r && y <= btnMenu.y + btnMenu.r) {

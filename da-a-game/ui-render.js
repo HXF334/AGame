@@ -1249,13 +1249,15 @@ function drawHistoryPanel(ctx, st, m) {
   var vw = m.vw, vh = m.vh;
   var rows = st.historyRows || [];
   var w = Math.round(Math.min(vw * 0.80, vh * 0.95));
-  var rowH = Math.max(18, Math.round(vh * 0.040));
+  // [2026-11-16 用户] 行距加大、明细隔行变色（参照结算画面）
+  var rowH = Math.max(22, Math.round(vh * 0.052));
   var pad = Math.round(vh * 0.022);
   var titleH = Math.round(vh * 0.055);
   var sumH = Math.round(vh * 0.042);
   var closeH = Math.round(vh * 0.070);
+  var gapBtn = Math.round(vh * 0.022);
   var bodyH = rowH * Math.max(rows.length, 1);
-  var h = titleH + sumH + bodyH + closeH + pad * 2;
+  var h = titleH + sumH + bodyH + gapBtn + closeH + pad * 2;
   var x = Math.round((vw - w) / 2), y = Math.round((vh - h) / 2);
 
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -1284,6 +1286,9 @@ function drawHistoryPanel(ctx, st, m) {
     var fs = Math.round(vh * 0.028);
     rows.forEach(function (r, i) {
       var ry = ty + i * rowH + rowH * 0.55;
+      // 隔行底纹（与结算画面同色阶）
+      ctx.fillStyle = (i % 2 === 0) ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
+      rr(ctx, x + 10, ry - rowH * 0.46, w - 20, rowH * 0.92, 3); ctx.fill();
       text(ctx, r.time, x + pad, ry, fs, '#cfc0a8', 'left', false);
       text(ctx, r.mode, x + pad + w * 0.30, ry, fs, '#ffffff', 'left', false);
       text(ctx, r.result, x + pad + w * 0.52, ry, fs, '#e8d8b8', 'left', false);
