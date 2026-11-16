@@ -485,3 +485,10 @@
 - P0（main 上完成）：`tools/sync-engine.js`（engine 副本 + MANIFEST hash，`--check` 校验）、`src/protocol.js`（信封/白名单/baseSeq/actionKey）、`tests/lib/fake-cloud.js`（假云端 + 权威 server 骨架）、`src/timing.js`（计时集中）、`src/version.js`（协议/规则版本）、`docs/plans/ONLINE_ROOM.md`。
 - 验证：`tests/test-engine-sync.js`、`tests/test-protocol.js`、`tests/test-online-harness.js`、`tests/test-pack-manifest.js` 含新增 src 文件。
 - 后续 P1 起在分支上做 game-server 房间核心。
+## D-094 好友建房：多局准备、积分榜、头像昵称（2026-11-16）
+
+- 创建房间数字项上限统一 99（对局数/基础分/出牌时间）。
+- 单局结束弹单局积分榜；达到对局数弹总积分榜；总榜关闭回首页。对局中头像下方常显累计分。
+- 局间用「下一局」= 准备：点过的人收起结算进入准备态，全员准备后 3 秒自动开局；准备态断线可恢复。
+- 头像昵称：优先微信授权；受小游戏平台限制可能只拿到匿名数据，故必须有降级（键盘输入昵称 + 内置头像）；昵称截断 6 字 + `…`；对局中不显示昵称，仅结算显示；昵称过内容安全后再落库。
+- 验收：打满局数总榜正确并回首页；5 人准备流程；长昵称不越界。
