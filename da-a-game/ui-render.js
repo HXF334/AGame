@@ -1217,7 +1217,7 @@ function drawMenuPanel(ctx, st, m) {
   var w = Math.round(r * 5.4), rowH = Math.round(r * 1.60), pad = Math.round(r * 0.30);
   var x = Math.round(m.menu.iconX - r * 0.2);   // [2026-11-16] 往右让开刘海
   var y = Math.round(m.menu.iconY + r + r * 0.40);
-  var h = rowH * 3 + pad * 2;
+  var h = rowH * 4 + pad * 2;
   ctx.fillStyle = 'rgba(20,20,20,0.92)';
   ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = 'rgba(255,255,255,0.35)';
@@ -1232,6 +1232,7 @@ function drawMenuPanel(ctx, st, m) {
   var rows = [
     { id: 'menuBgm', text: '音乐：' + (st.bgmOn ? '开' : '关') },
     { id: 'menuSfx', text: '音效：' + (st.sfxOn ? '开' : '关') },
+    { id: 'menuHistory', text: '战绩' },
     { id: 'menuExit', text: '退出游戏' }
   ];
   var items = [];
@@ -1241,6 +1242,64 @@ function drawMenuPanel(ctx, st, m) {
     items.push({ id: it.id, x: x, y: iy, w: w, h: rowH });
   });
   return items;
+}
+
+// [2026-11-16 战绩页] 最近战绩面板：标题 + 汇总 + 最多 10 行 + 关闭按钮
+function drawHistoryPanel(ctx, st, m) {
+  var vw = m.vw, vh = m.vh;
+  var rows = st.historyRows || [];
+  var w = Math.round(Math.min(vw * 0.80, vh * 0.95));
+  var rowH = Math.max(18, Math.round(vh * 0.040));
+  var pad = Math.round(vh * 0.022);
+  var titleH = Math.round(vh * 0.055);
+  var sumH = Math.round(vh * 0.042);
+  var closeH = Math.round(vh * 0.070);
+  var bodyH = rowH * Math.max(rows.length, 1);
+  var h = titleH + sumH + bodyH + closeH + pad * 2;
+  var x = Math.round((vw - w) / 2), y = Math.round((vh - h) / 2);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, vw, vh);
+  ctx.fillStyle = 'rgba(28,20,16,0.96)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#ffd98a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 0.5, y + 0.5); ctx.lineTo(x + w - 0.5, y + 0.5);
+  ctx.lineTo(x + w - 0.5, y + h - 0.5); ctx.lineTo(x + 0.5, y + h - 0.5);
+  ctx.closePath(); ctx.stroke();
+
+  text(ctx, '最近战绩', x + w / 2, y + pad + titleH * 0.52, Math.round(vh * 0.042), '#ffd98a', 'center', true);
+  var sum = st.historySummary || '';
+  if (sum) text(ctx, sum, x + w / 2, y + pad + titleH + sumH * 0.45, Math.round(vh * 0.028), '#e8d8b8', 'center', false);
+
+  var ty = y + pad + titleH + sumH;
+  if (st.historyState === 'loading') {
+    text(ctx, '加载中…', x + w / 2, ty + bodyH / 2, Math.round(vh * 0.032), '#ffffff', 'center', false);
+  } else if (st.historyState === 'err') {
+    text(ctx, st.historyError || '读取失败', x + w / 2, ty + bodyH / 2, Math.round(vh * 0.030), '#ff9a9a', 'center', false);
+  } else if (!rows.length) {
+    text(ctx, '还没有战绩，打完一局再来看看', x + w / 2, ty + bodyH / 2, Math.round(vh * 0.028), '#cfc0a8', 'center', false);
+  } else {
+    var fs = Math.round(vh * 0.028);
+    rows.forEach(function (r, i) {
+      var ry = ty + i * rowH + rowH * 0.55;
+      text(ctx, r.time, x + pad, ry, fs, '#cfc0a8', 'left', false);
+      text(ctx, r.mode, x + pad + w * 0.30, ry, fs, '#ffffff', 'left', false);
+      text(ctx, r.result, x + pad + w * 0.52, ry, fs, '#e8d8b8', 'left', false);
+      var neg = String(r.delta).charAt(0) === '-';
+      text(ctx, r.delta, x + w - pad, ry, fs, neg ? '#ff9a9a' : '#8fe08f', 'right', true);
+    });
+  }
+
+  var bw = Math.round(w * 0.44), bh = closeH;
+  var bx = x + (w - bw) / 2, by = y + h - pad - bh;
+  ctx.fillStyle = '#8a5a2b';
+  rr(ctx, bx, by, bw, bh, Math.round(bh * 0.30)); ctx.fill();
+  ctx.strokeStyle = '#ffd98a'; ctx.lineWidth = 2;
+  rr(ctx, bx, by, bw, bh, Math.round(bh * 0.30)); ctx.stroke();
+  text(ctx, '关闭', bx + bw / 2, by + bh / 2, Math.round(bh * 0.42), '#ffffff', 'center', true);
+  return { x: bx, y: by, w: bw, h: bh, id: 'historyClose' };
 }
 
 function render(ctx, st) {
@@ -1255,16 +1314,19 @@ function render(ctx, st) {
   var btnBoxes = drawButtons(ctx, st, m, st.buttons || []);
   var switchHit = drawMeSeat(ctx, st, m);
   var handBoxes = drawHand(ctx, st, m);
+  drawToast(ctx, st, m);
+  var settleBtn = (st.phase === 'GAME_END') ? drawSettlement(ctx, st, m) : null;
+  // [2026-11-16 战绩页] 菜单/战绩面板是最高层浮层，必须画在结算面板之后，否则会被结算盖住
   var menuIcon = { x: m.menu.iconX, y: m.menu.iconY, r: m.menu.iconR };
   drawMenuButton(ctx, m, !!st.menuOpen);
   var menuItems = st.menuOpen ? drawMenuPanel(ctx, st, m) : [];
-  drawToast(ctx, st, m);
-  var settleBtn = (st.phase === 'GAME_END') ? drawSettlement(ctx, st, m) : null;
+  var historyHit = st.historyOpen ? drawHistoryPanel(ctx, st, m) : null;
   return {
     btnLog: null, btnStage: btnBoxes, handHitboxes: handBoxes,
     seatHitboxes: seatInfo.boxes, markHits: seatInfo.markHits,
     memoIcon: memoIcon, autoPlayIcon: autoIcon, layout: m,
     menuIcon: menuIcon, menuItems: menuItems,
+    historyClose: historyHit,
     switchHit: switchHit,
     settleBtn: settleBtn,
     cancelAutoPlayBox: (handBoxes || []).filter(function (b) { return b.cancelAutoPlay; })[0] || null,

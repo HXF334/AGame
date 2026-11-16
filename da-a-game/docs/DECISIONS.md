@@ -463,3 +463,11 @@
 - 云端：新增 `cloudfunctions/record-game`，服务端再次做结构校验、字段白名单、长度截断，写入 `game_records`；`init-db` 的集合表加入 `game_records`。
 - 安全：`game_records` 建议只允许云函数写入、关闭客户端直写；`openid` 由云函数取 `getWXContext()`，不信客户端。
 - 验证：`tests/test-record.js`（11 断言：字段齐全、阵营标注、零和、无手牌/底牌泄漏、平局与缺主A不崩）；全量 116/116、preflight 12/12。
+## D-091 战绩页：菜单入口 + list-records 云函数 + 纯格式化层（2026-11-16）
+
+- 背景：D-090 只把战绩写进 `game_records`，玩家看不到。
+- 客户端：新增 `src/history.js`（纯函数）——`modeText/resultText/timeText/deltaText/selfScore/rows/summary`；输入是云函数返回的记录与真人座位，输出面板行与「最近 N 局：X 胜 Y 负 Z 平」。
+- 入口：左上角 ☰ 菜单增加「战绩」项；点击打开居中面板（标题 + 汇总 + 最多 10 行 + 关闭），加载中/空列表/失败各有文案；点击任意位置关闭，遮挡层不穿透到牌桌。
+- 云端：新增 `cloudfunctions/list-records`，按 `getWXContext().OPENID` 查询，`orderBy('createdAt','desc').limit(10)`，只回传白名单字段、不回传 openid；集合不存在时按空列表返回。
+- 记录补充：`record.js` 增加 `humanId`（本局真人座位），`record-game` 白名单同步接收，历史行据此显示「我这局得分」。
+- 验证：`tests/test-history.js`（20 断言）、`tests/test-ui-history.js`（13 断言）；全量 118/118、preflight 12/12；已部署 `list-records` 并在模拟器打开面板验证。

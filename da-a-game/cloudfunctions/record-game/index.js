@@ -37,6 +37,7 @@ exports.main = async (event) => {
     mainSuit: record.mainSuit ? String(record.mainSuit).slice(0, 2) : null,
     mainBy: record.mainBy ? String(record.mainBy).slice(0, 8) : null,
     firstOut: record.firstOut ? String(record.firstOut).slice(0, 8) : null,
+    humanId: record.humanId ? String(record.humanId).slice(0, 8) : null,
     players: players,
     totalScore: Number(record.totalScore) || 0,
     playsCount: Number(record.playsCount) || 0,

@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **116 个套件 / 执行 116 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **118 个套件 / 执行 118 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 116/116 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 118/118 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,7 +39,7 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：116 个无头套件（规则/AI/UI/E2E/审计）。
+- **测试**：118 个无头套件（规则/AI/UI/E2E/审计）。
 
 ## 4. 本轮变更（2026-11-12～13，D-059～D-076）
 
@@ -105,6 +105,10 @@
 | `da-a-game/game.js`（D-090） | 首进 `GAME_END` 调 `_submitGameRecord()`：`wx.cloud.init` 懒初始化、每局一次、失败只记日志。 |
 | `da-a-game/cloudfunctions/record-game/` | **新增（D-090）**：服务端白名单校验后写入 `game_records`；`init-db` 集合表加入 `game_records`。 |
 | `da-a-game/tests/test-record.js` | **新增（11 断言）**：字段齐全、阵营标注、零和、无手牌/底牌泄漏、平局与缺主A不崩。 |
+| `da-a-game/src/history.js` | **新增（D-091）**：战绩页格式化（模式/胜负/时间/得分 + 汇总），纯函数、无 wx。 |
+| `da-a-game/cloudfunctions/list-records/` | **新增（D-091）**：按 `openid` 查最近 N 局，只回传白名单字段；集合不存在按空列表处理。 |
+| `da-a-game/ui-render.js` / `game.js`（D-091） | 菜单加「战绩」项；`drawHistoryPanel` 居中面板（标题/汇总/行/关闭），打开时拉取并渲染，点击任意处关闭。 |
+| `da-a-game/tests/test-history.js` / `test-ui-history.js` | **新增（20 / 13 断言）**：格式化与汇总、面板文本、空态与错误态、关闭命中区。 |
 
 ### 文档与 skills
 
@@ -145,7 +149,7 @@
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
 5. **P4（单机收尾）**：~~AI 记牌（D-078）~~ 已完成；**残局搜索（D-080）** 已实现（全体剩牌 ≤10，抽样推演，含队友评估），只在 AI/托管启用。
 6. **下一阶段**：好友建房对战（服务器权威 + `publicView` 投影 + 房间/同步）。云开发环境已开通（`cloud1-d5g7uiwu9f7caacdc`）；`init-db` 与 `record-game` 云函数已写好，待部署；战绩上报已在客户端接好；上线前需确认棋牌类目/资质。`P1` 已完成闸门表与发牌推进收口到 `src/flow.js`；`P3` 已完成战绩记录与上报骨架。
-7. **持续**：改动后更新本文件；保持 116+ 套件全绿。
+7. **持续**：改动后更新本文件；保持 118+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）
 

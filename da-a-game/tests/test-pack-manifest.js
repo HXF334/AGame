@@ -50,6 +50,7 @@ var EXPECTED_PACK = [
   'src/endgame.js',
   'src/flow.js',
   'src/record.js',
+  'src/history.js',
   'src/ai-policy.js',
   'src/camp.js',
   'src/capture.js',

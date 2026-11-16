@@ -73,7 +73,7 @@ check('4.1 顶栏不再有独立「音」「乐」按钮', texts.indexOf('音') 
 g.__setMenuOpen(true);
 var mitems = g.__menuItems();
 var mtexts = g.__renderTexts();
-check('4.2 菜单下拉三项', mitems.length === 3, String(mitems.length));
+check('4.2 菜单下拉四项', mitems.length === 4, String(mitems.length));
 check('4.3 菜单含「音乐」项', mtexts.some(function (t) { return /^音乐：/.test(t); }), mtexts.join(' | '));
 check('4.4 菜单含「音效」项', mtexts.some(function (t) { return /^音效：/.test(t); }), mtexts.join(' | '));
 g.__setMenuOpen(false);

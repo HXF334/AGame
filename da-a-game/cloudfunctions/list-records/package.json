@@ -1,0 +1,9 @@
+{
+  "name": "list-records",
+  "version": "1.0.0",
+  "description": "列出当前用户的最近战绩",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

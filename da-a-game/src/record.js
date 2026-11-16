@@ -39,6 +39,8 @@ function buildRecord(state, view, extra) {
     mainSuit: mainA ? mainA.suit : null,
     mainBy: mainA ? mainA.establishedBy : null,
     firstOut: (state && state['头名']) || null,
+    // [2026-11-16 战绩页] 记录本局真人座位，历史列表据此显示「我这局得分」
+    humanId: (view && view.humanId) || null,
     players: players,
     totalScore: total,
     playsCount: plays.length,

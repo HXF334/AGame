@@ -166,7 +166,13 @@ var uiMarks = {};
 var uiTakenPlay = {};
 var _uiMarksWerePublic = false;   // [2026-11-08 16:24] 上次渲染时阵营是否已确定(次方亮明/明打/1V4)
 var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
-var uiMenuOpen = false;   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/退出)
+var uiMenuOpen = false;   // [2026-11-16 用户] 左上角菜单下拉(背景音乐/音效/战绩/退出)
+// [2026-11-16 战绩页] 最近战绩面板状态
+var uiHistoryOpen = false;
+var uiHistoryState = 'idle';       // idle | loading | ok | err
+var uiHistoryRows = [];
+var uiHistorySummary = '';
+var uiHistoryError = '';
 
 // === 工具 ===
 // 仅内存缓冲, **不渲染到屏幕** (用户 2026-10-23 要求)。供测试与排查读取。
@@ -598,6 +604,7 @@ let btnSelectPlayers = null;
 // [P1 2026-11-16] 阶段闸门表收口到 src/flow.js，顺序只在那里定义
 var flowMod = require('./src/flow.js');
 var recordMod = require('./src/record.js');
+var historyMod = require('./src/history.js');
 var GATE_PLAN = flowMod.GATE_PLAN;
 var gateIdx = 0;
 var gateChoice = null;   // { kind, eligible, reason, cards?, suit? } 待真人决策
@@ -950,6 +957,7 @@ humanPlayer = _randomSeat();      // 真人每局随机座位
   uiMarks = {};                     // [2026-10-25] 新对局重置敌友标记
   uiMemoOpen = true;                // 记牌器默认展开(用户 2026-10-27)
   uiMenuOpen = false;               // [2026-11-16] 新局收起左上角菜单
+  uiHistoryOpen = false;            // [2026-11-16 战绩页] 新局收起战绩面板
   uiPlays = {};                     // 清掉各家出牌显示
   uiPlaysTrick = {};
   uiTrickId = 0;
@@ -1647,6 +1655,7 @@ var btnMemo = null;
 var btnPlayerHits = null;
 var btnMenu = null;     // [2026-11-16] 左上角菜单按钮
 var btnMenuItems = [];  // [2026-11-16] 菜单下拉项
+var btnHistoryClose = null;  // [2026-11-16 战绩页] 面板关闭按钮
 var btnSettle = null;   // [2026-10-25] 结算面板里的「下一局」按钮(面板内下方中央)
 // [2026-10-25] 「不出」的 UI 层状态: 引擎的 passedPlayers 语义是「有人出牌就清全员」,
 //   但用户要的是「只在**该玩家自己**出牌时才清」+ 推风/新一轮时全清 -> 这里独立维护
@@ -1890,6 +1899,59 @@ function _uiMemoOpenNow() {
 // ===== [P3 2026-11-16] 战绩上报 =====
 //   只在真机/有 wx.cloud 时执行；无头测试（wx.__isMock）与开发者工具未初始化云时自动跳过。
 //   失败只写日志，绝不阻塞结算/下一局。
+// [2026-11-16 战绩页] 打开面板并异步拉取最近 10 局
+function _openHistory() {
+  uiMenuOpen = false;
+  uiHistoryOpen = true;
+  uiHistoryState = 'loading';
+  uiHistoryRows = [];
+  uiHistorySummary = '';
+  uiHistoryError = '';
+  draw();
+  _loadHistory();
+}
+
+function _loadHistory() {
+  if (typeof wx === 'undefined' || !wx || !wx.cloud || wx.__isMock) {
+    uiHistoryState = 'err';
+    uiHistoryError = '当前环境不支持云端战绩';
+    draw();
+    return false;
+  }
+  try {
+    if (!uiCloudInited) { wx.cloud.init({ env: CLOUD_ENV, traceUser: true }); uiCloudInited = true; }
+    wx.cloud.callFunction({
+      name: 'list-records',
+      data: { limit: 10 },
+      success: function (r) {
+        var res = (r && r.result) || {};
+        if (!res.ok) {
+          uiHistoryState = 'err';
+          uiHistoryError = '读取失败: ' + (res.error || 'unknown');
+          draw();
+          return;
+        }
+        var recs = res.records || [];
+        uiHistoryRows = historyMod.rows(recs);
+        uiHistorySummary = historyMod.summary(recs);
+        uiHistoryState = 'ok';
+        draw();
+      },
+      fail: function (e) {
+        uiHistoryState = 'err';
+        uiHistoryError = '读取失败: ' + ((e && e.errMsg) || e);
+        draw();
+      }
+    });
+    return true;
+  } catch (e) {
+    uiHistoryState = 'err';
+    uiHistoryError = '读取异常: ' + e.message;
+    draw();
+    return false;
+  }
+}
+
 function _submitGameRecord() {
   if (uiRecordSubmitted) return false;
   uiRecordSubmitted = true;
@@ -1897,6 +1959,8 @@ function _submitGameRecord() {
   try {
     if (!uiCloudInited) { wx.cloud.init({ env: CLOUD_ENV, traceUser: true }); uiCloudInited = true; }
     var view = _settlementData();
+    // [2026-11-16 战绩页] 带上真人座位，历史列表才能显示「我这局得分」
+    view.humanId = humanPlayer;
     var rec = recordMod.buildRecord(gameState, view);
     wx.cloud.callFunction({
       name: 'record-game',
@@ -1971,6 +2035,11 @@ function draw() {
     sfxOn: !!(_ensureAudio() && audioMgr.sfxOn()),
     bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
     menuOpen: uiMenuOpen,
+    historyOpen: uiHistoryOpen,
+    historyState: uiHistoryState,
+    historyRows: uiHistoryRows,
+    historySummary: uiHistorySummary,
+    historyError: uiHistoryError,
     phase: gameState.phase
   });
   btnLog = out.btnLog;
@@ -1983,6 +2052,7 @@ function draw() {
   btnAutoPlay = out.autoPlayIcon;
   btnMenu = out.menuIcon;
   btnMenuItems = out.menuItems || [];
+  btnHistoryClose = out.historyClose || null;
   btnAutoPlayCancel = out.cancelAutoPlayBox;
 }
 
@@ -2493,6 +2563,13 @@ if (typeof wx !== 'undefined') {
     var _au = _ensureAudio();
     if (_au) _au.unlock();
 
+    // [2026-11-16 战绩页] 面板打开时，点任意位置关闭（含「关闭」按钮），不穿透到牌桌
+    if (uiHistoryOpen) {
+      uiHistoryOpen = false;
+      draw();
+      return;
+    }
+
     // [2026-11-16 用户] 左上角菜单：展开时优先吃掉下拉项的点击
     if (uiMenuOpen) {
       for (var mi = 0; mi < (btnMenuItems || []).length; mi++) {
@@ -2504,6 +2581,9 @@ if (typeof wx !== 'undefined') {
           } else if (mit.id === 'menuSfx') {
             var _s = audioMgr ? audioMgr.toggleSfx() : false;
             log('音效: ' + (_s ? '开' : '关'));
+          } else if (mit.id === 'menuHistory') {
+            _openHistory();
+            return;
           } else if (mit.id === 'menuExit') {
             log('退出游戏');
             uiMenuOpen = false;
@@ -2713,6 +2793,16 @@ if (typeof module !== 'undefined' && module.exports) {
     __menuOpen: function () { return uiMenuOpen; },
     __setMenuOpen: function (v) { uiMenuOpen = !!v; draw(); },
     __menuItems: function () { return btnMenuItems || []; },
+  __historyOpen: function () { return uiHistoryOpen; },
+  __setHistory: function (rows, state, summary) {
+    uiHistoryOpen = true;
+    uiHistoryState = state || 'ok';
+    uiHistoryRows = rows || [];
+    uiHistorySummary = summary || '';
+    draw();
+  },
+  __openHistory: function () { _openHistory(); },
+  __historyClose: function () { return btnHistoryClose; },
     uiPlays: function () { return uiPlays; },
     // [2026-10-26] 测试钩子: 「不出」标记的 UI 层状态(无头复现用)
     // [2026-10-26] 测试钩子: 调整 AI 动作间隔(无头测试里设 0, 否则一步要等 1 秒)

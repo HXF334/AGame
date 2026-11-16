@@ -17,19 +17,20 @@ g.__setState(st, { human: 'B', currentPlayer: 'B', clearLog: true });
 // 1. 默认收起：没有下拉项
 check('1.1 默认收起无下拉项', g.__menuItems().length === 0, String(g.__menuItems().length));
 
-// 2. 打开菜单：三个下拉项，文本符合「背景音乐/音效/退出游戏」
+// 2. 打开菜单：四个下拉项（音乐/音效/战绩/退出游戏）
 g.__setMenuOpen(true);
 var items = g.__menuItems();
-check('2.1 下拉共三项', items.length === 3, String(items.length));
+check('2.1 下拉共四项', items.length === 4, String(items.length));
 var texts = g.__renderTexts();
 function has(re) { return texts.some(function (t) { return re.test(t); }); }
 check('2.2 含音乐项', has(/^音乐：/), texts.join(' | '));
 check('2.3 含音效项', has(/^音效：/), texts.join(' | '));
-check('2.4 含退出游戏项', has(/退出游戏/), texts.join(' | '));
+check('2.4 含战绩项', has(/^战绩$/), texts.join(' | '));
+check('2.5 含退出游戏项', has(/退出游戏/), texts.join(' | '));
 
-// 3. 三项顺序：音乐 → 音效 → 退出
-check('3.1 顺序为 音乐→音效→退出',
-  items[0].y < items[1].y && items[1].y < items[2].y,
+// 3. 四项顺序：音乐 → 音效 → 战绩 → 退出
+check('3.1 顺序为 音乐→音效→战绩→退出',
+  items[0].y < items[1].y && items[1].y < items[2].y && items[2].y < items[3].y,
   items.map(function (i) { return i.id + '@' + Math.round(i.y); }).join(','));
 
 // 4. 命中区都在画布内、互不重叠
