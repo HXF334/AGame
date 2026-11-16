@@ -1344,57 +1344,138 @@ function _pageBtn(ctx, x, y, w, h, label, opt) {
     opt.active ? '#2b1a00' : (opt.disabled ? 'rgba(255,255,255,0.35)' : '#f2f2f2'), 'center', true);
 }
 
+// [2026-11-16 用户] 页面视觉统一：深绿绒布 + 金色描边 + 圆角面板，参照休闲棋牌大厅，不照搬
+function _rr(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function _pageBg(ctx, W, H) {
+  ctx.fillStyle = '#123a28';
+  ctx.fillRect(0, 0, W, H);
+  var g = ctx.createLinearGradient ? ctx.createLinearGradient(0, 0, 0, H) : null;
+  if (g) {
+    g.addColorStop(0, 'rgba(28,86,58,0.95)');
+    g.addColorStop(0.55, 'rgba(18,58,40,0.98)');
+    g.addColorStop(1, 'rgba(9,30,21,1)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // 顶部暖光
+  ctx.fillStyle = 'rgba(255,214,140,0.06)';
+  ctx.beginPath(); ctx.arc(W * 0.5, H * 0.10, W * 0.42, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,214,140,0.04)';
+  ctx.beginPath(); ctx.arc(W * 0.5, H * 0.10, W * 0.28, 0, Math.PI * 2); ctx.fill();
+}
+
+function _panel(ctx, x, y, w, h, r) {
+  ctx.save();
+  _rr(ctx, x, y, w, h, r || 14);
+  ctx.fillStyle = 'rgba(0,0,0,0.30)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,214,140,0.55)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function _cardBtn(ctx, x, y, w, h, glyph, label, opt) {
+  opt = opt || {};
+  ctx.save();
+  _rr(ctx, x, y, w, h, h * 0.30);
+  ctx.fillStyle = opt.primary ? 'rgba(196,84,47,0.92)' : 'rgba(0,0,0,0.34)';
+  ctx.fill();
+  ctx.strokeStyle = opt.primary ? 'rgba(255,214,140,0.95)' : 'rgba(255,214,140,0.45)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // 顶部高光
+  _rr(ctx, x + 2, y + 2, w - 4, h * 0.42, h * 0.24);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fill();
+  ctx.restore();
+  var cy = y + h / 2, r = h * 0.30, cx = x + h * 0.55;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,214,140,0.16)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,214,140,0.65)'; ctx.lineWidth = 2; ctx.stroke();
+  text(ctx, glyph, cx, cy + 1, Math.round(r * 1.05), '#ffd98a', 'center', true);
+  text(ctx, label, x + h * 1.02, cy, Math.round(h * 0.30), '#f6efdf', 'left', true);
+}
+
+function _radio(ctx, cx, cy, r, on) {
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  if (on) { ctx.fillStyle = '#7ac943'; ctx.fill(); }
+  ctx.strokeStyle = on ? '#c9f29a' : 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 2; ctx.stroke();
+  if (on) {
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+  }
+}
+
 function drawHomePage(ctx, st) {
   var W = st.W, H = st.H;
-  ctx.fillStyle = '#173f2a'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = 'rgba(255,255,255,0.05)';
-  ctx.beginPath(); ctx.arc(W / 2, H * 0.36, Math.min(W * 0.42, H * 0.30), 0, Math.PI * 2); ctx.fill();
-  text(ctx, '内蒙古打大A', W / 2, H * 0.18, Math.round(H * 0.075), '#ffd98a', 'center', true);
-  text(ctx, '5 人 · 两副牌 · 好友建房', W / 2, H * 0.26, Math.round(H * 0.030), 'rgba(255,255,255,0.72)', 'center', false);
-  var bw = W * 0.46, bh = H * 0.105, bx = (W - bw) / 2;
+  _pageBg(ctx, W, H);
+  text(ctx, '内蒙古打大A', W / 2, H * 0.17, Math.round(H * 0.088), '#ffd98a', 'center', true);
+  text(ctx, '两副牌 · 5 人 · 好友建房', W / 2, H * 0.255, Math.round(H * 0.030), 'rgba(246,239,223,0.70)', 'center', false);
+
+  var bw = W * 0.54, bh = H * 0.135, bx = (W - bw) / 2;
   var defs = [
-    { id: 'homeCreate', y: H * 0.42, label: '创建房间' },
-    { id: 'homeJoin', y: H * 0.545, label: '加入房间' },
-    { id: 'homeSolo', y: H * 0.67, label: '单机对局' }
+    { id: 'homeCreate', y: H * 0.38, glyph: '创', label: '创建房间' },
+    { id: 'homeJoin', y: H * 0.545, glyph: '加', label: '加入房间' },
+    { id: 'homeSolo', y: H * 0.71, glyph: '单', label: '单机对局' }
   ];
   var hits = [];
   for (var i = 0; i < defs.length; i++) {
-    _pageBtn(ctx, bx, defs[i].y, bw, bh, defs[i].label, {});
+    _cardBtn(ctx, bx, defs[i].y, bw, bh, defs[i].glyph, defs[i].label, { primary: i === 0 });
     hits.push({ id: defs[i].id, x: bx, y: defs[i].y, w: bw, h: bh });
   }
-  text(ctx, '好友建房：最多 5 个真人，空位可由 AI 补齐', W / 2, H * 0.86, Math.round(H * 0.024),
-    'rgba(255,255,255,0.55)', 'center', false);
-  text(ctx, '单机对局：本地 AI，不联网、不计入战绩', W / 2, H * 0.905, Math.round(H * 0.024),
-    'rgba(255,255,255,0.55)', 'center', false);
+  text(ctx, '好友建房：最多 5 个真人，空位可 AI 补齐', W / 2, H * 0.885, Math.round(H * 0.024), 'rgba(246,239,223,0.55)', 'center', false);
+  text(ctx, '单机对局：本地 AI，不计入战绩', W / 2, H * 0.925, Math.round(H * 0.024), 'rgba(246,239,223,0.55)', 'center', false);
   return hits;
 }
 
 function drawCreatePage(ctx, st) {
   var W = st.W, H = st.H;
   var cfg = st.cfg || {};
-  ctx.fillStyle = '#173f2a'; ctx.fillRect(0, 0, W, H);
+  _pageBg(ctx, W, H);
   text(ctx, '创建房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
 
-  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.16, h: H * 0.07 };
-  _pageBtn(ctx, back.x, back.y, back.w, back.h, '返回', {});
+  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.15, h: H * 0.07 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
+  var px = W * 0.06, py = H * 0.135, pw = W * 0.88, ph = H * 0.645;
+  _panel(ctx, px, py, pw, ph, H * 0.03);
+
   var rows = [
-    { key: 'rounds', label: '对局数', values: [6, 12, 18, 30], text: function (v) { return v + ' 局'; } },
-    { key: 'baseScore', label: '基础分', values: [1, 2, 5], text: function (v) { return String(v); } },
+    { key: 'rounds', label: '局数', values: [6, 12, 18, 30], text: function (v) { return v + '局'; } },
+    { key: 'baseScore', label: '底分', values: [1, 2, 5], text: function (v) { return v + '分'; } },
     { key: 'turnSeconds', label: '出牌时间', values: [0, 30, 60], text: function (v) { return v === 0 ? '无托管' : v + 's'; } }
   ];
-  var y0 = H * 0.18, rowH = H * 0.095;
-  var labelX = W * 0.08, chipX = W * 0.34, chipW = W * 0.135, chipGap = W * 0.022;
+  var rowH = ph / 6.2;
+  var labelX = px + pw * 0.05, optX = px + pw * 0.20;
   for (var r = 0; r < rows.length; r++) {
-    var row = rows[r], y = y0 + r * rowH;
-    text(ctx, row.label, labelX, y + H * 0.030, Math.round(H * 0.032), 'rgba(255,255,255,0.85)', 'left', true);
-    for (var c = 0; c < row.values.length; c++) {
-      var val = row.values[c];
-      var cx = chipX + c * (chipW + chipGap);
-      var active = cfg[row.key] === val;
-      _pageBtn(ctx, cx, y, chipW, H * 0.062, row.text(val), { active: active });
-      hits.push({ id: 'chip', key: row.key, value: val, x: cx, y: y, w: chipW, h: H * 0.062 });
+    var y = py + rowH * (0.55 + r);
+    text(ctx, rows[r].label, labelX, y, Math.round(H * 0.034), 'rgba(246,239,223,0.88)', 'left', true);
+    var step = pw * 0.185;
+    for (var c = 0; c < rows[r].values.length; c++) {
+      var val = rows[r].values[c];
+      var cx = optX + c * step + H * 0.016;
+      var on = cfg[rows[r].key] === val;
+      _radio(ctx, cx, y, H * 0.017, on);
+      text(ctx, rows[r].text(val), cx + H * 0.030, y, Math.round(H * 0.032),
+        on ? '#c9f29a' : 'rgba(246,239,223,0.78)', 'left', false);
+      hits.push({ id: 'chip', key: rows[r].key, value: val, x: cx - H * 0.017, y: y - H * 0.028, w: step * 0.92, h: H * 0.056 });
     }
   }
 
@@ -1403,66 +1484,67 @@ function drawCreatePage(ctx, st) {
     { key: 'memo', label: '记牌器' },
     { key: 'aiFill', label: '空位 AI 补齐' }
   ];
-  var ty = y0 + rows.length * rowH + H * 0.01;
-  var tgW = W * 0.16, tgH = H * 0.060;
   for (var t = 0; t < toggles.length; t++) {
-    var tyy = ty + t * (tgH + H * 0.018);
-    var on = !!cfg[toggles[t].key];
-    text(ctx, toggles[t].label, labelX, tyy + tgH / 2, Math.round(H * 0.032), 'rgba(255,255,255,0.85)', 'left', true);
-    _pageBtn(ctx, chipX, tyy, tgW, tgH, on ? '开' : '关', { active: on });
-    hits.push({ id: 'toggle', key: toggles[t].key, x: chipX, y: tyy, w: tgW, h: tgH });
+    var ty = py + rowH * (3.55 + t * 0.72);
+    var on2 = !!cfg[toggles[t].key];
+    text(ctx, toggles[t].label, labelX, ty, Math.round(H * 0.032), 'rgba(246,239,223,0.82)', 'left', false);
+    var cx2 = optX + H * 0.016;
+    _radio(ctx, cx2, ty, H * 0.017, on2);
+    text(ctx, on2 ? '开' : '关', cx2 + H * 0.030, ty, Math.round(H * 0.030),
+      on2 ? '#c9f29a' : 'rgba(246,239,223,0.60)', 'left', false);
+    hits.push({ id: 'toggle', key: toggles[t].key, x: cx2 - H * 0.017, y: ty - H * 0.026, w: W * 0.16, h: H * 0.052 });
   }
-  var vy = ty + toggles.length * (tgH + H * 0.018);
-  text(ctx, '语音房', labelX, vy + tgH / 2, Math.round(H * 0.032), 'rgba(255,255,255,0.5)', 'left', true);
-  _pageBtn(ctx, chipX, vy, tgW, tgH, '暂不支持', { disabled: true });
+  var vy = py + rowH * (5.55);
+  text(ctx, '语音房', labelX, vy, Math.round(H * 0.030), 'rgba(246,239,223,0.40)', 'left', false);
+  text(ctx, '暂不支持', optX + H * 0.016, vy, Math.round(H * 0.028), 'rgba(246,239,223,0.35)', 'left', false);
 
-  var cw = W * 0.44, ch = H * 0.095, cx2 = (W - cw) / 2, cy = H * 0.885 - ch;
-  _pageBtn(ctx, cx2, cy, cw, ch, '创建房间', { active: true });
-  hits.push({ id: 'createConfirm', x: cx2, y: cy, w: cw, h: ch });
+  var cw = W * 0.40, chh = H * 0.105, cx3 = W * 0.55 - cw / 2, cy3 = H * 0.815;
+  _cardBtn(ctx, cx3, cy3, cw, chh, '▶', '创建房间', { primary: true });
+  hits.push({ id: 'createConfirm', x: cx3, y: cy3, w: cw, h: chh });
   return hits;
 }
 
 function drawJoinPage(ctx, st) {
   var W = st.W, H = st.H;
   var digits = String(st.digits || '');
-  ctx.fillStyle = '#173f2a'; ctx.fillRect(0, 0, W, H);
+  _pageBg(ctx, W, H);
   text(ctx, '加入房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.16, h: H * 0.07 };
-  _pageBtn(ctx, back.x, back.y, back.w, back.h, '返回', {});
+  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.15, h: H * 0.07 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
-  var bw = W * 0.115, bh = H * 0.095, gap = W * 0.02;
+  var bw = W * 0.095, bh = H * 0.105, gap = W * 0.022;
   var total = 6 * bw + 5 * gap, bx = (W - total) / 2, by = H * 0.20;
   for (var i = 0; i < 6; i++) {
     var x = bx + i * (bw + gap);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.moveTo(x + 6, by); ctx.lineTo(x + bw - 6, by); ctx.quadraticCurveTo(x + bw, by, x + bw, by + 6);
-    ctx.lineTo(x + bw, by + bh - 6); ctx.quadraticCurveTo(x + bw, by + bh, x + bw - 6, by + bh);
-    ctx.lineTo(x + 6, by + bh); ctx.quadraticCurveTo(x, by + bh, x, by + bh - 6);
-    ctx.lineTo(x, by + 6); ctx.quadraticCurveTo(x, by, x + 6, by); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2; ctx.stroke();
-    if (digits[i]) text(ctx, digits[i], x + bw / 2, by + bh / 2, Math.round(bh * 0.55), '#ffd98a', 'center', true);
+    _rr(ctx, x, by, bw, bh, bh * 0.22);
+    ctx.fillStyle = digits[i] ? 'rgba(255,214,140,0.10)' : 'rgba(0,0,0,0.32)';
+    ctx.fill();
+    ctx.strokeStyle = digits[i] ? 'rgba(255,214,140,0.85)' : 'rgba(255,214,140,0.35)';
+    ctx.lineWidth = 2; ctx.stroke();
+    if (digits[i]) text(ctx, digits[i], x + bw / 2, by + bh / 2, Math.round(bh * 0.50), '#ffd98a', 'center', true);
   }
 
   var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0'];
-  var kw = W * 0.15, kh = H * 0.105, kgap = W * 0.025;
-  var ky0 = H * 0.40;
+  var kr = H * 0.056, kGap = H * 0.022;
+  var kx0 = W / 2 - (kr * 3 + kGap);
+  var ky0 = H * 0.37;
   for (var k = 0; k < keys.length; k++) {
     var col = k % 3, row = Math.floor(k / 3);
-    var kx = W / 2 - (kw * 1.5 + kgap) + col * (kw + kgap);
-    var kyy = ky0 + row * (kh + H * 0.018);
-    var label = keys[k] === 'del' ? '删除' : keys[k];
-    _pageBtn(ctx, kx, kyy, kw, kh, label, {});
-    if (keys[k] === 'del') hits.push({ id: 'joinDel', x: kx, y: kyy, w: kw, h: kh });
-    else hits.push({ id: 'joinDigit', d: keys[k], x: kx, y: kyy, w: kw, h: kh });
+    var cx = kx0 + col * (kr * 2 + kGap) + kr;
+    var cy = ky0 + row * (kr * 2 + kGap) + kr;
+    ctx.beginPath(); ctx.arc(cx, cy, kr, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.34)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,214,140,0.40)'; ctx.lineWidth = 2; ctx.stroke();
+    text(ctx, keys[k] === 'del' ? '⌫' : keys[k], cx, cy + 1, Math.round(kr * 0.85), '#f6efdf', 'center', true);
+    if (keys[k] === 'del') hits.push({ id: 'joinDel', x: cx - kr, y: cy - kr, w: kr * 2, h: kr * 2 });
+    else hits.push({ id: 'joinDigit', d: keys[k], x: cx - kr, y: cy - kr, w: kr * 2, h: kr * 2 });
   }
-  var jw = W * 0.44, jh = H * 0.095, jx = (W - jw) / 2, jy = H * 0.885 - jh;
-  _pageBtn(ctx, jx, jy, jw, jh, '加入房间', { active: digits.length === 6 });
+  var jw = W * 0.40, jh = H * 0.105, jx = (W - jw) / 2, jy = H * 0.845 - jh / 2;
+  _cardBtn(ctx, jx, jy, jw, jh, '▶', '加入房间', { primary: digits.length === 6 });
   hits.push({ id: 'joinConfirm', x: jx, y: jy, w: jw, h: jh });
   return hits;
 }
-
 
 function render(ctx, st) {
   if (st.page === 'HOME') return { page: 'HOME', home: drawHomePage(ctx, st) };
