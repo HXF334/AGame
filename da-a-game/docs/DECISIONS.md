@@ -609,3 +609,11 @@ ewRoomId(seed)\ 对 6 位种子原样返回，避免被取模改写。
 - **首出权口径**（规则 SKILL「首出权」）：反A 者 > 2V3 明打次方 > 2V3 暗打主A > 强制排查结果；1V4 暗打由主A（独打者）先出。
 - **测试**：新增 `tests/test-net-first-player.js` 5 断言（暗打=主A、明打=次方、反A=反A者、无主A=null、1V4 暗打=主A），锁住 `transition.determineFirstPlayer`。
 - **验证**：全量 134/134、preflight 12/12。
+
+## D-108 联网顶栏信息、轮到自己按钮消失、发牌补间与僵尸房清理（2026-11-18）
+- **顶栏信息**：联网对局「房间号 / 第几局」字号与颜色对齐左上角模式文字（`0.034H`、`#ffd98a`、bold），不再用灰色小字。
+- **按钮消失**：上一手/不出后 `uiPlays/uiPassed` 仍留着自己的行，`drawButtons` 判 `_uiHumanRowTaken` 把整排按钮藏了。`_applyNetView` 在「PLAY 且轮到自己」时清掉自己那两条。
+- **发牌过程**：服务端是权威、一次发完牌，客户端补 1.4 秒逐张露出的视觉补间（`uiNetDealFull/uiNetDealUntil/uiNetDealSound`，只改渲染时的临时手牌，结束后恢复）；轮询 1500→700ms。
+- **僵尸房**：`poll` 记 `lastSeen`（不改 `offline`）；`tickAllRooms` 删除 3 分钟无心跳或没有真人的房间；poll 在 seq 变化或距上次落库 >30s 时写库，避免心跳丢失。
+- **日志**：亮A 打「手上有 N 张该花色A（双A）」；旧 `gateSuit` 路径也补 `cardId`，与 `netSuit:*` 一致。
+- **验证**：`test-server-flow` 10/10、`test-online-client` 15/15、`test-net-play` 8/8、`test-ui-netgate` 8/8、`test-pages` 20/20；全量 134/134、`preflight --fast` 12/12；`game-server` 部署 37 files / 99.3 KB。

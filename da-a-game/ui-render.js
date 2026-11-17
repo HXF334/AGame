@@ -1784,12 +1784,14 @@ function render(ctx, st) {
   var autoIcon = { x: m.autoPlay.iconX, y: m.autoPlay.iconY, r: m.autoPlay.iconR };
   drawTopBar(ctx, st, m, memoIcon, autoIcon);
   // [2026-11-17 用户] 联网对局：托管图标左侧显示房间号与局数
+  //   [2026-11-18 用户] 字号/颜色要和左上角「明打 / 大A」一致（金色、加粗）
   if (st.netInfo) {
     var ni = st.netInfo;
     var NH = st.H;
+    var nfs = Math.max(10, Math.round(m.vh * 0.034));
     var nx = autoIcon.x - autoIcon.r - NH * 0.018;
-    text(ctx, '房间号：' + ni.roomId, nx, autoIcon.y - NH * 0.016, Math.round(NH * 0.023), 'rgba(246,239,223,0.82)', 'right', false);
-    text(ctx, (ni.round || 1) + '/' + (ni.rounds || 0) + '局', nx, autoIcon.y + NH * 0.020, Math.round(NH * 0.023), 'rgba(246,239,223,0.62)', 'right', false);
+    text(ctx, '房间号：' + ni.roomId, nx, autoIcon.y - NH * 0.021, nfs, '#ffd98a', 'right', true);
+    text(ctx, (ni.round || 1) + '/' + (ni.rounds || 0) + '局', nx, autoIcon.y + NH * 0.021, nfs, '#ffd98a', 'right', true);
   }
   drawMemo(ctx, st, m);
   var seatInfo = drawSeats(ctx, st, m);

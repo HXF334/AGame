@@ -91,6 +91,7 @@ function join(room, player, now) {
     avatar: String(player.avatar || ''),
     ready: false,
     ai: false,
+    lastSeen: now || Date.now(),
     total: 0
   });
   room.updatedAt = now || Date.now();
@@ -438,6 +439,9 @@ function setOnline(room, openid, now) {
 
 function poll(room, viewerId) {
   var me = findPlayer(room, viewerId);
+  // [2026-11-18 用户] 心跳：每次轮询记一次「这个真人还在」，用于清理被杀进程留下的僵尸房间
+  //   （offline 标记只由显式 online/offline 动作改写，轮询不动它）
+  if (me) { me.lastSeen = Date.now(); }
   var view = {
     id: room.id,
     status: room.status,

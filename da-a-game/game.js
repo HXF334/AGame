@@ -196,6 +196,10 @@ var uiNetPhase = null;     // [2026-11-18 用户] 联网阶段日志：同一阶
 var uiNetRoundKey = '';    // 联网对局/局数标识，换局重新打头部日志
 var uiNetGateKey = '';     // 联网闸门提示去重
 var uiNetAutoBusy = false; // [2026-11-17 用户] 联网托管：正在等待上一次发送的结果
+// [2026-11-18 用户] 联网发牌视觉补间：服务端一次发完牌，客户端 1.4 秒内逐张露出（纯展示）
+var uiNetDealFull = null;
+var uiNetDealUntil = 0;
+var uiNetDealSound = 0;
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
 var uiHistoryConfirm = false;   // [2026-11-16] 清空二次确认
@@ -984,8 +988,17 @@ function _resumeRoom() {
   if (!id) return;
   log('检测到未结束的房间 ' + id + '，尝试重连');
   _ensureOnlineClient().joinRoom(String(id), uiNick || '玩家', '')['then'](function (r) {
-    if (r && r.ok) { log('重连成功: ' + id); _enterLobby(r.room); }
-    else { log('重连失败: ' + ((r && r.error) || '未知')); _clearPersistedRoom(); }
+    if (r && r.ok) { log('重连成功: ' + id); _enterLobby(r.room); return; }
+    log('重连失败: ' + ((r && r.error) || '未知'));
+    // [2026-11-18 用户] 刷新后房间还在、但已开局/自己已不在房里 → 主动 leave 释放，
+    //   否则残留房间会一直挂在库里（真人直接杀进程时没走 leave）。
+    try {
+      var _c = _ensureOnlineClient();
+      _c.roomId = String(id);
+      log('  释放残留房间 ' + id);
+      _c.leave()['catch'](function () {});
+    } catch (e) {}
+    _clearPersistedRoom();
   })['catch'](function (e) {
     log('重连异常: ' + (e && e.message));
     _clearPersistedRoom();
@@ -1670,7 +1683,7 @@ function uiClick(id) {
     var _myA = ((_meS && _meS.hand) || []).filter(function (c) { return c.rank === 14 && c.suit === _ns; });
     if (gameState.phase === 'LIANG_A' || gameState.phase === 'DEALING') {
       if (!_myA.length) { showToast('手上没有该花色的A'); return false; }
-      log('  联网闸门: 亮A ' + psuit(_ns));
+      log('  联网闸门: 亮A ' + psuit(_ns) + '（手上有 ' + _myA.length + ' 张该花色A' + (_myA.length >= 2 ? '，双A' : '') + '）');
       // [2026-11-18 用户] 引擎的 LIANG_A 要的是具体牌 cardId（不是花色），
       //   协议层仍要求 suit → 两个都带上（服务端会补 playerId）。
       _netSend('LIANG_A', { suit: _ns, cardId: _myA[0].id });
@@ -2168,6 +2181,21 @@ function _drawImpl() {
   //   -> 结束后不再有任何倒计时(回合 20 秒 / AI 等待 / 闸门 5 秒), 也不该继续倒数。
   if (gameState.phase === PHASES.GAME_END) _uiClearCountdowns();
   var _ngInfo = _netGateInfo();
+  // [2026-11-18 用户] 联网发牌补间：进入对局后 1.4 秒内逐张露出手牌（只改显示，不改状态）
+  var _dealRestore = null;
+  if (uiNet && uiNetDealFull && Date.now() < uiNetDealUntil) {
+    var _meP = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    if (_meP && _meP.hand && _meP.hand.length === uiNetDealFull.length) {
+      var _prog = 1 - (uiNetDealUntil - Date.now()) / 1400;
+      if (_prog < 0) _prog = 0; if (_prog > 1) _prog = 1;
+      var _n = Math.max(1, Math.ceil(_prog * uiNetDealFull.length));
+      _dealRestore = { p: _meP, hand: _meP.hand };
+      _meP.hand = uiNetDealFull.slice(0, _n);
+      if (_n - uiNetDealSound >= 6) { uiNetDealSound = _n; _sfx('deal'); }
+    }
+  } else if (uiNetDealFull && Date.now() >= uiNetDealUntil) {
+    uiNetDealFull = null; uiNetDealUntil = 0; uiNetDealSound = 0;
+  }
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
     gameState: gameState,
@@ -2242,6 +2270,8 @@ function _drawImpl() {
     netGate: _ngInfo,
     netInfo: (uiNet && uiRoomView) ? { roomId: uiRoomView.id, round: uiRoomView.round, rounds: uiRoomView.rounds } : null
   });
+  // 补间结束：把我的真实手牌放回去（渲染/命中都必须看到完整手牌）
+  if (_dealRestore) { _dealRestore.p.hand = _dealRestore.hand; _dealRestore = null; }
   btnLog = out.btnLog;
   btnStage = out.btnStage;
   handCardHitboxes = out.handHitboxes;
@@ -2348,8 +2378,10 @@ function _onGateTap(hit) {
   }
   if (hit.id === 'gateSuit') {
     if (gameState.phase === 'LIANG_A') {
-      log('联网闸门: 亮A ' + hit.suit);
-      _netSend('LIANG_A', { suit: hit.suit });
+      var _meL = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+      var _myAL = ((_meL && _meL.hand) || []).filter(function (c) { return c.rank === 14 && c.suit === hit.suit; });
+      log('联网闸门: 亮A ' + hit.suit + '（' + _myAL.length + ' 张该花色A）');
+      _netSend('LIANG_A', { suit: hit.suit, cardId: _myAL[0] ? _myAL[0].id : null });
       return;
     }
     var me = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
@@ -2866,6 +2898,14 @@ function _enterNetGame(view) {
   humanPlayer = netStateMod.seatId(view.you == null ? 0 : view.you);
   log('进入联网对局: room=' + view.id + ' 我=' + humanPlayer + ' 局=' + view.round + '/' + view.rounds);
   _applyNetView(view);
+  // [2026-11-18 用户] 服务端是一次性发完牌的，画面上没有「发牌过程」。
+  //   这里只做视觉补间：1.4 秒内逐张露出自己的手牌（状态仍以服务端为准，不参与规则）。
+  var _me = gameState && gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+  if (_me && _me.hand && _me.hand.length) {
+    uiNetDealFull = _me.hand.slice();
+    uiNetDealUntil = Date.now() + 1400;
+    uiNetDealSound = 0;
+  }
 }
 
 function _netPhaseName(ph) {
@@ -2894,6 +2934,13 @@ function _applyNetView(view) {
   uiRoomView = view;   // [2026-11-17 用户] 房间号/局数/闸门倒计时都从最新视图取
   currentPlayer = st.currentPlayer || netStateMod.seatId(view.you == null ? 0 : view.you);
   _uiProjectPlays();
+  // [2026-11-18 用户] 轮到自己时，把「我上一手摊在按钮位」的牌/不出清掉：
+  //   否则 ui-render.drawButtons 会因为「按钮位被我的牌占着」把整排按钮隐藏
+  //   （单机靠 advanceCurrentPlayer 清，联网之前没人清）。
+  if (st.phase === 'PLAY' && currentPlayer === humanPlayer) {
+    if (st.uiPlays) delete st.uiPlays[humanPlayer];
+    if (st.uiPassed) delete st.uiPassed[humanPlayer];
+  }
   // [2026-11-18 用户] 联网要有和对局一致的过程日志（发牌/阶段/亮A/身份/首出权），
   //   否则玩家看不到「谁亮A、谁先出」，会怀疑规则坏了。
   if (uiNetRoundKey !== view.id + ':' + view.round) {
@@ -2901,8 +2948,7 @@ function _applyNetView(view) {
     var _hand0 = (st.players.filter(function (p) { return p.id === humanPlayer; })[0] || {}).hand || [];
     log('=== 联网对局: 房间 ' + view.id + '  第 ' + view.round + '/' + view.rounds + ' 局  你是 ' + pn(humanPlayer) + '（' + _hand0.length + ' 张）');
   }
-  if (uiNetPhase !== st.phase) {
-    uiNetPhase = st.phase;
+  if (uiNetPhase !== st.phase) {    uiNetPhase = st.phase;
     log('  【阶段】' + _netPhaseName(st.phase));
     if (st.phase === 'LIANG_A') log('  亮A: 手上有 A 可选择花色（超时由服务端强制排查）');
     if (st.phase === 'FAN_A') log('  反A: 需要两张同花色 A 且与主A 不同花色');
@@ -3024,7 +3070,7 @@ function _startRoomPolling() {
     uiOnline.poll()['catch'](function (e) {
       log('联网轮询失败: ' + ((e && (e.message || e.errMsg)) || e));
     });
-  }, 1500);
+  }, 700);
 }
 
 function _enterLobby(view) {

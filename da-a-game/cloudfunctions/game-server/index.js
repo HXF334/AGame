@@ -50,13 +50,24 @@ function advanceRoom(room) {
 
 // [2026-11-16 用户] 定时触发器：扫描超时房间并推进（每 1 分钟）。
 async function tickAllRooms() {
-  var out = { scanned: 0, ticked: 0 };
+  var out = { scanned: 0, ticked: 0, released: 0 };
   try {
     var res = await db.collection(COL).where({ status: 'PLAYING' }).limit(100).get();
     var list = res.data || [];
     out.scanned = list.length;
     for (var i = 0; i < list.length; i++) {
       var room = list[i];
+      // [2026-11-18 用户] 僵尸房清理：真人全都超过 3 分钟没轮询（杀进程/掉线没 leave）
+      //   就直接删记录，避免刷新时一直提示「检测到未结束的房间」。
+      var humans = (room.players || []).filter(function (p) { return !p.ai; });
+      var alive = humans.filter(function (p) {
+        return p.lastSeen && (Date.now() - p.lastSeen < 180000);
+      });
+      if (!humans.length || !alive.length) {
+        try { await db.collection(COL).doc(room.id).remove(); } catch (e) {}
+        out.released += 1;
+        continue;
+      }
       var before = room.seq;
       try { roomMod.gateTick(room, Date.now()); } catch (e) {}
       try { roomMod.tick(room, Date.now()); } catch (e) {}
@@ -188,7 +199,10 @@ exports.main = async function (event) {
     //   客户端拿到「已推进到 PLAY」的视图，但下一次 apply 又从库里读到旧 phase → NOT_PLAY_PHASE。
     var beforePollSeq = room.seq;
     var advanced = advanceRoom(room);
-    if (advanced.seq !== beforePollSeq) {
+    // 心跳最多每 30 秒落一次库（lastSeen 用于僵尸房清理）；有推进则立即落库
+    var hbDue = !advanced.hbAt || (Date.now() - advanced.hbAt > 30000);
+    if (advanced.seq !== beforePollSeq || hbDue) {
+      advanced.hbAt = Date.now();
       try { await saveRoom(advanced); } catch (e) { /* 下次 poll 再试 */ }
     }
     return ok({ room: roomMod.poll(advanced, openid) });
