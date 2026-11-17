@@ -184,7 +184,14 @@ exports.main = async function (event) {
     return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }
   if (action === 'poll') {
-    return ok({ room: roomMod.poll(advanceRoom(room), openid) });
+    // [2026-11-18 用户] poll 原来只推进内存对象、不落库：
+    //   客户端拿到「已推进到 PLAY」的视图，但下一次 apply 又从库里读到旧 phase → NOT_PLAY_PHASE。
+    var beforePollSeq = room.seq;
+    var advanced = advanceRoom(room);
+    if (advanced.seq !== beforePollSeq) {
+      try { await saveRoom(advanced); } catch (e) { /* 下次 poll 再试 */ }
+    }
+    return ok({ room: roomMod.poll(advanced, openid) });
   }
   return fail('UNKNOWN_ACTION');
 };

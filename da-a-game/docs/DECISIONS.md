@@ -594,3 +594,11 @@ ewRoomId(seed)\ 对 6 位种子原样返回，避免被取模改写。
 - **联网闸门复用单机按钮模型**：`uiButtons()` 在联网且闸门可操作时产出 `netSuit:*` / `netIdPublic` / `netIdHidden`，交给 `drawButtons` 统一绘制（宽度/间距/置灰一致）；`drawNetGate` 只在不可操作时画等待文案。
 - **房间释放**：`room.leave()` 允许对局中退出，最后一个真人离开返回 `empty`，`game-server` 删除房间记录；`create` 遇到同号但已无真人的旧房间会先删再建。
 - **创建页回默认**：每次从首页进创建页 `_resetCreateCfg()`（局数 12、底分 1、无限制、剩余牌数开、记牌器关、AI 补齐开、随机新房间号）；纵向留白调整为 `ridY 1.00`、选项 `1.95/2.90/3.85`、开关 `4.80/5.75/6.70`。
+
+## D-106 云函数 poll 必须落库（NOT_PLAY_PHASE 根因）与无头服务端全流程测试（2026-11-18）
+- **现象**：真人出牌 `联网失败: PLAY -> NOT_PLAY_PHASE`；亮A 失败的 `MISSING_PAYLOAD` 已由 D-105 之后的 cardId 修复单独解决。
+- **根因**：`cloudfunctions/game-server/index.js` 的 `poll` 分支 `roomMod.poll(advanceRoom(room))` 只推进内存对象、**没有 saveRoom**。客户端从 poll 视图看到 `PLAY`，下一次 apply 又从库里读到旧 `LIANG_A_RESOLVED` → 阶段不符。
+- **修复**：poll 前记 `beforePollSeq`，`advanceRoom` 后若 `seq` 变化则 `await saveRoom(advanced)`，再返回 `roomMod.poll(advanced, openid)`；写库失败不阻塞本次返回。
+- **新增无头验证**：`tests/test-server-flow.js` 用内存假 `wx-server-sdk`（`Module._load` 劫持）直接加载真实 `game-server/index.js`，用与客户端相同的 `protocol.makeAction` 走 create → start → 亮A → poll 推进 → 真人出牌 → leave → 同号重建；断言「服务端 DB phase 与 poll 视图一致」「真人出牌被接受」「最后一个真人退出后房间被删」「同号可重建」。
+- **验证**：`node tests/test-server-flow.js` 10/10；全量 133/133、preflight 12/12；`game-server` 已重新部署（37 files / 98.8 KB）。
+- **意义**：此类「服务端状态/阶段」bug 以后可以纯 node 复现，不需要人操作模拟器。

@@ -371,7 +371,16 @@ function apply(room, env, actorId, now) {
 
   var payload = Object.assign({}, env.payload, { playerId: seatId(me.seat) });
   var r = engine.transition(room.state, { type: env.type, payload: payload });
-  if (!r.ok) return { ok: false, error: (r.error && r.error.type) || 'REJECTED' };
+  if (!r.ok) {
+    // [2026-11-18 用户] 失败时把服务端当前 phase 一起带回去，客户端日志能直接定位
+    return {
+      ok: false,
+      error: (r.error && r.error.type) || 'REJECTED',
+      phase: room.state && room.state.phase,
+      detail: (r.error && r.error.message) || '',
+      seq: room.seq
+    };
+  }
   room.state = r.state;
   room.seq += 1;
   room.moveKeys.push(key);

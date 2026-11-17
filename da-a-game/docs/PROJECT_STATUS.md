@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **132 个套件 / 执行 131 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **133 个套件 / 执行 133 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 132/132 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 133/133 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -183,7 +183,7 @@
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
 5. **P4（单机收尾）**：~~AI 记牌（D-078）~~ 已完成；**残局搜索（D-080）** 已实现（全体剩牌 ≤10，抽样推演，含队友评估），只在 AI/托管启用。
 6. **下一阶段**：好友建房对战——方案已确认（D-093，见 `docs/plans/ONLINE_ROOM.md`），P0 已在 `main` 完成（protocol/timing/version、引擎副本同步、fake-cloud、测试）；后续在 `feature/online-room` 分支做 `game-server` 房间核心（P1）。云开发环境 `cloud1-d5g7uiwu9f7caacdc` 已开通；`init-db`/`record-game`/`list-records`/`clear-records` 已部署；上线前需确认棋牌类目/资质。
-7. **持续**：改动后更新本文件；保持 131+ 套件全绿。
+7. **持续**：改动后更新本文件；保持 133+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）
 

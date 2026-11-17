@@ -2366,6 +2366,12 @@ function doPlay() {
   if (uiNet) {
     if (!selectedCards.length) { showToast('请先选牌'); draw(); return; }
     if (currentPlayer !== humanPlayer) { showToast('还没轮到你出牌'); draw(); return; }
+    // [2026-11-18 用户] 出牌日志要能对上选中：把实际发出的牌也打出来
+    var _meNowH = (gameState.players.filter(function (p) { return p.id === humanPlayer; })[0] || {}).hand || [];
+    log('  联网出牌: ' + selectedCards.length + ' 张 ' + selectedCards.map(function (id) {
+      var c = _meNowH.filter(function (x) { return x && x.id === id; })[0];
+      return c ? cardDesc(c) : id;
+    }).join(' '));
     _netSend('PLAY', { playerId: humanPlayer, cardIds: selectedCards.slice() });
     return;
   }
@@ -2923,10 +2929,17 @@ function _netAutoStep() {
 
 function _netSend(type, payload) {
   if (!uiOnline) { showToast('未连接房间'); return; }
-  log('联网发送: ' + type + (payload ? ' ' + JSON.stringify(payload) : ''));
+  log('联网发送: ' + type + ' room=' + (uiOnline && uiOnline.roomId) + ' baseSeq=' + (uiOnline && uiOnline.seq)
+    + (payload ? ' ' + JSON.stringify(payload) : ''));
   uiOnline.send(type, payload || {})['then'](function (r) {
     if (!r || !r.ok) {
-      log('联网失败: ' + type + ' -> ' + ((r && r.error) || 'UNKNOWN'));
+      log('联网失败: ' + type + ' -> ' + ((r && r.error) || 'UNKNOWN')
+        + (r && r.phase ? ' phase=' + r.phase : '')
+        + (r && r.detail ? ' ' + r.detail : ''));
+      // [2026-11-18 用户] 阶段不一致说明本地视图落后：立刻拉一次最新视图自愈
+      if (r && r.error === 'NOT_PLAY_PHASE' && uiOnline && uiOnline.poll) {
+        uiOnline.poll()['then'](function (v) { if (v) _applyNetView(v); })['catch'](function () {});
+      }
       showToast('操作失败: ' + ((r && r.error) || '网络错误'));
       draw();
       return;
@@ -3161,6 +3174,12 @@ function _onPageTouch(x, y) {
     }
     if (b.id === 'lobbyStart') {
       if (!uiOnline) { log('开始失败: 未连接'); return; }
+      // [2026-11-18 用户] 创建还没回来就点开始会 NO_ROOM_ID（实测日志），这里挡一下
+      if (uiRoomView && uiRoomView.status === 'CREATING') {
+        log('开始失败: 房间还在创建中');
+        showToast('房间创建中，请稍候');
+        return;
+      }
       log('联网开始: 请求开局');
       uiOnline.start()['then'](function (r) {
         if (r && r.ok) log('开始成功: seq=' + (r.room && r.room.seq));
