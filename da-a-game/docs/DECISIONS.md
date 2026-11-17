@@ -574,3 +574,14 @@ ewRoomId(seed)\ 对 6 位种子原样返回，避免被取模改写。
 - 联网闸门改为单机样式：倒计时圆 + 花色四钮 / 公开隐藏二钮，不再弹大面板。
 - 退出游戏清理 AI/发牌/亮A/结算定时器，避免退出后继续出日志；联网对局顶部显示「房间号」「x/y 局」；切换视角静默忽略。
 - 等待页菜单画在牌桌之后（之前被牌桌覆盖所以看不见但可点）。
+
+## D-104 联网出牌/提示/托管/闸门对齐单机（2026-11-17）
+
+- **出牌信封**：`protocol.validateEnvelope` 要求 PLAY 带 `payload.playerId`（服务端随后用 `actorId` 覆盖），客户端原来只发 `{cardIds}`，服务端直接 `BAD_PAYLOAD`。`game.js doPlay/doPass` 统一带 `playerId`；新增 `tests/test-net-play.js` 5 断言锁「PLAY/PASS 必带 playerId」「提示能选中」。
+- **提示失效**：`_bruteForceLegalPlays` 克隆 state 后 `currentPlayer` 不是自己，`NOT_YOUR_TURN` 把所有候选否掉。预检副本里改设 `probe.currentPlayer = humanPlayer`（只在本地试牌，不写回服务端状态）。
+- **对手动作可见**：`_applyNetView` 用 `uiNetPlaysLen` 增量扫描 `st.plays`，PLAY/CAPTURE/PASS 打 `联网: X 出牌 N 张 / 取牌 / 不出`。
+- **退出即回首页**：`uiOnline.onUpdate` 在 `uiPage === 'HOME'` 或客户端已销毁时直接 return，避免迟到的视图把玩家拽回对局；`_leaveRoomNow` 清 AI/发牌/亮A/结算定时器。
+- **联网托管**（推翻 D-099「联网禁用托管」）：托管 = 本地 AI 决策 + 服务端裁决，与「超时代打」是两件事。`_autoPlayTakeover` 联网走 `_netAutoStep()`（`chooseAction(gameState, humanPlayer, {endgame:true})` → `send PLAY/PASS`，失败用穷举兜底），轮到真人且开着托管时自动排程。
+- **闸门 UI**：`drawNetGate` 不再画居中面板与说明文案，花色/公开隐藏按钮复用对局底部按钮行，跳过在右下；倒计时改用 `drawTurnInfo` 的表盘（`turnIsGate`）。
+- **创建页**：`rowH = ph/8`；房间号与「修改」左缘对齐单选圆点列（第二列按钮）；开关行起点 4.60；等待页徽标改「已准备/未准备」。
+- **房间号被改写**：线上 `game-server` 仍是旧版 `newRoomId`（seed%900000+100000），已重新部署（37 files / 97.9 KB）；本地校验 `createRoom({roomId:"577575"}).id === "577575"`。

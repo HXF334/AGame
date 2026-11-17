@@ -50,7 +50,7 @@ check('2.3 draw 不访问任何玩家底牌明面 (§14 每张牌只在一处可
 // ================= 3. 阶段约束 §3 =================
 section('3. §3 阶段约束 (结束后不能再出牌)');
 check('3.1 doPlay 检查 phase === PHASES.PLAY', /function doPlay[\s\S]{0,200}?PHASES\.PLAY/.test(src));
-check('3.2 doPass 检查 phase === PHASES.PLAY', /function doPass[\s\S]{0,200}?PHASES\.PLAY/.test(src));
+check('3.2 doPass 检查 phase === PHASES.PLAY', /function doPass[\s\S]{0,600}?PHASES\.PLAY/.test(src));
 
 // ================= 4. 健壮性 §14 =================
 section('4. §14 健壮性');

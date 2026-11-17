@@ -26,9 +26,12 @@ g.__setNet(true);
 var texts = g.__renderTexts();
 var hits = g.__netGateHits();
 check('1.1 出现四个花色按钮', hits.filter(function (b) { return b.id === 'gateSuit'; }).length === 4, String(hits.length));
-check('1.2 亮A 提示文案', texts.some(function (t) { return /选择要亮的 A 花色/.test(t); }), texts.join(' | '));
+// [2026-11-17 用户] 闸门要和单机一致：花色按钮落在底部操作按钮行（不再有自己的说明文案/居中面板）
+var _btns = hits.filter(function (b) { return b.id === 'gateSuit'; });
+var _sameRow = _btns.every(function (b) { return b.y === _btns[0].y && b.h === _btns[0].h; });
+check('1.2 四个花色按钮同排等大', _sameRow);
 check('1.3 有跳过按钮', hits.some(function (b) { return b.id === 'gateSkip'; }));
-check('1.4 提示可操作', texts.some(function (t) { return /选择要亮的 A 花色/.test(t); }));
+check('1.4 不再有独立提示文案（与单机一致）', !texts.some(function (t) { return /选择要亮的 A 花色/.test(t); }), texts.join(' | '));
 
 var h6 = SB.C('H', 6);
 var st2 = SB.build({ handMap: { B: [h5, h6] }, phase: 'LIANG_A' });

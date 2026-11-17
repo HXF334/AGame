@@ -187,6 +187,8 @@ var uiRoomTimer = null;
 var uiRoomBusy = false;
 var uiNick = '';
 var uiNet = false;   // [2026-11-16 用户] 联网对局中（本地不再跑 AI/引擎推进）
+var uiNetPlaysLen = 0;     // [2026-11-17 用户] 联网：已打印到第几条出牌流水（用于给别人的出牌补日志）
+var uiNetAutoBusy = false; // [2026-11-17 用户] 联网托管：正在等待上一次发送的结果
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
 var uiHistoryConfirm = false;   // [2026-11-16] 清空二次确认
@@ -418,7 +420,7 @@ var uiAiTimer = 0;             // AI 等待计时（退出游戏时必须清掉�
 // [2026-11-06 用户] 托管: 开启后**本局持续**由 AI 代打, 直到用户取消;
 //   取消后**不得再自动出牌**(排队中的动作必须作废)。
 function _uiToggleAutoPlay() {
-  if (uiNet) { showToast('联网对局暂不支持托管'); log('联网对局: 忽略托管开关'); draw(); return; }
+  // [2026-11-17 用户] 联网也要托管：本地 AI 决策，动作仍发给服务端裁决
   uiAutoPlay = !uiAutoPlay;
   log(uiAutoPlay ? '开启托管: AI 代打真人手牌(本局持续, 直到取消)' : '关闭托管: 恢复真人操作');
   selectedCards = [];
@@ -483,6 +485,7 @@ function _aiTraceLine(tr, who) {
 // AI 接管真人回合: 用引擎的 chooseAction 替真人做决策
 function _autoPlayTakeover() {
   if (!uiAutoPlay) return false;
+  if (uiNet) return _netAutoStep();
   if (!gameState || gameState.phase !== PHASES.PLAY) return false;
   if (currentPlayer !== humanPlayer) return false;
   // [2026-11-08 23:36 用户] 手动标的敌友要影响托管的出牌 -> 把标记带给 AI
@@ -1128,6 +1131,10 @@ function _bruteForceLegalPlays(me, table) {
     if (seen[key]) return;
     seen[key] = 1; attempts++;
     var probe = JSON.parse(JSON.stringify(gameState));
+    // [2026-11-17 用户] 联网时服务端是权威：probe 只用于本地算「这手合不合法」，
+    //   必须把 currentPlayer 改成自己，否则引擎的回合归属校验（NOT_YOUR_TURN）会把所有候选否掉，
+    //   表现就是「提示: 当前没有可用的牌」。
+    probe.currentPlayer = humanPlayer;
     var r = engine.transition(probe, {
       type: 'PLAY', payload: { playerId: humanPlayer, cardIds: cards.map(function (c) { return c.id; }) }
     });
@@ -2110,6 +2117,7 @@ function _drawImpl() {
   // [2026-11-03/04 用户] 「牌局结束的时候后面的闹钟要清掉」
   //   -> 结束后不再有任何倒计时(回合 20 秒 / AI 等待 / 闸门 5 秒), 也不该继续倒数。
   if (gameState.phase === PHASES.GAME_END) _uiClearCountdowns();
+  var _ngInfo = _netGateInfo();
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
     gameState: gameState,
@@ -2155,10 +2163,16 @@ function _drawImpl() {
     // [2026-11-03] 倒计时闹钟: 亮A 用亮A 的, 真人回合用回合的, **AI 回合用 AI 等待的**
     // [2026-11-03] 闸门倒计时(亮A/反A/身份, 5 秒)优先; 其次出牌回合倒计时(20 秒, 任何玩家轮到都计时)
     // [2026-11-03 用户] 「牌局结束的时候后面的闹钟要清掉」-> 结束后一律不画闹钟
-    turnDeadline: (gameState.phase === PHASES.GAME_END) ? 0 : (uiLiangDeadline ? uiLiangDeadline : (uiTurnDeadline || uiAiWaitDeadline)),
-    turnTotal: (gameState.phase === PHASES.GAME_END) ? 0 : (uiLiangDeadline ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal)),
+    // [2026-11-17 用户] 联网闸门也走单机的「大表盘倒计时」：用服务端 window 的剩余秒数换算成 deadline
+    turnDeadline: (gameState.phase === PHASES.GAME_END) ? 0
+      : (_ngInfo && _ngInfo.eligible && _ngInfo.left > 0)
+        ? (Date.now() + _ngInfo.left * 1000)
+        : (uiLiangDeadline ? uiLiangDeadline : (uiTurnDeadline || uiAiWaitDeadline)),
+    turnTotal: (gameState.phase === PHASES.GAME_END) ? 0
+      : (_ngInfo && _ngInfo.eligible && _ngInfo.left > 0) ? 5000
+        : (uiLiangDeadline ? uiLiangTotal : (uiTurnDeadline ? uiTurnTotal : uiAiWaitTotal)),
     turnIsLiang: !!(gateChoice && gateChoice.kind === 'LIANG_A'),   // [2026-10-27] 亮A 倒计时画大一点
-    turnIsGate: !!uiGateKind,             // [2026-11-03] 三种闸门倒计时都用大表盘
+    turnIsGate: !!uiGateKind || !!(_ngInfo && _ngInfo.eligible && _ngInfo.left > 0),             // [2026-11-03] 三种闸门倒计时都用大表盘
     autoPlay: uiAutoPlay,
     sfxOn: !!(_ensureAudio() && audioMgr.sfxOn()),
     bgmOn: !!(_ensureAudio() && audioMgr.bgmOn()),
@@ -2175,7 +2189,7 @@ function _drawImpl() {
     historySummary: uiHistorySummary,
     historyError: uiHistoryError,
     phase: gameState.phase,
-    netGate: _netGateInfo(),
+    netGate: _ngInfo,
     netInfo: (uiNet && uiRoomView) ? { roomId: uiRoomView.id, round: uiRoomView.round, rounds: uiRoomView.rounds } : null
   });
   btnLog = out.btnLog;
@@ -2305,7 +2319,7 @@ function doPlay() {
   if (uiNet) {
     if (!selectedCards.length) { showToast('请先选牌'); draw(); return; }
     if (currentPlayer !== humanPlayer) { showToast('还没轮到你出牌'); draw(); return; }
-    _netSend('PLAY', { cardIds: selectedCards.slice() });
+    _netSend('PLAY', { playerId: humanPlayer, cardIds: selectedCards.slice() });
     return;
   }
   // [2026-11-03 用户] 别人出牌时真人可以**提前选牌**, 但**不能打出**
@@ -2405,7 +2419,7 @@ function doPlay() {
 function doPass() {
   if (uiNet) {
     if (currentPlayer !== humanPlayer) { showToast('还没轮到你'); draw(); return; }
-    _netSend('PASS', {});
+    _netSend('PASS', { playerId: humanPlayer });
     return;
   }
   if (!currentPlayer || gameState.phase !== PHASES.PLAY) {
@@ -2769,6 +2783,8 @@ function _ensureOnlineClient() {
   if (uiOnline) return uiOnline;
   uiOnline = onlineMod.createClient({ call: _cloudCall, now: function () { return Date.now(); } });
   uiOnline.onUpdate(function (view) {
+    // [2026-11-17 用户] 已经退出房间/回首页后，迟到的轮询结果不能再把人拉回牌桌
+    if (!uiOnline || uiPage === 'HOME' || !view) return;
     uiRoomView = view;
     if (view && view.status === 'PLAYING') {
       if (!uiNet) _enterNetGame(view);
@@ -2800,9 +2816,59 @@ function _applyNetView(view) {
   var st = netStateMod.toRender(view);
   if (!st) return;
   gameState = st;
+  uiRoomView = view;   // [2026-11-17 用户] 房间号/局数/闸门倒计时都从最新视图取
   currentPlayer = st.currentPlayer || netStateMod.seatId(view.you == null ? 0 : view.you);
   _uiProjectPlays();
+  // [2026-11-17 用户] 别人出牌/过牌也要打日志（原来只有真人自己的动作有 log）
+  var _plays = st.plays || [];
+  if (uiNetPlaysLen > _plays.length) uiNetPlaysLen = 0;
+  for (var _i = uiNetPlaysLen; _i < _plays.length; _i++) {
+    var _rec = _plays[_i] || {};
+    if (_rec.kind === 'PLAY') {
+      log('  联网: ' + pn(_rec.playerId) + ' 出牌 ' + ((_rec.cards || []).length) + ' 张'
+        + (_rec.type ? ' [' + _rec.type + ']' : ''));
+    } else if (_rec.kind === 'CAPTURE') {
+      log('  联网: ' + pn(_rec.playerId) + ' 取牌 ' + ((_rec.cards || []).length) + ' 张');
+    } else if (_rec.kind === 'PASS') {
+      log('  联网: ' + pn(_rec.playerId) + ' 不出');
+    }
+  }
+  uiNetPlaysLen = _plays.length;
+  // [2026-11-17 用户] 联网托管：轮到自己时按单机托管同一套 AI 决策
+  if (uiAutoPlay && currentPlayer === humanPlayer && !uiNetAutoBusy) _autoPlaySchedule(700);
   draw();
+}
+
+// [2026-11-17 用户] 联网托管走一步：决策用和单机相同的 chooseAction（本地只读自己的手牌与公开信息），
+//   真正的落子仍然交给服务端（发送 PLAY/PASS，由服务端校验并广播）。
+function _netAutoStep() {
+  if (!uiNet || !gameState || gameState.phase !== 'PLAY') return false;
+  if (currentPlayer !== humanPlayer || uiNetAutoBusy) return false;
+  var act = null;
+  try {
+    gameState.uiMarks = uiMarks;
+    act = chooseAction(gameState, humanPlayer, { endgame: true });
+  } catch (e) { act = null; }
+  if (!act || (act.type !== 'PLAY' && act.type !== 'PASS')) {
+    // 兜底：AI 决策失败时，用「提示」同一套穷举找一个合法手
+    var _me = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    var _ok = _me ? _bruteForceLegalPlays(_me, gameState.table || []) : [];
+    act = _ok.length ? { type: 'PLAY', cardIds: _ok[0].ids } : { type: 'PASS' };
+  }
+  uiNetAutoBusy = true;
+  var _done = function () { uiNetAutoBusy = false; };
+  if (act.type === 'PLAY') {
+    var ids = act.cardIds || [];
+    if (!ids.length) { uiNetAutoBusy = false; return false; }
+    log('  联网托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张');
+    _netSend('PLAY', { playerId: humanPlayer, cardIds: ids });
+    setTimeout(_done, 400);
+    return true;
+  }
+  log('  联网托管: AI 代打 ' + pn(humanPlayer) + ' 不出');
+  _netSend('PASS', { playerId: humanPlayer });
+  setTimeout(_done, 400);
+  return true;
 }
 
 function _netSend(type, payload) {
@@ -2901,6 +2967,17 @@ function _leaveRoomNow() {
   uiNet = false;
   uiRoomView = null;
   uiPage = 'HOME';
+  uiAutoPlay = false;
+  uiNetPlaysLen = 0;
+  uiNetAutoBusy = false;
+  if (uiAutoPlayTimer) { clearTimeout(uiAutoPlayTimer); uiAutoPlayTimer = null; }
+  if (uiAiTimer) { clearTimeout(uiAiTimer); uiAiTimer = null; }
+  if (uiDealTimer) { clearTimeout(uiDealTimer); uiDealTimer = null; }
+  if (uiLiangTimer) { clearTimeout(uiLiangTimer); uiLiangTimer = null; }
+  if (uiSettleTimer) { clearTimeout(uiSettleTimer); uiSettleTimer = null; }
+  lastEmptiedPlayer = null;
+  selectedCards = [];
+  log('退出房间 → 回首页');
   if (c && c.roomId && typeof c.leave === 'function') c.leave()['catch'](function () {});
   draw();
 }

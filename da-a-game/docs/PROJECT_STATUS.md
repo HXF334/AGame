@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **130 个套件 / 执行 130 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **131 个套件 / 执行 131 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 130/130 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 131/131 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,7 +39,7 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：130 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
+- **测试**：131 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
 
 ## 4. 本轮变更（2026-11-12～13，D-059～D-076）
 
@@ -145,9 +145,11 @@
   - 闸门窗口：`start` 后进入 8s 亮A窗口 → 反A窗口 → 身份窗口，超时走默认；窗口内 `ui-render.drawNetGate` 提供花色/公开/隐藏/跳过按钮，`game.js` 走 `send`。
   - 定时触发器 `game-server/config.json`（每分钟）+ `tickAllRooms()` 推进超时与 AI 代打。
   - 断线重连：房间号存 `dada_room`，`onShow` 恢复（`online()` 或 `joinRoom`），`onHide` 标记离线，离开清除。
-  - 测试：`test-room-gates` 8、`test-ui-netgate` 7、`test-ui-netsettle` 8；全量 130/130；`game-server` 部署 37 files / 96.9 KB。
+  - 测试：`test-room-gates` 8、`test-ui-netgate` 7、`test-ui-netsettle` 8；全量 131/131；`game-server` 部署 37 files / 96.9 KB。
 
 ## 5. 冒烟记录（开发者工具）
+
+- 2026-11-17 联网修复（D-104）：开发者工具创建房间 → 等待页 → 开始进入联网对局；闸门画面与单机一致（底部花色按钮 + 表盘倒计时）；控制台可见 `联网: X 出牌 N 张`；出牌不再 `BAD_PAYLOAD`；「退出游戏」一次回首页。
 
 - `tools/wechat-cli.ps1 islogin` → `{"login":true}`。
 - `tools/wechat-cli.ps1 open --project ...\da-a-game` → `√ open`，IDE server `http://127.0.0.1:41957`。
@@ -181,7 +183,7 @@
 4. **P3**：~~其它 skills 合并精简~~（D-062 已完成：skills 精简为 3 份，规则 SKILL 已重排）。
 5. **P4（单机收尾）**：~~AI 记牌（D-078）~~ 已完成；**残局搜索（D-080）** 已实现（全体剩牌 ≤10，抽样推演，含队友评估），只在 AI/托管启用。
 6. **下一阶段**：好友建房对战——方案已确认（D-093，见 `docs/plans/ONLINE_ROOM.md`），P0 已在 `main` 完成（protocol/timing/version、引擎副本同步、fake-cloud、测试）；后续在 `feature/online-room` 分支做 `game-server` 房间核心（P1）。云开发环境 `cloud1-d5g7uiwu9f7caacdc` 已开通；`init-db`/`record-game`/`list-records`/`clear-records` 已部署；上线前需确认棋牌类目/资质。
-7. **持续**：改动后更新本文件；保持 130+ 套件全绿。
+7. **持续**：改动后更新本文件；保持 131+ 套件全绿。
 
 ## 8. 命令速查（`da-a-game/` 下）
 
