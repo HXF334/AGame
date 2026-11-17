@@ -1665,9 +1665,12 @@ function uiClick(id) {
     var _ns = id.slice('netSuit:'.length);
     var _meS = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
     var _myA = ((_meS && _meS.hand) || []).filter(function (c) { return c.rank === 14 && c.suit === _ns; });
-    if (gameState.phase === 'LIANG_A') {
+    if (gameState.phase === 'LIANG_A' || gameState.phase === 'DEALING') {
+      if (!_myA.length) { showToast('手上没有该花色的A'); return false; }
       log('  联网闸门: 亮A ' + psuit(_ns));
-      _netSend('LIANG_A', { suit: _ns });
+      // [2026-11-18 用户] 引擎的 LIANG_A 要的是具体牌 cardId（不是花色），
+      //   协议层仍要求 suit → 两个都带上（服务端会补 playerId）。
+      _netSend('LIANG_A', { suit: _ns, cardId: _myA[0].id });
     } else {
       if (_myA.length < 2) { showToast('没有该花色两张A'); return false; }
       log('  联网闸门: 反A ' + psuit(_ns));

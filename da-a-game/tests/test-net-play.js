@@ -56,5 +56,26 @@ g.doPass();
 check('5 过牌信封带 playerId', sent.length === 1 && sent[0].type === 'PASS' &&
   sent[0].payload && sent[0].payload.playerId === 'B', JSON.stringify(sent[0] || null));
 
+// [2026-11-18 用户] 亮A 报 MISSING_PAYLOAD：引擎要 { playerId, cardId }，协议要 suit。
+//   联网闸门按钮必须两个都发，否则 LIANG_A 永远失败、整局卡在亮A阶段。
+var s1 = SB.C('S', 14);
+var st2 = SB.build({ handMap: { B: [s1] }, phase: 'LIANG_A' });
+st2['主A'] = null; st2['次方'] = null; st2['主方'] = null; st2['抓方'] = null;
+st2.currentPlayer = 'B';
+g.__setState(st2, { human: 'B', currentPlayer: 'B', clearLog: true });
+g.__setOnlineClient(fake);
+g.__setNet(true);
+sent.length = 0;
+g.uiClick('netSuit:S');
+check('6 亮A 信封带 suit', sent.length === 1 && sent[0].type === 'LIANG_A' &&
+  sent[0].payload && sent[0].payload.suit === 'S', JSON.stringify(sent[0] || null));
+check('7 亮A 信封带 cardId（引擎要求）', !!(sent[0] && sent[0].payload.cardId),
+  JSON.stringify(sent[0] || null));
+
+sent.length = 0;
+g.uiClick('netIdPublic');
+check('8 身份信封带 choice', sent.length === 1 && sent[0].type === 'CHOOSE_IDENTITY' &&
+  sent[0].payload && sent[0].payload.choice === 'PUBLIC', JSON.stringify(sent[0] || null));
+
 console.log('netplay: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
