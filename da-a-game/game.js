@@ -172,7 +172,8 @@ var _uiMarksWerePublic = false;   // [2026-11-08 16:24] 上次渲染时阵营是
 var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
 var uiMenuOpen = false;
 var uiPage = (typeof wx === 'undefined' || wx.__isMock) ? 'GAME' : 'HOME';
-var uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true };
+function _randomRoomId() { return String(100000 + Math.floor(Math.random() * 900000)); }
+var uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true, roomId: _randomRoomId() };
 var uiJoinDigits = '';
 // [2026-11-16 用户] 单机「下一局」保留头像下方累计分, 只有重新进入(回首页再进)才清零
 var uiTotals = {};
@@ -368,6 +369,7 @@ function _afterDeal() {
 
 // 定时器驱动的一轮(真机/模拟器: 每 0.2 秒)
 function _dealStepTick() {
+  if (uiPage !== 'GAME') return;
   uiDealTimer = null;
   if (!gameState || gameState.phase !== PHASES.DEALING) return;
   if (!_dealOneRound()) return;
@@ -411,6 +413,7 @@ var uiSettleAt = 0;            // 牌局结束的时刻(0 = 未结束)
 var uiSettleTimer = 0;         // 到点重绘的定时器
 var uiAutoPlayTakeovers = 0;   // [2026-11-08] 托管接管次数(测试用: 托管是否**持续**生效)
 var uiAutoPlayTimer = 0;       // 托管排队中的动作(取消托管时必须清掉)
+var uiAiTimer = 0;             // AI 等待计时（退出游戏时必须清掉）
 
 // [2026-11-06 用户] 托管: 开启后**本局持续**由 AI 代打, 直到用户取消;
 //   取消后**不得再自动出牌**(排队中的动作必须作废)。
@@ -2172,7 +2175,8 @@ function _drawImpl() {
     historySummary: uiHistorySummary,
     historyError: uiHistoryError,
     phase: gameState.phase,
-    netGate: _netGateInfo()
+    netGate: _netGateInfo(),
+    netInfo: (uiNet && uiRoomView) ? { roomId: uiRoomView.id, round: uiRoomView.round, rounds: uiRoomView.rounds } : null
   });
   btnLog = out.btnLog;
   btnStage = out.btnStage;
@@ -2263,7 +2267,12 @@ function _netGateInfo() {
     else if (ph === 'IDENTITY_CHOICE') _r = eng.canChooseIdentity(gameState, humanPlayer);
     eligible = !!(_r && _r.ok);
   } catch (e) { eligible = false; }
-  return { kind: ph, eligible: !!eligible };
+  var left = 0;
+  try {
+    var dl = uiRoomView && uiRoomView.gateDeadline;
+    if (dl) left = Math.max(0, Math.ceil((dl - Date.now()) / 1000));
+  } catch (e) { left = 0; }
+  return { kind: ph, eligible: !!eligible, left: left };
 }
 
 function _onGateTap(hit) {
@@ -2500,6 +2509,7 @@ function doPushWind() {
 
 // === AI 行动 ===
 function runAI() {
+  if (uiPage !== 'GAME') return;
   if (!ctx) return;  // node 测试模式不进 AI
   var guard = 0;
   while (currentPlayer && currentPlayer !== humanPlayer && gameState.phase === PHASES.PLAY && guard++ < 200) {
@@ -2521,7 +2531,7 @@ function runAI() {
       //   「他出的牌 / 不出」(闹钟熄), 下一个 AI 开始等才重新点亮。
       uiAiWaitDeadline = _now + _waitLeft;
       uiAiWaitTotal = _waitMs;
-      setTimeout(runAI, _waitLeft);
+      uiAiTimer = setTimeout(runAI, _waitLeft);
       return;
     }
     uiAiWaitDeadline = 0;   // 他要动了 -> 闹钟收起来(这一刻画面上是「他出的牌 / 不出」)
@@ -2836,6 +2846,10 @@ function _enterLobby(view) {
 }
 
 function _createRoomNow() {
+  // [2026-11-17 用户] 先进入等待页占位，避免 1–2 秒空白
+  uiRoomView = { id: uiCreateCfg.roomId, status: 'CREATING', round: 1, rounds: uiCreateCfg.rounds, seq: 0, players: [{ seat: 0, nick: uiNick || '玩家1', ready: false, owner: true, ai: false, offline: false, total: 0 }], you: 0, config: uiCreateCfg, lastRound: [] };
+  uiPage = 'LOBBY';
+  draw();
   if (uiRoomBusy) return;
   uiRoomBusy = true;
   showToast('创建房间…');
@@ -2843,7 +2857,7 @@ function _createRoomNow() {
   draw();
   _ensureOnlineClient().createRoom(uiCreateCfg, uiNick, '')['then'](function (r) {
     uiRoomBusy = false;
-    if (!r || !r.ok) { log('联网创建失败: ' + ((r && r.error) || '网络错误')); showToast('创建失败: ' + ((r && r.error) || '网络错误')); draw(); return; }
+    if (!r || !r.ok) { var _em = (r && r.error) || '网络错误'; log('联网创建失败: ' + _em); showToast(_em === 'ROOM_EXISTS' ? '房间号已被占用，请换一个' : ('创建失败: ' + _em)); draw(); return; }
     log('联网创建成功: 房间 ' + (r.room && r.room.id));
     _enterLobby(r.room);
   })['catch'](function (e) {
@@ -2898,7 +2912,15 @@ function _exitToHome() {
   log('退出游戏 → 回首页');
   _stopRoomPolling();
   uiAutoPlay = false;
+  uiNet = false;
+  uiRoomView = null;
   if (uiAutoPlayTimer) { clearTimeout(uiAutoPlayTimer); uiAutoPlayTimer = null; }
+  if (uiAiTimer) { clearTimeout(uiAiTimer); uiAiTimer = null; }
+  if (uiDealTimer) { clearTimeout(uiDealTimer); uiDealTimer = null; }
+  if (uiLiangTimer) { clearTimeout(uiLiangTimer); uiLiangTimer = null; }
+  if (uiSettleTimer) { clearTimeout(uiSettleTimer); uiSettleTimer = null; }
+  lastEmptiedPlayer = null;
+  selectedCards = [];
   uiPage = 'HOME';
   draw();
 }
@@ -2918,15 +2940,23 @@ function _netSettleReady() {
 }
 
 var uiCreatePrompt = null; // [2026-11-17 用户] 画布内数字键盘浮层 {key,max,label,text}
-function _promptNumber(key, max, def) {
-  var label = key === 'rounds' ? '局数' : (key === 'baseScore' ? '底分' : '出牌时间');
-  uiCreatePrompt = { key: key, max: max || 99, def: def, label: label, text: '' };
+function _promptNumber(key, max, def, len) {
+  var label = key === 'rounds' ? '局数' : (key === 'baseScore' ? '底分' : (key === 'turnSeconds' ? '出牌时间' : '房间号'));
+  uiCreatePrompt = { key: key, max: max || 99, def: def, len: len || 2, label: label, text: '' };
   log('打开自定义输入: ' + label);
   draw();
 }
 function _applyPrompt() {
   if (!uiCreatePrompt) return;
   var v = parseInt(uiCreatePrompt.text, 10);
+  if (uiCreatePrompt.key === 'roomId') {
+    if (isNaN(v) || v < 100000 || v > 999999) { showToast('房间号需为 6 位数字'); return; }
+    uiCreateCfg.roomId = String(v);
+    log('配置: roomId=' + v);
+    uiCreatePrompt = null;
+    draw();
+    return;
+  }
   if (isNaN(v) || v < 1) { showToast('请输入 1–' + uiCreatePrompt.max); return; }
   v = Math.min(v, uiCreatePrompt.max);
   uiCreateCfg[uiCreatePrompt.key] = v;
@@ -2950,7 +2980,7 @@ function _onPageTouch(x, y) {
     for (var pi = 0; pi < (btnPageHits || []).length; pi++) {
       var pb = btnPageHits[pi];
       if (x < pb.x || x > pb.x + pb.w || y < pb.y || y > pb.y + pb.h) continue;
-      if (pb.id === 'promptDigit') { if (uiCreatePrompt.text.length < 2) uiCreatePrompt.text += pb.d; draw(); return; }
+      if (pb.id === 'promptDigit') { if (uiCreatePrompt.text.length < (uiCreatePrompt.len || 2)) uiCreatePrompt.text += pb.d; draw(); return; }
       if (pb.id === 'promptDel') { uiCreatePrompt.text = uiCreatePrompt.text.slice(0, -1); draw(); return; }
       if (pb.id === 'promptClear') { uiCreatePrompt.text = ''; draw(); return; }
       if (pb.id === 'promptCancel') { uiCreatePrompt = null; draw(); return; }
@@ -2965,6 +2995,7 @@ function _onPageTouch(x, y) {
     if (b.id === 'homeJoin') { log('点击: 加入房间'); uiPage = 'JOIN'; uiJoinDigits = ''; draw(); return; }
     if (b.id === 'homeSolo') { uiPage = 'GAME'; log('进入单机对局（分数清零）'); uiTotals = {}; uiTotalsApplied = false; newGame(); return; }
     if (b.id === 'createBack' || b.id === 'joinBack') { uiPage = 'HOME'; draw(); return; }
+    if (b.id === 'roomIdEdit') { _promptNumber('roomId', 999999, uiCreateCfg.roomId, 6); return; }
     if (b.id === 'chip') { uiCreateCfg[b.key] = b.value; log('配置: ' + b.key + '=' + b.value); draw(); return; }
     if (b.id === 'chipCustom') { _promptNumber(b.key, b.max, b.def); return; }
     if (b.id === 'toggleOn') { uiCreateCfg[b.key] = true; log('配置: ' + b.key + '=开'); draw(); return; }
@@ -3086,7 +3117,7 @@ wx.onTouchStart(function (e) {
       var bp = btnSelectPlayers[i];
       if (x >= bp.x && x <= bp.x + bp.w && y >= bp.y && y <= bp.y + bp.h) {
         // [2026-11-17 用户] 除单机外禁用切换视角（联网对局看别人手牌会被服务端裁剪，但没有意义）
-        if (uiNet) { showToast('联网对局不支持切换视角'); return; }
+        if (uiNet) { return; }
         // [2026-10-25 P0 修复] 原来用**槽位索引**当玩家 ID, 但座位现在是**动态环排**的
         //   -> 点谁都不是谁(切不到戊)。改成用 hitbox 里带的**真实 pid**。
     // [2026-11-10 用户] 切换 = 以该玩家身份**观察**(只读), 不是换真人座位

@@ -26,9 +26,9 @@ g.__setNet(true);
 var texts = g.__renderTexts();
 var hits = g.__netGateHits();
 check('1.1 出现四个花色按钮', hits.filter(function (b) { return b.id === 'gateSuit'; }).length === 4, String(hits.length));
-check('1.2 标题为亮A', texts.some(function (t) { return /^亮A$/.test(t); }), texts.join(' | '));
+check('1.2 亮A 提示文案', texts.some(function (t) { return /选择要亮的 A 花色/.test(t); }), texts.join(' | '));
 check('1.3 有跳过按钮', hits.some(function (b) { return b.id === 'gateSkip'; }));
-check('1.4 提示可操作', texts.some(function (t) { return /请选择/.test(t); }));
+check('1.4 提示可操作', texts.some(function (t) { return /选择要亮的 A 花色/.test(t); }));
 
 var h6 = SB.C('H', 6);
 var st2 = SB.build({ handMap: { B: [h5, h6] }, phase: 'LIANG_A' });

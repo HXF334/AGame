@@ -71,14 +71,17 @@ function createClient(opt) {
 
   // 发动作：自动带 baseSeq；STALE 时先 poll 再重试一次
   c.send = function (type, payload) {
-    var env = protocol.makeAction(type, payload || {}, c.seq, now());
-    return invoke('apply', { roomId: c.roomId, env: env }).then(function (r) {
-      if (r.ok || r.error !== 'STALE') return r;
-      return c.poll().then(function () {
-        var retry = protocol.makeAction(type, payload || {}, c.seq, now());
-        return invoke('apply', { roomId: c.roomId, env: retry });
+    function attempt(n) {
+      var env = protocol.makeAction(type, payload || {}, c.seq, now());
+      return invoke('apply', { roomId: c.roomId, env: env }).then(function (r) {
+        if (r && r.ok) return r;
+        if (r && r.error === 'STALE' && n < 3) {
+          return c.poll().then(function () { return attempt(n + 1); });
+        }
+        return r;
       });
-    });
+    }
+    return attempt(0);
   };
 
   // 视图快捷判断（UI 用）

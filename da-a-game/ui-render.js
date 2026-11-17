@@ -1376,6 +1376,20 @@ function _pageBg(ctx, W, H) {
   // 顶部暖光
   ctx.fillStyle = 'rgba(255,214,140,0.06)';
   ctx.beginPath(); ctx.arc(W * 0.5, H * 0.10, W * 0.42, 0, Math.PI * 2); ctx.fill();
+  // [2026-11-17 用户] 与新页面统一：绒布质感 + 四角暗角，但不用牌桌椭圆
+  for (var _y = 0; _y < H; _y += H * 0.055) {
+    ctx.fillStyle = (_y / (H * 0.055)) % 2 < 1 ? 'rgba(255,255,255,0.012)' : 'rgba(0,0,0,0.02)';
+    ctx.fillRect(0, _y, W, H * 0.055);
+  }
+  if (ctx.createRadialGradient) {
+    var vg = ctx.createRadialGradient(W * 0.5, H * 0.42, H * 0.10, W * 0.5, H * 0.5, Math.max(W, H) * 0.78);
+    if (vg && vg.addColorStop) {
+      vg.addColorStop(0, 'rgba(0,0,0,0)');
+      vg.addColorStop(1, 'rgba(0,0,0,0.42)');
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
   ctx.fillStyle = 'rgba(255,214,140,0.04)';
   ctx.beginPath(); ctx.arc(W * 0.5, H * 0.10, W * 0.28, 0, Math.PI * 2); ctx.fill();
 }
@@ -1406,6 +1420,11 @@ function _cardBtn(ctx, x, y, w, h, glyph, label, opt) {
   ctx.fill();
   ctx.restore();
   var cy = y + h / 2, fs = Math.round(h * 0.30), r = h * 0.30;
+  // [2026-11-17 用户] 页面按钮去掉左侧图标，文字在按钮内居中
+  if (opt.noIcon) {
+    text(ctx, label, x + w / 2, cy, fs, '#f6efdf', 'center', true);
+    return;
+  }
   var labelW = 0;
   try {
     ctx.font = 'bold ' + fs + 'px sans-serif';
@@ -1448,7 +1467,7 @@ function drawHomePage(ctx, st) {
   ];
   var hits = [];
   for (var i = 0; i < defs.length; i++) {
-    _cardBtn(ctx, bx, defs[i].y, bw, bh, defs[i].glyph, defs[i].label, { primary: i === 0 });
+    _cardBtn(ctx, bx, defs[i].y, bw, bh, defs[i].glyph, defs[i].label, { noIcon: true });
     hits.push({ id: defs[i].id, x: bx, y: defs[i].y, w: bw, h: bh });
   }
   text(ctx, '好友建房：最多 5 个真人，空位可 AI 补齐', W / 2, H * 0.885, Math.round(H * 0.024), 'rgba(246,239,223,0.55)', 'center', false);
@@ -1461,8 +1480,8 @@ function drawCreatePage(ctx, st) {
   var cfg = st.cfg || {};
   _pageBg(ctx, W, H);
   text(ctx, '创建房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.13, h: H * 0.055 };
-  _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
+  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.09, h: H * 0.055 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '返回', { noIcon: true });
   var hits = [back];
 
   var px = W * 0.08, py = H * 0.175, pw = W * 0.84, ph = H * 0.560;
@@ -1473,7 +1492,7 @@ function drawCreatePage(ctx, st) {
   var step = pw * 0.132;
   var fsLabel = Math.round(H * 0.033);
   var fsValue = Math.round(H * 0.031);
-  var rowH = ph / 7.0;
+  var rowH = ph / 7.2;
 
   function chipLabel(key, v) {
     if (key === 'turnSeconds') return v === 0 ? '无限制' : v + 's';
@@ -1485,9 +1504,21 @@ function drawCreatePage(ctx, st) {
     { key: 'baseScore', label: '底分', values: [1, 2, 5], max: 99, def: 1 },
     { key: 'turnSeconds', label: '出牌时间', values: [0, 30, 60], max: 99, def: 0 }
   ];
+  // [2026-11-17 用户] 房间号可修改；重复由服务端校验
+  var ridY = py + rowH * 0.42;
+  text(ctx, '房间号', labelX, ridY, fsLabel, 'rgba(246,239,223,0.88)', 'left', true);
+  var rid = String(cfg.roomId || '');
+  text(ctx, rid, optX, ridY, Math.round(H * 0.040), '#ffd98a', 'left', true);
+  var ridBtn = { id: 'roomIdEdit', x: optX + step * 2.55, y: ridY - H * 0.030, w: step * 1.15, h: H * 0.060 };
+  _rr(ctx, ridBtn.x, ridBtn.y, ridBtn.w, ridBtn.h, H * 0.016);
+  ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,214,140,0.45)'; ctx.lineWidth = 2; ctx.stroke();
+  text(ctx, '修改', ridBtn.x + ridBtn.w / 2, ridY, Math.round(H * 0.026), '#ffd98a', 'center', true);
+  hits.push(ridBtn);
+
   for (var r = 0; r < rows.length; r++) {
     var row = rows[r];
-    var y = py + rowH * (0.85 + r * 1.0);
+    var y = py + rowH * (1.30 + r * 0.88);
     text(ctx, row.label, labelX, y, fsLabel, 'rgba(246,239,223,0.88)', 'left', true);
     var cur = cfg[row.key];
     var custom = row.values.indexOf(cur) < 0;
@@ -1512,20 +1543,20 @@ function drawCreatePage(ctx, st) {
     { key: 'aiFill', label: '空位 AI 补齐' }
   ];
   for (var t2 = 0; t2 < toggles.length; t2++) {
-    var ty = py + rowH * (3.85 + t2 * 0.92);
+    var ty = py + rowH * (4.20 + t2 * 0.80);
     var on2 = !!cfg[toggles[t2].key];
     text(ctx, toggles[t2].label, labelX, ty, fsLabel, 'rgba(246,239,223,0.82)', 'left', false);
     _radio(ctx, optX, ty, H * 0.015, on2);
     text(ctx, '开', optX + H * 0.027, ty, fsValue, on2 ? '#c9f29a' : 'rgba(246,239,223,0.60)', 'left', false);
     hits.push({ id: 'toggleOn', key: toggles[t2].key, x: optX - H * 0.015, y: ty - H * 0.026, w: step * 0.9, h: H * 0.052 });
-    var ox = optX + step * 1.35;
+    var ox = optX + step;
     _radio(ctx, ox, ty, H * 0.015, !on2);
     text(ctx, '关', ox + H * 0.027, ty, fsValue, !on2 ? '#c9f29a' : 'rgba(246,239,223,0.60)', 'left', false);
     hits.push({ id: 'toggleOff', key: toggles[t2].key, x: ox - H * 0.015, y: ty - H * 0.026, w: step * 0.9, h: H * 0.052 });
   }
 
   var cw = W * 0.46, chh = H * 0.100, cx3 = (W - cw) / 2, cy3 = H * 0.825;
-  _cardBtn(ctx, cx3, cy3, cw, chh, '▶', '创建房间', { primary: true });
+  _cardBtn(ctx, cx3, cy3, cw, chh, '', '创建房间', { noIcon: true });
   hits.push({ id: 'createConfirm', x: cx3, y: cy3, w: cw, h: chh });
 
   // [2026-11-17 用户] 自定义数字键盘（画布内浮层，不依赖 wx.showKeyboard）
@@ -1533,8 +1564,8 @@ function drawCreatePage(ctx, st) {
     var pr = st.prompt;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, W, H);
-    var bw2 = W * 0.46, bh2 = H * 0.58, bx2 = (W - bw2) / 2, by2 = (H - bh2) / 2;
-    _panel(ctx, bx2, by2, bw2, bh2, H * 0.030);
+    var bw2 = W * 0.84, bh2 = H * 0.56, bx2 = W * 0.08, by2 = H * 0.175;
+    _panel(ctx, bx2, by2, bw2, bh2, H * 0.028);
     text(ctx, pr.label + '（1–' + pr.max + '）', bx2 + bw2 / 2, by2 + H * 0.065, Math.round(H * 0.036), '#ffd98a', 'center', true);
     text(ctx, pr.text || '—', bx2 + bw2 / 2, by2 + H * 0.135, Math.round(H * 0.056), '#f6efdf', 'center', true);
     var ks = [['1','2','3'],['4','5','6'],['7','8','9'],['⌫','0','清空']];
@@ -1556,10 +1587,10 @@ function drawCreatePage(ctx, st) {
     }
     var bw3 = bw2 * 0.34, bh3 = H * 0.075;
     var bx3 = bx2 + bw2 * 0.10, by3 = by2 + bh2 - bh3 - H * 0.025;
-    _cardBtn(ctx, bx3, by3, bw3, bh3, '×', '取消', {});
+    _cardBtn(ctx, bx3, by3, bw3, bh3, '', '取消', { noIcon: true });
     hits.push({ id: 'promptCancel', x: bx3, y: by3, w: bw3, h: bh3 });
     var ox3 = bx2 + bw2 - bw3 - bw2 * 0.10;
-    _cardBtn(ctx, ox3, by3, bw3, bh3, '✓', '确定', { primary: true });
+    _cardBtn(ctx, ox3, by3, bw3, bh3, '', '确定', { noIcon: true });
     hits.push({ id: 'promptOk', x: ox3, y: by3, w: bw3, h: bh3 });
   }
   return hits;
@@ -1570,8 +1601,8 @@ function drawJoinPage(ctx, st) {
   var digits = String(st.digits || '');
   _pageBg(ctx, W, H);
   text(ctx, '加入房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.13, h: H * 0.055 };
-  _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
+  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.09, h: H * 0.055 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '返回', { noIcon: true });
   var hits = [back];
 
   var bw = W * 0.090, bh = H * 0.100, gap = W * 0.020;
@@ -1606,7 +1637,7 @@ function drawJoinPage(ctx, st) {
     }
   }
   var jw = W * 0.42, jh = H * 0.090, jx = (W - jw) / 2, jy = H * 0.810;
-  _cardBtn(ctx, jx, jy, jw, jh, '▶', '加入房间', { primary: digits.length === 6 });
+  _cardBtn(ctx, jx, jy, jw, jh, '', '加入房间', { noIcon: true });
   hits.push({ id: 'joinConfirm', x: jx, y: jy, w: jw, h: jh });
   return hits;
 }
@@ -1618,9 +1649,10 @@ function drawLobbyPage(ctx, st) {
   var rows = lobby.seatRows(view);
   var m = layout(W, H);
   _pageBg(ctx, W, H);
+  drawTable(ctx, m);
 
-  var back = { id: 'lobbyLeave', x: W * 0.20, y: H * 0.045, w: W * 0.13, h: H * 0.055 };
-  _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '离开', {});
+  var back = { id: 'lobbyLeave', x: W * 0.20, y: H * 0.045, w: W * 0.09, h: H * 0.055 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '离开', { noIcon: true });
   var hits = [back];
 
   // [2026-11-17 用户] 等待页也要 ☰ 菜单（音乐/音效/退出）
@@ -1635,7 +1667,6 @@ function drawLobbyPage(ctx, st) {
   text(ctx, lobby.statusText(view), W / 2, H * 0.128, Math.round(H * 0.026), 'rgba(246,239,223,0.70)', 'center', false);
 
   // [2026-11-17 用户] 等待页直接用正式对局的牌桌与座位位置，不再单独设计一套
-  drawTable(ctx, m);
   var slots = [m.me, m.seats[0], m.seats[1], m.seats[2], m.seats[3]];
   var seatCol = ['#c98a5a', '#8a6fc9', '#5a9ac9', '#5ac98a', '#c95a7a'];
   for (var i = 0; i < 5; i++) {
@@ -1673,14 +1704,14 @@ function drawLobbyPage(ctx, st) {
   var bw2 = W * 0.34, bh = H * 0.080;
   if (lobby.canStart(view)) {
     var sy = H * 0.795;
-    _cardBtn(ctx, (W - bw2) / 2, sy, bw2, bh, '▶', '开始', { primary: true });
+    _cardBtn(ctx, (W - bw2) / 2, sy, bw2, bh, '', '开始', { noIcon: true });
     hits.push({ id: 'lobbyStart', x: (W - bw2) / 2, y: sy, w: bw2, h: bh });
     var ry = H * 0.885;
-    _cardBtn(ctx, (W - bw2) / 2, ry, bw2, bh, '✓', me && me.ready ? '取消准备' : '准备', {});
+    _cardBtn(ctx, (W - bw2) / 2, ry, bw2, bh, '', me && me.ready ? '取消准备' : '准备', { noIcon: true });
     hits.push({ id: 'lobbyReady', x: (W - bw2) / 2, y: ry, w: bw2, h: bh });
   } else {
     var ry2 = H * 0.855;
-    _cardBtn(ctx, (W - bw2) / 2, ry2, bw2, bh, '✓', me && me.ready ? '取消准备' : '准备', { primary: !(me && me.ready) });
+    _cardBtn(ctx, (W - bw2) / 2, ry2, bw2, bh, '', me && me.ready ? '取消准备' : '准备', { noIcon: true });
     hits.push({ id: 'lobbyReady', x: (W - bw2) / 2, y: ry2, w: bw2, h: bh });
     text(ctx, '等待房主开始（空位可由 AI 补齐）', W / 2, ry2 - H * 0.040, Math.round(H * 0.022), 'rgba(246,239,223,0.50)', 'center', false);
   }
@@ -1716,11 +1747,11 @@ function drawNetSettlePage(ctx, st) {
   var me = null; ((view && view.players) || []).forEach(function (p) { if (view && p.seat === view.you) me = p; });
   var bw = W * 0.26, bh = H * 0.10, bx = W / 2 - bw / 2, by = H * 0.74;
   if (final) {
-    _cardBtn(ctx, bx, by, bw, bh, '⌂', '返回首页', { primary: true });
+    _cardBtn(ctx, bx, by, bw, bh, '', '返回首页', { noIcon: true });
     return [{ id: 'settleHome', x: bx, y: by, w: bw, h: bh }];
   }
   var ready = !!(me && me.ready);
-  _cardBtn(ctx, bx, by, bw, bh, '✓', ready ? '已准备' : '准备下一局', { primary: !ready });
+  _cardBtn(ctx, bx, by, bw, bh, '', ready ? '已准备' : '准备下一局', { noIcon: true });
   text(ctx, ready ? '等待其他玩家…' : '全员准备后自动开局', W / 2, H * 0.875, Math.round(H * 0.024), 'rgba(246,239,223,0.55)', 'center', false);
   return [{ id: 'settleReady', x: bx, y: by, w: bw, h: bh }];
 }
@@ -1730,37 +1761,44 @@ function drawNetGate(ctx, st) {
   var g = st.netGate;
   if (!g) return [];
   var W = st.W, H = st.H;
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(0, 0, W, H);
-  var pw = W * 0.66, ph = H * 0.36, px = (W - pw) / 2, py = (H - ph) / 2;
-  _panel(ctx, px, py, pw, ph, H * 0.03);
-  var title = g.kind === 'LIANG_A' ? '亮A' : (g.kind === 'FAN_A' ? '反A' : '选择身份');
-  text(ctx, title, W / 2, py + ph * 0.16, Math.round(H * 0.052), '#ffd98a', 'center', true);
-  text(ctx, g.eligible ? '请选择（超时自动跳过）' : '等待其他玩家…', W / 2, py + ph * 0.30, Math.round(H * 0.024), 'rgba(246,239,223,0.65)', 'center', false);
   var hits = [];
-  if (g.eligible && (g.kind === 'LIANG_A' || g.kind === 'FAN_A')) {
+  var left = (typeof g.left === 'number') ? g.left : 0;
+  if (left > 0) {
+    ctx.beginPath(); ctx.arc(W * 0.5, H * 0.395, H * 0.082, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,214,140,0.85)'; ctx.lineWidth = 3; ctx.stroke();
+    text(ctx, String(left), W * 0.5, H * 0.395, Math.round(H * 0.082), '#ffd98a', 'center', true);
+  }
+  if (!g.eligible) {
+    text(ctx, '等待其他玩家选择…', W * 0.5, H * 0.545, Math.round(H * 0.030), 'rgba(246,239,223,0.80)', 'center', false);
+    return hits;
+  }
+  if (g.kind === 'LIANG_A' || g.kind === 'FAN_A') {
     var suits = ['H', 'D', 'C', 'S'];
     var labels = ['♥', '♦', '♣', '♠'];
-    var bw = W * 0.10, bh = H * 0.11;
-    var total = bw * 4 + W * 0.02 * 3;
-    var x0 = (W - total) / 2, by = py + ph * 0.46;
+    var bw = W * 0.115, bh = H * 0.115, gap = W * 0.028;
+    var total = bw * 4 + gap * 3;
+    var x0 = (W - total) / 2, by = H * 0.495;
     for (var i = 0; i < 4; i++) {
-      var bx = x0 + i * (bw + W * 0.02);
+      var bx = x0 + i * (bw + gap);
       _cardBtn(ctx, bx, by, bw, bh, labels[i], '', {});
       hits.push({ id: 'gateSuit', suit: suits[i], x: bx, y: by, w: bw, h: bh });
     }
+    var hint = g.kind === 'LIANG_A' ? '选择要亮的 A 花色（超时自动跳过）' : '选择要反的 A 花色（超时自动跳过）';
+    text(ctx, hint, W * 0.5, by + bh + H * 0.048, Math.round(H * 0.024), 'rgba(246,239,223,0.65)', 'center', false);
   }
-  if (g.eligible && g.kind === 'IDENTITY_CHOICE') {
-    var bw2 = W * 0.20, bh2 = H * 0.11, by2 = py + ph * 0.46;
-    var b1 = W / 2 - bw2 - W * 0.015, b2 = W / 2 + W * 0.015;
-    _cardBtn(ctx, b1, by2, bw2, bh2, '', '公开（明打）', {});
-    _cardBtn(ctx, b2, by2, bw2, bh2, '', '隐藏（暗打）', { primary: true });
+  if (g.kind === 'IDENTITY_CHOICE') {
+    var bw2 = W * 0.24, bh2 = H * 0.11, by2 = H * 0.495;
+    var b1 = W / 2 - bw2 - W * 0.02, b2 = W / 2 + W * 0.02;
+    _cardBtn(ctx, b1, by2, bw2, bh2, '', '公开（明打）', { noIcon: true });
+    _cardBtn(ctx, b2, by2, bw2, bh2, '', '隐藏（暗打）', { noIcon: true });
     hits.push({ id: 'gateIdentity', choice: 'PUBLIC', x: b1, y: by2, w: bw2, h: bh2 });
     hits.push({ id: 'gateIdentity', choice: 'HIDDEN', x: b2, y: by2, w: bw2, h: bh2 });
+    text(ctx, '选择是否公开身份（超时默认隐藏）', W * 0.5, by2 + bh2 + H * 0.048, Math.round(H * 0.024), 'rgba(246,239,223,0.65)', 'center', false);
   }
-  var lw = W * 0.16, lh = H * 0.07;
-  _cardBtn(ctx, W - lw - W * 0.05, py + ph - lh - H * 0.03, lw, lh, '', '跳过', {});
-  hits.push({ id: 'gateSkip', x: W - lw - W * 0.05, y: py + ph - lh - H * 0.03, w: lw, h: lh });
+  var lw = W * 0.12, lh = H * 0.065;
+  _cardBtn(ctx, W - lw - W * 0.04, H - lh - H * 0.04, lw, lh, '', '跳过', { noIcon: true });
+  hits.push({ id: 'gateSkip', x: W - lw - W * 0.04, y: H - lh - H * 0.04, w: lw, h: lh });
   return hits;
 }
 
@@ -1775,6 +1813,13 @@ function render(ctx, st) {
   var memoIcon = { x: m.memo.iconX, y: m.memo.iconY, r: m.memo.iconR };
   var autoIcon = { x: m.autoPlay.iconX, y: m.autoPlay.iconY, r: m.autoPlay.iconR };
   drawTopBar(ctx, st, m, memoIcon, autoIcon);
+  // [2026-11-17 用户] 联网对局：托管图标左侧显示房间号与局数
+  if (st.netInfo) {
+    var ni = st.netInfo;
+    var nx = autoIcon.x - autoIcon.r - H * 0.018;
+    text(ctx, '房间号：' + ni.roomId, nx, autoIcon.y - H * 0.016, Math.round(H * 0.023), 'rgba(246,239,223,0.82)', 'right', false);
+    text(ctx, (ni.round || 1) + '/' + (ni.rounds || 0) + '局', nx, autoIcon.y + H * 0.020, Math.round(H * 0.023), 'rgba(246,239,223,0.62)', 'right', false);
+  }
   drawMemo(ctx, st, m);
   var seatInfo = drawSeats(ctx, st, m);
   drawTurnInfo(ctx, st, m, seatInfo.seatMap);

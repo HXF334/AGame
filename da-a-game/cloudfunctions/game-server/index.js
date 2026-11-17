@@ -86,11 +86,19 @@ exports.main = async function (event) {
   if (!openid) return fail('NO_OPENID');
 
   if (action === 'create') {
+    // [2026-11-17 用户] 自定义房间号：已存在则拒绝创建
+    var wantId = event.roomId ? String(event.roomId) : '';
+    if (wantId) {
+      try {
+        var ex = await db.collection(COL).doc(wantId).get();
+        if (ex && ex.data) return fail('ROOM_EXISTS');
+      } catch (e) { /* 不存在 */ }
+    }
     var room = roomMod.createRoom({
       ownerId: openid,
       nick: event.nick || '',
       avatar: event.avatar || '',
-      roomId: event.roomId,
+      roomId: wantId,
       config: event.config
     });
     try {
