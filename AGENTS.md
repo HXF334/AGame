@@ -56,7 +56,7 @@
 ## 5. 常用命令（都在 `da-a-game/` 下执行）
 
 ```powershell
-node tests/_runall.js            # 全量套件（当前 131 个，失败 0）
+node tests/_runall.js            # 全量套件（当前 132 个，失败 0）
 node tests/_runall.js 10 20      # 只跑第 10~20 个
 node tests/test-xxx.js           # 单套件
 node scripts/preflight.js --fast # 12 项静态体检（不含全量测试）
@@ -91,7 +91,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 提交前至少满足：
 
-- `node tests/_runall.js` → `失败 0 次`（当前 **131 个套件**）。
+- `node tests/_runall.js` → `失败 0 次`（当前 **132 个套件**）。
 - `node scripts/preflight.js --fast` → 12/12。
 - 触及 UI / 流程：用开发者工具 `open` 后截图确认能进 PLAY、无运行时报错（见 `PROJECT_STATUS.md` 冒烟记录）。
 - 触及规则：跑 `audit-rules-vs-impl`。
@@ -161,7 +161,7 @@ node skills/audit-rules-vs-impl/scripts/audit.js   # 规则↔实现三向对账
 
 - 改规则相关代码前，**读 `skills/da-a-game-rules/SKILL.md` 对应章节原文**。
 - 改任何文件前，**读目标文件的相关段落**；不凭记忆改代码。
-- 改完**跑受影响套件**；收尾**跑全量**（当前 131 套件）与 `preflight --fast`。
+- 改完**跑受影响套件**；收尾**跑全量**（ 套件）与 `preflight --fast`。
 - 用户明确要求的验收点（画面/交互/真机）**必须验证**，不能用「应该没问题」代替。
 - 不确定时**宁可多花 token 确认**：读原文、跑测试、问用户，都不算浪费。
 - 视觉类改动：至少自己核对坐标/命中区/文字是否越界（单测断言或 1 张截图）。

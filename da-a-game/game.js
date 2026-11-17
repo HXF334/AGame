@@ -173,6 +173,10 @@ var uiMemoOpen = true;    // [2026-10-27 用户] 记牌器**默认展开**
 var uiMenuOpen = false;
 var uiPage = (typeof wx === 'undefined' || wx.__isMock) ? 'GAME' : 'HOME';
 function _randomRoomId() { return String(100000 + Math.floor(Math.random() * 900000)); }
+// [2026-11-17 用户] 进入创建页一律回默认值（含新房间号），不保留上次的临时修改
+function _resetCreateCfg() {
+  uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true, roomId: _randomRoomId() };
+}
 var uiCreateCfg = { rounds: 12, baseScore: 1, turnSeconds: 0, showRemain: true, memo: false, aiFill: true, roomId: _randomRoomId() };
 var uiJoinDigits = '';
 // [2026-11-16 用户] 单机「下一局」保留头像下方累计分, 只有重新进入(回首页再进)才清零
@@ -1395,16 +1399,8 @@ function _uiComboLabel(cards) {
 //   2) 多次点击 -> 按有效牌从小到大依次推荐下一个候选
 var uiHintIdx = 0;
 function uiHint() {
-  if (uiNet) {
-    if (currentPlayer !== humanPlayer) { log('  提示: 现在不是你的回合'); return false; }
-    var _meN = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
-    var _candsN = _bruteForceLegalPlays(_meN, gameState.table || []);
-    if (!_candsN.length) { showToast(NO_PLAYABLE_TEXT); log('  提示: ' + NO_PLAYABLE_TEXT); draw(); return false; }
-    selectedCards = _candsN[0].ids.slice();
-    log('联网提示: ' + _candsN[0].label + ' -> 已选中 ' + selectedCards.length + ' 张');
-    draw();
-    return true;
-  }
+  // [2026-11-17 用户] 联网提示与单机**同一套枚举**（uiHintCandidates 只看自己的手牌+桌面，
+  //   本来就是本地可算的），不再单独走 brute-force，避免「1张undefined」和选牌口径不一致。
   if (currentPlayer !== humanPlayer || gameState.phase !== PHASES.PLAY) {
     log('  提示: 现在不是你的回合');
     return false;
@@ -1416,7 +1412,12 @@ function uiHint() {
     if (ctx) draw();
     return false;
   }
+  // [2026-11-17 用户] 联网也按「点一次换下一个候选」的节奏走，和单机完全一致
   var pick = cands[uiHintIdx % cands.length];
+  if (uiNet && selectedCards.length && pick.ids.join(',') === selectedCards.join(',')) {
+    uiHintIdx = (uiHintIdx + 1) % cands.length;
+    pick = cands[uiHintIdx % cands.length];
+  }
   uiHintIdx = (uiHintIdx + 1) % cands.length;
   selectedCards = pick.ids.slice();
   log('  提示: ' + pick.label + ' -> 已选中 ' + pick.ids.length + ' 张');
@@ -1549,6 +1550,32 @@ function uiButtons() {
   var playing = ph === PHASES.PLAY;
 
   if (!playing && !ended) {
+    // [2026-11-17 用户] 联网闸门**必须和单机同一套按钮**（含花色按钮的宽度/间距/置灰规则）。
+    //   这里直接产出与单机相同形状的按钮项，交给 ui-render.drawButtons 统一绘制。
+    if (uiNet) {
+      var _ng = _netGateInfo();
+      if (_ng && _ng.eligible) {
+        var _meG = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+        var _handG = ((_meG && _meG.hand) || []);
+        if (_ng.kind === 'LIANG_A' || _ng.kind === 'FAN_A') {
+          var _hasG = {};
+          _handG.forEach(function (c) { if (c && c.rank === 14 && c.suit) _hasG[c.suit] = (_hasG[c.suit] || 0) + 1; });
+          var _mainSuit = gameState['主A'] && gameState['主A'].suit;
+          ['S', 'H', 'D', 'C'].forEach(function (s) {
+            var _ok = _ng.kind === 'LIANG_A' ? !!_hasG[s] : (_hasG[s] >= 2 && s !== _mainSuit);
+            out.push({
+              id: 'netSuit:' + s,
+              label: (uiRender.SUIT_CHAR && uiRender.SUIT_CHAR[s]) || s,
+              kind: 'suit', suit: s, enabled: !!_ok
+            });
+          });
+        } else if (_ng.kind === 'IDENTITY_CHOICE') {
+          out.push({ id: 'netIdPublic', label: '公开身份', enabled: true });
+          out.push({ id: 'netIdHidden', label: '隐藏身份', enabled: true });
+        }
+        return out;
+      }
+    }
     // [2026-11-04 用户] **发牌中**也显示四个花色按钮(有A的可点、没有的置灰)
     if (ph === PHASES.DEALING) {
       var _dealHasSuit = {};
@@ -1633,6 +1660,23 @@ function uiClick(id) {
   //   -> 点任何按钮先清掉上一条提示(它会一直杵在屏幕正中挡视线)。
   //   放在**动作之前**: 按钮自己产生的新提示(如【当前没有可用牌】)仍然要显示。
   uiToast = null;
+  // [2026-11-17 用户] 联网闸门按钮：与单机同一套按钮 id 形状，只是改成发给服务端
+  if (typeof id === 'string' && id.indexOf('netSuit:') === 0) {
+    var _ns = id.slice('netSuit:'.length);
+    var _meS = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    var _myA = ((_meS && _meS.hand) || []).filter(function (c) { return c.rank === 14 && c.suit === _ns; });
+    if (gameState.phase === 'LIANG_A') {
+      log('  联网闸门: 亮A ' + psuit(_ns));
+      _netSend('LIANG_A', { suit: _ns });
+    } else {
+      if (_myA.length < 2) { showToast('没有该花色两张A'); return false; }
+      log('  联网闸门: 反A ' + psuit(_ns));
+      _netSend('FAN_A', { suit: _ns, cardIds: [_myA[0].id, _myA[1].id] });
+    }
+    return true;
+  }
+  if (id === 'netIdPublic') { log('  联网闸门: 公开身份'); _netSend('CHOOSE_IDENTITY', { choice: 'PUBLIC' }); return true; }
+  if (id === 'netIdHidden') { log('  联网闸门: 隐藏身份'); _netSend('CHOOSE_IDENTITY', { choice: 'HIDDEN' }); return true; }
   // [2026-10-26] 花色按钮: id = 'liangA:<花色>' -> 亮那个花色的大A
   if (typeof id === 'string' && id.indexOf('liangA:') === 0) {
     return humanLiangA(true, id.slice('liangA:'.length));
@@ -2825,7 +2869,10 @@ function _applyNetView(view) {
   for (var _i = uiNetPlaysLen; _i < _plays.length; _i++) {
     var _rec = _plays[_i] || {};
     if (_rec.kind === 'PLAY') {
+      // [2026-11-17 用户] 日志要和单机一致：带牌面，而不是只报张数
+      var _cs = (_rec.cards || []).map(function (c) { return cardDesc(c); }).join(' ');
       log('  联网: ' + pn(_rec.playerId) + ' 出牌 ' + ((_rec.cards || []).length) + ' 张'
+        + (_cs ? ' ' + _cs : '')
         + (_rec.type ? ' [' + _rec.type + ']' : ''));
     } else if (_rec.kind === 'CAPTURE') {
       log('  联网: ' + pn(_rec.playerId) + ' 取牌 ' + ((_rec.cards || []).length) + ' 张');
@@ -3072,7 +3119,14 @@ function _onPageTouch(x, y) {
   for (var i = 0; i < (btnPageHits || []).length; i++) {
     var b = btnPageHits[i];
     if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) continue;
-    if (b.id === 'homeCreate') { log('点击: 创建房间'); uiPage = 'CREATE'; draw(); return; }
+    // [2026-11-17 用户] 每次进创建页都回到初始设置（并换一个新的房间号）
+    if (b.id === 'homeCreate') {
+      log('点击: 创建房间');
+      _resetCreateCfg();
+      uiPage = 'CREATE';
+      draw();
+      return;
+    }
     if (b.id === 'homeJoin') { log('点击: 加入房间'); uiPage = 'JOIN'; uiJoinDigits = ''; draw(); return; }
     if (b.id === 'homeSolo') { uiPage = 'GAME'; log('进入单机对局（分数清零）'); uiTotals = {}; uiTotalsApplied = false; newGame(); return; }
     if (b.id === 'createBack' || b.id === 'joinBack') { uiPage = 'HOME'; draw(); return; }

@@ -69,14 +69,18 @@ function createClient(opt) {
   c.online = function () { return invoke('online', { roomId: c.roomId }); };
   c.leave = function () { return invoke('leave', { roomId: c.roomId }); };
 
-  // 发动作：自动带 baseSeq；STALE 时先 poll 再重试一次
+  // 发动作：自动带 baseSeq；STALE 时用服务端回给的最新 seq 直接重试
+  //   [2026-11-17 用户] 原来 STALE 后先 poll 再重发：poll 自己会推进 AI/闸门，
+  //   等于「刚追上的 seq 又被 poll 顶掉」，实测永远 STALE。服务端已在 STALE 里
+  //   带回 room.seq，直接采纳即可，不需要再 poll。
   c.send = function (type, payload) {
     function attempt(n) {
       var env = protocol.makeAction(type, payload || {}, c.seq, now());
       return invoke('apply', { roomId: c.roomId, env: env }).then(function (r) {
         if (r && r.ok) return r;
         if (r && r.error === 'STALE' && n < 3) {
-          return c.poll().then(function () { return attempt(n + 1); });
+          if (typeof r.seq === 'number' && r.seq >= 0) c.seq = r.seq;
+          return attempt(n + 1);
         }
         return r;
       });

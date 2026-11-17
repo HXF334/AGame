@@ -585,3 +585,12 @@ ewRoomId(seed)\ 对 6 位种子原样返回，避免被取模改写。
 - **闸门 UI**：`drawNetGate` 不再画居中面板与说明文案，花色/公开隐藏按钮复用对局底部按钮行，跳过在右下；倒计时改用 `drawTurnInfo` 的表盘（`turnIsGate`）。
 - **创建页**：`rowH = ph/8`；房间号与「修改」左缘对齐单选圆点列（第二列按钮）；开关行起点 4.60；等待页徽标改「已准备/未准备」。
 - **房间号被改写**：线上 `game-server` 仍是旧版 `newRoomId`（seed%900000+100000），已重新部署（37 files / 97.9 KB）；本地校验 `createRoom({roomId:"577575"}).id === "577575"`。
+
+## D-105 联网序号重试、房间释放、创建页回归默认（2026-11-17）
+
+- **STALE 重试采纳服务端 seq**：`src/online.js` 的 `send` 收到 `STALE` 时不再 `poll()`，直接用回包里的 `seq` 重发（最多 3 次）。原因：`poll` 会 `advanceRoom` 推进 AI/闸门，seq 再涨，形成「追上又被顶掉」的循环（实测 CHOOSE_IDENTITY / PLAY 一直 STALE）。新增 `tests/test-online-stale.js`（5 断言）。
+- **联网提示与单机同源**：`uiHint()` 去掉联网专用分支，统一走 `uiHintCandidates()`，连点按候选轮换；`_bruteForceLegalPlays` 只做兜底。修掉「1张undefined」与选牌口径不一致。
+- **联网日志带牌面**：`_applyNetView` 的 PLAY 日志追加 `cardDesc`，与单机一致。
+- **联网闸门复用单机按钮模型**：`uiButtons()` 在联网且闸门可操作时产出 `netSuit:*` / `netIdPublic` / `netIdHidden`，交给 `drawButtons` 统一绘制（宽度/间距/置灰一致）；`drawNetGate` 只在不可操作时画等待文案。
+- **房间释放**：`room.leave()` 允许对局中退出，最后一个真人离开返回 `empty`，`game-server` 删除房间记录；`create` 遇到同号但已无真人的旧房间会先删再建。
+- **创建页回默认**：每次从首页进创建页 `_resetCreateCfg()`（局数 12、底分 1、无限制、剩余牌数开、记牌器关、AI 补齐开、随机新房间号）；纵向留白调整为 `ridY 1.00`、选项 `1.95/2.90/3.85`、开关 `4.80/5.75/6.70`。

@@ -86,13 +86,19 @@ exports.main = async function (event) {
   if (!openid) return fail('NO_OPENID');
 
   if (action === 'create') {
-    // [2026-11-17 用户] 自定义房间号：已存在则拒绝创建
+    // [2026-11-17 用户] 自定义房间号：已存在且房里还有真人 → 拒绝；
+    //   只剩 AI（最后一次真人已退）视为已释放，删掉旧记录后允许复用该房间号。
     var wantId = event.roomId ? String(event.roomId) : '';
     if (wantId) {
       try {
         var ex = await db.collection(COL).doc(wantId).get();
-        if (ex && ex.data) return fail('ROOM_EXISTS');
-      } catch (e) { /* 不存在 */ }
+        var _exRoom = ex && ex.data;
+        if (_exRoom) {
+          var _humans = (_exRoom.players || []).filter(function (p) { return !p.ai && p.openid; });
+          if (_humans.length) return fail('ROOM_EXISTS');
+          await db.collection(COL).doc(wantId).remove();
+        }
+      } catch (e) { /* 不存在或删除失败，按新建处理 */ }
     }
     var room = roomMod.createRoom({
       ownerId: openid,
@@ -169,6 +175,11 @@ exports.main = async function (event) {
   if (action === 'leave') {
     var lv = roomMod.leave(room, openid);
     if (!lv.ok) return fail(lv.error);
+    // [2026-11-17 用户] 最后一个真人退出 → 立即释放房间（删记录），房间号可再次创建
+    if (lv.empty) {
+      try { await db.collection(COL).doc(room.id).remove(); } catch (e) { /* 下次清理 */ }
+      return ok({ room: roomMod.poll(room, openid), released: true });
+    }
     await saveRoom(room);
     return ok({ room: roomMod.poll(advanceRoom(room), openid) });
   }

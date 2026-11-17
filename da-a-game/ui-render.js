@@ -1506,7 +1506,7 @@ function drawCreatePage(ctx, st) {
   ];
   // [2026-11-17 用户] 房间号可修改；重复由服务端校验
   //   左边缘与下面单选按钮的圆点左边缘对齐；「修改」放第二列（与第二个选项同列）
-  var ridY = py + rowH * 0.80;
+  var ridY = py + rowH * 1.00;
   var optLeft = optX - H * 0.015;
   text(ctx, '房间号', labelX, ridY, fsLabel, 'rgba(246,239,223,0.88)', 'left', true);
   var rid = String(cfg.roomId || '');
@@ -1520,7 +1520,7 @@ function drawCreatePage(ctx, st) {
 
   for (var r = 0; r < rows.length; r++) {
     var row = rows[r];
-    var y = py + rowH * (1.75 + r * 0.95);
+    var y = py + rowH * (1.95 + r * 0.95);
     text(ctx, row.label, labelX, y, fsLabel, 'rgba(246,239,223,0.88)', 'left', true);
     var cur = cfg[row.key];
     var custom = row.values.indexOf(cur) < 0;
@@ -1545,7 +1545,7 @@ function drawCreatePage(ctx, st) {
     { key: 'aiFill', label: '空位 AI 补齐' }
   ];
   for (var t2 = 0; t2 < toggles.length; t2++) {
-    var ty = py + rowH * (4.60 + t2 * 0.95);
+    var ty = py + rowH * (4.80 + t2 * 0.95);
     var on2 = !!cfg[toggles[t2].key];
     text(ctx, toggles[t2].label, labelX, ty, fsLabel, 'rgba(246,239,223,0.82)', 'left', false);
     _radio(ctx, optX, ty, H * 0.015, on2);
@@ -1762,38 +1762,14 @@ function drawNetGate(ctx, st) {
   if (!g) return [];
   var W = st.W, H = st.H;
   var m = layout(W, H);
-  var hits = [];
+  // [2026-11-17 用户] 可操作时**不再自己画按钮**：按钮由 st.buttons 交给 drawButtons，
+  //   保证和单机同一套宽度/间距/置灰样式。这里只在「不是自己操作」时给一行等待文案。
   if (!g.eligible) {
     text(ctx, g.kind === 'LIANG_A' ? '等待其他玩家亮A…'
       : (g.kind === 'FAN_A' ? '等待其他玩家反A…' : '等待其他玩家选择身份…'),
       W * 0.5, m.btn.y - H * 0.075, Math.round(H * 0.028), 'rgba(246,239,223,0.75)', 'center', false);
-    return hits;
   }
-  var bh = Math.round(m.btn.h);
-  var bw = Math.max(50, Math.round(bh * 1.02));
-  var suitGap = Math.round(m.vw * 0.009);
-  if (g.kind === 'LIANG_A' || g.kind === 'FAN_A') {
-    var suits = ['H', 'D', 'C', 'S'];
-    var labels = ['♥', '♦', '♣', '♠'];
-    var total = bw * 4 + suitGap * 3;
-    var x0 = (W - total) / 2;
-    for (var i = 0; i < 4; i++) {
-      var bx = x0 + i * (bw + suitGap);
-      _cardBtn(ctx, bx, m.btn.y, bw, bh, labels[i], '', {});
-      hits.push({ id: 'gateSuit', suit: suits[i], x: bx, y: m.btn.y, w: bw, h: bh });
-    }
-  } else if (g.kind === 'IDENTITY_CHOICE') {
-    var bw2 = Math.max(120, Math.round(m.vw * 0.20));
-    var b1 = W / 2 - bw2 - m.vw * 0.012, b2 = W / 2 + m.vw * 0.012;
-    _cardBtn(ctx, b1, m.btn.y, bw2, bh, '', '公开身份', { noIcon: true });
-    _cardBtn(ctx, b2, m.btn.y, bw2, bh, '', '隐藏身份', { noIcon: true });
-    hits.push({ id: 'gateIdentity', choice: 'PUBLIC', x: b1, y: m.btn.y, w: bw2, h: bh });
-    hits.push({ id: 'gateIdentity', choice: 'HIDDEN', x: b2, y: m.btn.y, w: bw2, h: bh });
-  }
-  var lw = Math.max(90, Math.round(m.vw * 0.11)), lh = bh;
-  _cardBtn(ctx, W - lw - W * 0.03, m.btn.y, lw, lh, '', '跳过', { noIcon: true });
-  hits.push({ id: 'gateSkip', x: W - lw - W * 0.03, y: m.btn.y, w: lw, h: lh });
-  return hits;
+  return [];
 }
 
 function render(ctx, st) {

@@ -98,13 +98,13 @@ function join(room, player, now) {
 }
 
 function leave(room, openid, now) {
-  if (room.status === 'PLAYING') return { ok: false, error: 'IN_GAME' };
+  // [2026-11-17 用户] 允许对局中退出；最后一个真人离开 → empty，调用方删除房间记录，
+  //   这样同一个房间号可以再被创建。
   room.players = room.players.filter(function (p) { return p.openid !== openid; });
-  if (room.ownerId === openid && room.players.length) {
-    room.ownerId = room.players.filter(function (p) { return !p.ai; })[0].openid;
-  }
+  var humans = room.players.filter(function (p) { return !p.ai; });
+  if (room.ownerId === openid && humans.length) room.ownerId = humans[0].openid;
   room.updatedAt = now || Date.now();
-  return { ok: true, room: room };
+  return { ok: true, room: room, empty: humans.length === 0 };
 }
 
 function allReady(room) {

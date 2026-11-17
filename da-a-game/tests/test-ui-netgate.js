@@ -1,4 +1,7 @@
-// tests/test-ui-netgate.js — 联网闸门浮层（亮A可操作 / 等待态）
+// tests/test-ui-netgate.js — 联网闸门（与单机同一套按钮模型）
+//   [2026-11-17 用户] 要求联网亮A/反A/身份的画面**和单机完全一致**：
+//   所以闸门按钮不再由 ui-render 另画一套，而是走 uiButtons() → drawButtons()，
+//   这里断言按钮列表的形状（4 个花色按钮、同排等大、按手牌置灰、无自绘提示面板）。
 var path = require('path');
 var g = require(path.join(__dirname, '..', 'game.js'));
 var SB = require('./lib/state-builder.js');
@@ -16,6 +19,11 @@ function trim(st, pid, keepIds) {
   p.hand = keep;
   st.discarded = (st.discarded || []).concat(rest);
 }
+function gateBtns() {
+  return (g.uiButtonModel() || []).filter(function (b) {
+    return typeof b.id === 'string' && b.id.indexOf('netSuit:') === 0;
+  });
+}
 
 var s1 = SB.C('S', 14), h5 = SB.C('H', 5);
 var st = SB.build({ handMap: { B: [s1, h5] }, phase: 'LIANG_A' });
@@ -24,14 +32,18 @@ trim(st, 'B', [s1.id, h5.id]);
 g.__setState(st, { human: 'B', currentPlayer: 'B', clearLog: true });
 g.__setNet(true);
 var texts = g.__renderTexts();
-var hits = g.__netGateHits();
-check('1.1 出现四个花色按钮', hits.filter(function (b) { return b.id === 'gateSuit'; }).length === 4, String(hits.length));
-// [2026-11-17 用户] 闸门要和单机一致：花色按钮落在底部操作按钮行（不再有自己的说明文案/居中面板）
-var _btns = hits.filter(function (b) { return b.id === 'gateSuit'; });
-var _sameRow = _btns.every(function (b) { return b.y === _btns[0].y && b.h === _btns[0].h; });
-check('1.2 四个花色按钮同排等大', _sameRow);
-check('1.3 有跳过按钮', hits.some(function (b) { return b.id === 'gateSkip'; }));
-check('1.4 不再有独立提示文案（与单机一致）', !texts.some(function (t) { return /选择要亮的 A 花色/.test(t); }), texts.join(' | '));
+var btns = gateBtns();
+check('1.1 四个花色按钮（与单机同一套按钮模型）', btns.length === 4, 'count=' + btns.length);
+check('1.2 四个花色按钮都是 suit 类（drawButtons 统一等大/同排）', btns.every(function (b) {
+  return b.kind === 'suit';
+}));
+var sBtn = btns.filter(function (b) { return b.id === 'netSuit:S'; })[0];
+var hBtn = btns.filter(function (b) { return b.id === 'netSuit:H'; })[0];
+check('1.3 有 A 的花色可点', !!sBtn && sBtn.enabled === true);
+check('1.4 没 A 的花色置灰', !!hBtn && hBtn.enabled === false, hBtn && String(hBtn.enabled));
+check('1.5 不再自绘闸门按钮/说明面板', g.__netGateHits().length === 0 && !texts.some(function (t) {
+  return /选择要亮的 A 花色/.test(t);
+}));
 
 var h6 = SB.C('H', 6);
 var st2 = SB.build({ handMap: { B: [h5, h6] }, phase: 'LIANG_A' });
@@ -40,7 +52,7 @@ trim(st2, 'B', [h5.id, h6.id]);
 g.__setState(st2, { human: 'B', currentPlayer: 'B', clearLog: true });
 g.__setNet(true);
 var texts2 = g.__renderTexts();
-check('2.1 无A时无花色按钮', g.__netGateHits().filter(function (b) { return b.id === 'gateSuit'; }).length === 0);
+check('2.1 无A时没有可点的花色按钮', gateBtns().every(function (b) { return b.enabled === false; }), JSON.stringify(gateBtns()));
 check('2.2 无A时显示等待', texts2.some(function (t) { return /等待其他玩家/.test(t); }), texts2.join(' | '));
 
 var st3 = SB.build({ handMap: { B: [h5] }, table: [SB.C('D', 9)], lastPlayer: 'C' });
@@ -48,7 +60,7 @@ trim(st3, 'B', [h5.id]);
 g.__setState(st3, { human: 'B', currentPlayer: 'B', clearLog: true });
 g.__setNet(true);
 g.__renderTexts();
-check('3.1 出牌阶段无闸门按钮', g.__netGateHits().length === 0, String(g.__netGateHits().length));
+check('3.1 出牌阶段没有闸门按钮', gateBtns().length === 0, String(gateBtns().length));
 
 console.log('\nnetgate: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

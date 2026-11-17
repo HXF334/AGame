@@ -21,9 +21,9 @@
 
 | 检查 | 命令 | 结果（2026-11-12） |
 |---|---|---|
-| 全量回归 | `node tests/_runall.js` | **131 个套件 / 执行 131 次 / 失败 0 次** |
+| 全量回归 | `node tests/_runall.js` | **132 个套件 / 执行 131 次 / 失败 0 次** |
 | 静态体检 | `node scripts/preflight.js --fast` | **12/12 通过** |
-| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 131/131 套件 + AI 口径机检） |
+| 完整体检 | `node scripts/preflight.js` | **14/14 通过**（含 132/132 套件 + AI 口径机检） |
 | 规则↔实现对账 | `node skills/audit-rules-vs-impl/scripts/audit.js` | 4/4（历史值；本次未重跑） |
 
 > `node tests/_runall.js` 退出码可能为 1：runner 把进度写 stderr，PowerShell 包成 `NativeCommandError`。**看最后一行「失败 N 次」，不要看 exit code。**
@@ -39,7 +39,7 @@
 - **胜负 / 计分**：1V4 明/暗、2V3 明/暗、平局；零和。
 - **AI**：起手选链、压制、取牌、阵营推定、拆组过滤；与「提示」共用同一决策链。
 - **UI**：Canvas 绘制、5 座、手牌交互、按钮、记牌器、观察者视角、托管、结算面板。
-- **测试**：131 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
+- **测试**：132 个无头套件（规则/AI/UI/E2E/审计）；其中 `test-room-core.js` 覆盖联网房间核心。
 
 ## 4. 本轮变更（2026-11-12～13，D-059～D-076）
 
@@ -145,7 +145,7 @@
   - 闸门窗口：`start` 后进入 8s 亮A窗口 → 反A窗口 → 身份窗口，超时走默认；窗口内 `ui-render.drawNetGate` 提供花色/公开/隐藏/跳过按钮，`game.js` 走 `send`。
   - 定时触发器 `game-server/config.json`（每分钟）+ `tickAllRooms()` 推进超时与 AI 代打。
   - 断线重连：房间号存 `dada_room`，`onShow` 恢复（`online()` 或 `joinRoom`），`onHide` 标记离线，离开清除。
-  - 测试：`test-room-gates` 8、`test-ui-netgate` 7、`test-ui-netsettle` 8；全量 131/131；`game-server` 部署 37 files / 96.9 KB。
+  - 测试：`test-room-gates` 8、`test-ui-netgate` 7、`test-ui-netsettle` 8；全量 132/132；`game-server` 部署 37 files / 96.9 KB。
 
 ## 5. 冒烟记录（开发者工具）
 
