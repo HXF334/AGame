@@ -1395,22 +1395,32 @@ function _cardBtn(ctx, x, y, w, h, glyph, label, opt) {
   opt = opt || {};
   ctx.save();
   _rr(ctx, x, y, w, h, h * 0.30);
-  ctx.fillStyle = opt.primary ? 'rgba(196,84,47,0.92)' : 'rgba(0,0,0,0.34)';
+  // [2026-11-17 用户] 统一按钮配色：不再区分主操作红色，全部同一套
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
   ctx.fill();
-  ctx.strokeStyle = opt.primary ? 'rgba(255,214,140,0.95)' : 'rgba(255,214,140,0.45)';
+  ctx.strokeStyle = 'rgba(255,214,140,0.55)';
   ctx.lineWidth = 2;
   ctx.stroke();
-  // 顶部高光
   _rr(ctx, x + 2, y + 2, w - 4, h * 0.42, h * 0.24);
   ctx.fillStyle = 'rgba(255,255,255,0.06)';
   ctx.fill();
   ctx.restore();
-  var cy = y + h / 2, r = h * 0.30, cx = x + h * 0.55;
+  var cy = y + h / 2, fs = Math.round(h * 0.30), r = h * 0.30;
+  var labelW = 0;
+  try {
+    ctx.font = 'bold ' + fs + 'px sans-serif';
+    labelW = (ctx.measureText && ctx.measureText(label).width) || 0;
+  } catch (e) { labelW = 0; }
+  if (!labelW || isNaN(labelW)) labelW = String(label).length * fs * 0.98;
+  var gap = h * 0.16;
+  var total = r * 2 + gap + labelW;
+  var startX = x + (w - total) / 2;
+  var cx = startX + r;
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(255,214,140,0.16)'; ctx.fill();
   ctx.strokeStyle = 'rgba(255,214,140,0.65)'; ctx.lineWidth = 2; ctx.stroke();
   text(ctx, glyph, cx, cy + 1, Math.round(r * 1.05), '#ffd98a', 'center', true);
-  text(ctx, label, x + h * 1.42, cy, Math.round(h * 0.30), '#f6efdf', 'left', true);
+  text(ctx, label, startX + r * 2 + gap, cy, fs, '#f6efdf', 'left', true);
 }
 
 function _radio(ctx, cx, cy, r, on) {
@@ -1451,11 +1461,11 @@ function drawCreatePage(ctx, st) {
   var cfg = st.cfg || {};
   _pageBg(ctx, W, H);
   text(ctx, '创建房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.19, h: H * 0.07 };
+  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.13, h: H * 0.055 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
-  var px = W * 0.06, py = H * 0.135, pw = W * 0.88, ph = H * 0.655;
+  var px = W * 0.08, py = H * 0.175, pw = W * 0.84, ph = H * 0.560;
   _panel(ctx, px, py, pw, ph, H * 0.028);
 
   var labelX = px + pw * 0.045;
@@ -1463,7 +1473,7 @@ function drawCreatePage(ctx, st) {
   var step = pw * 0.132;
   var fsLabel = Math.round(H * 0.033);
   var fsValue = Math.round(H * 0.031);
-  var rowH = ph / 7.4;
+  var rowH = ph / 7.0;
 
   function chipLabel(key, v) {
     if (key === 'turnSeconds') return v === 0 ? '无限制' : v + 's';
@@ -1523,14 +1533,14 @@ function drawCreatePage(ctx, st) {
     var pr = st.prompt;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, W, H);
-    var bw2 = W * 0.55, bh2 = H * 0.72, bx2 = (W - bw2) / 2, by2 = (H - bh2) / 2;
+    var bw2 = W * 0.46, bh2 = H * 0.58, bx2 = (W - bw2) / 2, by2 = (H - bh2) / 2;
     _panel(ctx, bx2, by2, bw2, bh2, H * 0.030);
     text(ctx, pr.label + '（1–' + pr.max + '）', bx2 + bw2 / 2, by2 + H * 0.065, Math.round(H * 0.036), '#ffd98a', 'center', true);
     text(ctx, pr.text || '—', bx2 + bw2 / 2, by2 + H * 0.135, Math.round(H * 0.056), '#f6efdf', 'center', true);
     var ks = [['1','2','3'],['4','5','6'],['7','8','9'],['⌫','0','清空']];
-    var kw = bw2 * 0.20, kh = H * 0.068, gx = bw2 * 0.06, gy = H * 0.010;
+    var kw = bw2 * 0.20, kh = H * 0.058, gx = bw2 * 0.06, gy = H * 0.009;
     var kx0 = bx2 + (bw2 - (3 * kw + 2 * gx)) / 2;
-    var ky0 = by2 + H * 0.185;
+    var ky0 = by2 + H * 0.165;
     for (var r3 = 0; r3 < ks.length; r3++) {
       for (var c3 = 0; c3 < 3; c3++) {
         var kk = ks[r3][c3];
@@ -1560,12 +1570,12 @@ function drawJoinPage(ctx, st) {
   var digits = String(st.digits || '');
   _pageBg(ctx, W, H);
   text(ctx, '加入房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.19, h: H * 0.07 };
+  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.13, h: H * 0.055 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '返回', {});
   var hits = [back];
 
   var bw = W * 0.090, bh = H * 0.100, gap = W * 0.020;
-  var total = 6 * bw + 5 * gap, bx = (W - total) / 2, by = H * 0.175;
+  var total = 6 * bw + 5 * gap, bx = (W - total) / 2, by = H * 0.235;
   for (var i = 0; i < 6; i++) {
     var x = bx + i * (bw + gap);
     _rr(ctx, x, by, bw, bh, bh * 0.18);
@@ -1580,7 +1590,7 @@ function drawJoinPage(ctx, st) {
   var keys = [['1', '2', '3', '4'], ['5', '6', '7', '8'], ['9', '0', 'del', 'clear']];
   var kw = W * 0.115, kh = H * 0.092, kGapX = W * 0.022, kGapY = H * 0.020;
   var kx0 = (W - (4 * kw + 3 * kGapX)) / 2;
-  var ky0 = H * 0.335;
+  var ky0 = H * 0.400;
   for (var r = 0; r < keys.length; r++) {
     for (var c = 0; c < keys[r].length; c++) {
       var k = keys[r][c];
@@ -1595,7 +1605,7 @@ function drawJoinPage(ctx, st) {
       else hits.push({ id: 'joinDigit', d: k, x: x2, y: y2, w: kw, h: kh });
     }
   }
-  var jw = W * 0.42, jh = H * 0.095, jx = (W - jw) / 2, jy = H * 0.775;
+  var jw = W * 0.42, jh = H * 0.090, jx = (W - jw) / 2, jy = H * 0.810;
   _cardBtn(ctx, jx, jy, jw, jh, '▶', '加入房间', { primary: digits.length === 6 });
   hits.push({ id: 'joinConfirm', x: jx, y: jy, w: jw, h: jh });
   return hits;
@@ -1609,10 +1619,18 @@ function drawLobbyPage(ctx, st) {
   var m = layout(W, H);
   _pageBg(ctx, W, H);
 
-  var back = { id: 'lobbyLeave', x: W * 0.03, y: H * 0.045, w: W * 0.17, h: H * 0.07 };
+  var back = { id: 'lobbyLeave', x: W * 0.20, y: H * 0.045, w: W * 0.13, h: H * 0.055 };
   _cardBtn(ctx, back.x, back.y, back.w, back.h, '←', '离开', {});
   var hits = [back];
 
+  // [2026-11-17 用户] 等待页也要 ☰ 菜单（音乐/音效/退出）
+  var mm = { menu: { iconX: W * 0.06, iconY: H * 0.075, iconR: H * 0.040 } };
+  drawMenuButton(ctx, mm, !!st.menuOpen);
+  hits.push({ id: 'lobbyMenu', x: mm.menu.iconX - mm.menu.iconR, y: mm.menu.iconY - mm.menu.iconR, w: mm.menu.iconR * 2, h: mm.menu.iconR * 2 });
+  if (st.menuOpen) {
+    var items = drawMenuPanel(ctx, st, mm);
+    for (var mi = 0; mi < (items || []).length; mi++) hits.push(items[mi]);
+  }
   text(ctx, view ? ('房间 ' + view.id) : '连接中…', W / 2, H * 0.072, Math.round(H * 0.048), '#ffd98a', 'center', true);
   text(ctx, lobby.statusText(view), W / 2, H * 0.128, Math.round(H * 0.026), 'rgba(246,239,223,0.70)', 'center', false);
 

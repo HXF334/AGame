@@ -20,6 +20,7 @@ var scoring = require('./engine/scoring.js');
 var wl = require('./engine/win-loss.js');
 var deal = require('./engine/deal.js');
 var protocol = require('./engine/protocol.js');
+var ai = require('./engine/ai.js');
 
 var SEATS = deal.PLAYER_NAMES;                 // ['A'..'E']
 var MAX_PLAYERS = 5;
@@ -305,6 +306,7 @@ function gateTick(room, now) {
       continue;
     }
     if (ph === 'LIANG_A_RESOLVED') { gateApply(room, 'ADVANCE', {}); room.gateDeadline = 0; continue; }
+    if (ph === 'FAN_A_RESOLVED') { gateApply(room, 'REVEAL_BOTTOM', {}); room.gateDeadline = 0; continue; }
     if (ph === 'REVEAL_BOTTOM') { gateApply(room, 'REVEAL_BOTTOM', {}); room.gateDeadline = 0; continue; }
     break;
   }
@@ -325,7 +327,9 @@ function autoAi(room) {
     if (!p || !(p.ai || p.offline)) break;
     var act = ai.chooseAction(room.state, cur, { endgame: true });
     if (!act || !act.type) break;
-    var env = { type: act.type, payload: Object.assign({ playerId: cur }, act.payload || {}) };
+    var env = { type: act.type, payload: { playerId: cur } };
+    if (act.cardIds) env.payload.cardIds = act.cardIds;
+    if (act.suit) env.payload.suit = act.suit;
     var r = engine.transition(room.state, env);
     if (!r || !r.ok) break;
     room.state = r.state;
@@ -389,7 +393,6 @@ function tick(room, now) {
     if (seatId(room.players[i].seat) === cur) { me = room.players[i]; break; }
   }
   if (me) me.afk = (me.afk || 0) + 1;
-  var ai = require('./engine/ai.js');
   var act = ai.chooseAction(room.state, cur, { endgame: true });
   var type = (act && act.type === 'PLAY') ? 'PLAY' : 'PASS';
   var payload = { playerId: cur };

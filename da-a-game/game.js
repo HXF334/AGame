@@ -2936,6 +2936,16 @@ function _applyPrompt() {
 }
 
 function _onPageTouch(x, y) {
+  // [2026-11-17 用户] 等待页/结算页的 ☰ 菜单
+  for (var mj = 0; mj < (btnPageHits || []).length; mj++) {
+    var mb = btnPageHits[mj];
+    if (x < mb.x || x > mb.x + mb.w || y < mb.y || y > mb.y + mb.h) continue;
+    if (mb.id === 'lobbyMenu') { uiMenuOpen = !uiMenuOpen; draw(); return; }
+    if (mb.id === 'menuBgm') { var _b2 = audioMgr ? audioMgr.toggleBgm() : false; log('音乐: ' + (_b2 ? '开' : '关')); draw(); return; }
+    if (mb.id === 'menuSfx') { var _s2 = audioMgr ? audioMgr.toggleSfx() : false; log('音效: ' + (_s2 ? '开' : '关')); draw(); return; }
+    if (mb.id === 'menuHistory') { uiMenuOpen = false; _openHistory(); return; }
+    if (mb.id === 'menuExit') { _exitToHome(); return; }
+  }
   if (uiCreatePrompt) {
     for (var pi = 0; pi < (btnPageHits || []).length; pi++) {
       var pb = btnPageHits[pi];
@@ -3075,6 +3085,8 @@ wx.onTouchStart(function (e) {
     for (var i = 0; i < (btnSelectPlayers || []).length; i++) {
       var bp = btnSelectPlayers[i];
       if (x >= bp.x && x <= bp.x + bp.w && y >= bp.y && y <= bp.y + bp.h) {
+        // [2026-11-17 用户] 除单机外禁用切换视角（联网对局看别人手牌会被服务端裁剪，但没有意义）
+        if (uiNet) { showToast('联网对局不支持切换视角'); return; }
         // [2026-10-25 P0 修复] 原来用**槽位索引**当玩家 ID, 但座位现在是**动态环排**的
         //   -> 点谁都不是谁(切不到戊)。改成用 hitbox 里带的**真实 pid**。
     // [2026-11-10 用户] 切换 = 以该玩家身份**观察**(只读), 不是换真人座位
