@@ -2240,6 +2240,8 @@ function _drawImpl() {
     rankDesc: rankDesc,
     cardDesc: cardDesc,
     buttons: uiButtons(),
+    // [2026-11-18 用户] 乐观显示期间桌面下方提示「确认中…」
+    pendingConfirm: !!(uiNet && uiPendingPlay && !uiPendingPlay.pass),
     stageHint: _stageHint(),
     logVisible: uiLogVisible,
     logHistory: logHistory,

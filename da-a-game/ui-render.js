@@ -1780,6 +1780,11 @@ function render(ctx, st) {
   if (st.page === 'NETSETTLE') return { page: 'NETSETTLE', netSettleHits: drawNetSettlePage(ctx, st) };
   var m = layout(st.W, st.H);
   drawTable(ctx, m);
+  // [2026-11-18 用户] 联网乐观显示：牌已上桌但还没被服务端确认 -> 桌面下方提示「确认中…」
+  if (st.pendingConfirm) {
+    text(ctx, '确认中…', st.W / 2, m.table.cy + m.table.ry * 0.72,
+      Math.round(st.H * 0.026), 'rgba(255,217,138,0.85)', 'center', true);
+  }
   var memoIcon = { x: m.memo.iconX, y: m.memo.iconY, r: m.memo.iconR };
   var autoIcon = { x: m.autoPlay.iconX, y: m.autoPlay.iconY, r: m.autoPlay.iconR };
   drawTopBar(ctx, st, m, memoIcon, autoIcon);
