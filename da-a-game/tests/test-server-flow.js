@@ -110,26 +110,32 @@ var ROOM = '778899';
     check('4 开局已在 ' + phase0 + '，跳过亮A', true);
   }
 
-  // 轮询推进直到进入 PLAY（服务端 gate 超时会自动推进）
-  var guard = 0, st = null;
-  while (guard++ < 40) {
-    var p = await call('o1', { action: 'poll', roomId: ROOM });
+  // 轮询推进直到进入 PLAY。真人可操作的闸门会开 5 秒窗口（超时才默认），
+  //   所以这里最多等 ~7 秒，避免把「正常等窗口」误判成卡死。
+  var guard = 0, st = null, p = null, t0 = Date.now();
+  while (guard++ < 700 && Date.now() - t0 < 7000) {
+    p = await call('o1', { action: 'poll', roomId: ROOM });
     st = store[ROOM];
     if (st && st.state && st.state.phase === 'PLAY') break;
-    await new Promise(function (r) { setTimeout(r, 5); });
+    await new Promise(function (r) { setTimeout(r, 10); });
   }
   check('5 能推进到 PLAY 阶段', !!(st && st.state && st.state.phase === 'PLAY'), st && st.state && st.state.phase);
   check('6 服务端 phase 与客户端看到的 view 一致', !!(p && p.ok && p.room.state && p.room.state.phase === 'PLAY'),
     p && p.room && p.room.state && p.room.state.phase);
 
-  // 轮到真人时，用和客户端一样的方式出一手合法牌
+  // 轮到真人时，用和客户端一样的方式做一个合法动作（领出=单张，跟牌=不出），
+  //   断言服务端接受；关键是不再报 NOT_PLAY_PHASE。
   var cur = st.state.currentPlayer;
   if (cur === 'A') {
-    var play = await send('o1', ROOM, 'PLAY', { playerId: 'A', cardIds: [st.state.players[0].hand[0].id] });
-    check('7 真人出牌被接受（不再 NOT_PLAY_PHASE）', play.ok, JSON.stringify(play).slice(0, 240));
+    var meHand = (st.state.players.filter(function (p) { return p.id === 'A'; })[0] || {}).hand || [];
+    var hasTable = (st.state.table || []).length > 0;
+    var act = hasTable ? { type: 'PASS', payload: { playerId: 'A' } }
+      : { type: 'PLAY', payload: { playerId: 'A', cardIds: [meHand[0].id] } };
+    var play = await send('o1', ROOM, act.type, act.payload);
+    check('7 真人动作被接受（不再 NOT_PLAY_PHASE）', play.ok, JSON.stringify(play).slice(0, 240));
     if (!play.ok) console.log('    server detail: ' + JSON.stringify(play));
   } else {
-    check('7 首手不是真人（' + cur + '），跳过一次真人出牌', true);
+    check('7 首手不是真人（' + cur + '），跳过一次真人动作', true);
   }
 
   // 连发两次同一个动作：第二次必须是 STALE/DUPLICATE，而不是把状态搞乱

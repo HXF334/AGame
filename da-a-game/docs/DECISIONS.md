@@ -602,3 +602,10 @@ ewRoomId(seed)\ 对 6 位种子原样返回，避免被取模改写。
 - **新增无头验证**：`tests/test-server-flow.js` 用内存假 `wx-server-sdk`（`Module._load` 劫持）直接加载真实 `game-server/index.js`，用与客户端相同的 `protocol.makeAction` 走 create → start → 亮A → poll 推进 → 真人出牌 → leave → 同号重建；断言「服务端 DB phase 与 poll 视图一致」「真人出牌被接受」「最后一个真人退出后房间被删」「同号可重建」。
 - **验证**：`node tests/test-server-flow.js` 10/10；全量 133/133、preflight 12/12；`game-server` 已重新部署（37 files / 98.8 KB）。
 - **意义**：此类「服务端状态/阶段」bug 以后可以纯 node 复现，不需要人操作模拟器。
+
+## D-107 联网对局补过程日志 + 首出权口径用测试钉死（2026-11-18）
+- **问题**：联网时看不到发牌/亮A/反A/身份/出牌等过程日志。原因是单机日志由本地引擎 transition 打印，联网时引擎跑在云函数里，客户端只补了「别人出牌」的日志。
+- **修复**：`game.js _applyNetView` 增加阶段日志——对局头（房间/局数/你的座位与手牌数）、`【阶段】xxx`、亮A/反A/身份提示、`主A（花色/谁亮的/方式）`、`次A`、`反A`、`模式`、`首出权（原因）`、闸门倒计时「轮到你亮A，剩余 N 秒」；用 `uiNetPhase/uiNetRoundKey/uiNetGateKey` 去重，避免每 1.5s 轮询刷屏。
+- **首出权口径**（规则 SKILL「首出权」）：反A 者 > 2V3 明打次方 > 2V3 暗打主A > 强制排查结果；1V4 暗打由主A（独打者）先出。
+- **测试**：新增 `tests/test-net-first-player.js` 5 断言（暗打=主A、明打=次方、反A=反A者、无主A=null、1V4 暗打=主A），锁住 `transition.determineFirstPlayer`。
+- **验证**：全量 134/134、preflight 12/12。

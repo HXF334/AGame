@@ -192,6 +192,9 @@ var uiRoomBusy = false;
 var uiNick = '';
 var uiNet = false;   // [2026-11-16 用户] 联网对局中（本地不再跑 AI/引擎推进）
 var uiNetPlaysLen = 0;     // [2026-11-17 用户] 联网：已打印到第几条出牌流水（用于给别人的出牌补日志）
+var uiNetPhase = null;     // [2026-11-18 用户] 联网阶段日志：同一阶段只打一次
+var uiNetRoundKey = '';    // 联网对局/局数标识，换局重新打头部日志
+var uiNetGateKey = '';     // 联网闸门提示去重
 var uiNetAutoBusy = false; // [2026-11-17 用户] 联网托管：正在等待上一次发送的结果
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
@@ -2865,6 +2868,25 @@ function _enterNetGame(view) {
   _applyNetView(view);
 }
 
+function _netPhaseName(ph) {
+  var M = {
+    GAME_START: '开局', DEALING: '发牌', LIANG_A: '亮A', FAN_A: '反A',
+    REVEAL_BOTTOM: '翻底牌', IDENTITY_CHOICE: '次方身份', PLAY: '出牌',
+    GAME_END: '结算', SCORING: '计分'
+  };
+  return M[ph] || ph || '-';
+}
+
+function _suitName(s) { return SUIT_CN[s] || (s || '-'); }
+
+// 首出权来源说明（只读 state，用于日志，不参与规则判断）
+function _firstReason(st) {
+  if (st['反A'] && st['反A'].by === st.currentPlayer) return '反A者先出';
+  if (st.mode === '2V3_明打' && st['次方'] === st.currentPlayer) return '2V3 明打，次方先出';
+  if (st['主A'] && st['主A'].establishedBy === st.currentPlayer) return '主A 先出';
+  return '服务端指定';
+}
+
 function _applyNetView(view) {
   var st = netStateMod.toRender(view);
   if (!st) return;
@@ -2872,6 +2894,43 @@ function _applyNetView(view) {
   uiRoomView = view;   // [2026-11-17 用户] 房间号/局数/闸门倒计时都从最新视图取
   currentPlayer = st.currentPlayer || netStateMod.seatId(view.you == null ? 0 : view.you);
   _uiProjectPlays();
+  // [2026-11-18 用户] 联网要有和对局一致的过程日志（发牌/阶段/亮A/身份/首出权），
+  //   否则玩家看不到「谁亮A、谁先出」，会怀疑规则坏了。
+  if (uiNetRoundKey !== view.id + ':' + view.round) {
+    uiNetRoundKey = view.id + ':' + view.round;
+    var _hand0 = (st.players.filter(function (p) { return p.id === humanPlayer; })[0] || {}).hand || [];
+    log('=== 联网对局: 房间 ' + view.id + '  第 ' + view.round + '/' + view.rounds + ' 局  你是 ' + pn(humanPlayer) + '（' + _hand0.length + ' 张）');
+  }
+  if (uiNetPhase !== st.phase) {
+    uiNetPhase = st.phase;
+    log('  【阶段】' + _netPhaseName(st.phase));
+    if (st.phase === 'LIANG_A') log('  亮A: 手上有 A 可选择花色（超时由服务端强制排查）');
+    if (st.phase === 'FAN_A') log('  反A: 需要两张同花色 A 且与主A 不同花色');
+    if (st.phase === 'IDENTITY_CHOICE') log('  次方身份选择: 公开=明打(倍率2)，隐藏=暗打');
+    if (st.phase === 'PLAY') {
+      var _z = st['主A'];
+      if (_z) {
+        log('  主A: ' + _suitName(_z.suit) + '（' + pn(_z.establishedBy) + ' 亮的，方式 ' + (_z.viaMethod || '-') + '）'
+          + (st['次方'] ? '  次A: ' + pn(st['次方']) : ''));
+      }
+      var _f = st['反A'];
+      if (_f) log('  反A: ' + pn(_f.by) + ' ' + _suitName(_f.suit) + ' → 独打明打');
+      log('  模式: ' + (st.mode || '-') + '  首出权: ' + pn(st.currentPlayer) + '（' + _firstReason(st) + '）');
+      log('  开打: 你 ' + _hand0.length + ' 张，桌上是空的');
+    }
+  }
+  // 网关头：真人可操作时给出提示与倒计时
+  var _ng = _netGateInfo();
+  if (_ng && _ng.eligible) {
+    var _gk = _ng.kind + ':' + (view.round || 0) + ':' + (view.seq || 0);
+    if (uiNetGateKey !== _gk) {
+      uiNetGateKey = _gk;
+      log('  轮到你' + (_ng.kind === 'LIANG_A' ? '亮A' : _ng.kind === 'FAN_A' ? '反A' : '选择身份')
+        + '，剩余 ' + _ng.left + ' 秒（超时按默认处理）');
+    }
+  } else {
+    uiNetGateKey = '';
+  }
   // [2026-11-17 用户] 别人出牌/过牌也要打日志（原来只有真人自己的动作有 log）
   var _plays = st.plays || [];
   if (uiNetPlaysLen > _plays.length) uiNetPlaysLen = 0;
