@@ -2898,7 +2898,10 @@ function _startRoomPolling() {
   uiRoomTimer = setInterval(function () {
     var _keepRoom = uiPage === 'LOBBY' || (uiNet && (uiPage === 'GAME' || uiPage === 'NETSETTLE'));
     if (!uiOnline || !uiOnline.roomId || !_keepRoom) return;
-    uiOnline.poll()['catch'](function () { /* 轮询失败下轮再试 */ });
+    // [2026-11-17 诊断] 轮询失败不能静默：联网对局卡住/STALE 都可能是它
+    uiOnline.poll()['catch'](function (e) {
+      log('联网轮询失败: ' + ((e && (e.message || e.errMsg)) || e));
+    });
   }, 1500);
 }
 
