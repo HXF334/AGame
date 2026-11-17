@@ -2950,8 +2950,9 @@ function _applyPrompt() {
   if (!uiCreatePrompt) return;
   var v = parseInt(uiCreatePrompt.text, 10);
   if (uiCreatePrompt.key === 'roomId') {
-    if (isNaN(v) || v < 100000 || v > 999999) { showToast('房间号需为 6 位数字'); return; }
-    uiCreateCfg.roomId = String(v);
+    var _rt = String(uiCreatePrompt.text || '');
+    if (!/^\d{6}$/.test(_rt)) { showToast('房间号需为 6 位数字'); log('房间号无效: ' + _rt); draw(); return; }
+    uiCreateCfg.roomId = _rt;
     log('配置: roomId=' + v);
     uiCreatePrompt = null;
     draw();

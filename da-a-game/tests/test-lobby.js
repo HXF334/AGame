@@ -25,7 +25,7 @@ check('1.1 固定 5 行', rows.length === 5);
 check('1.2 空位标记', rows[2].empty === true && rows[2].label === '空位');
 check('1.3 房主标记', rows[0].owner === true);
 check('1.4 我标记', rows[0].you === true);
-check('1.5 已准备', rows[1].ready === true && rows[1].status === '已准备');
+check('1.5 已备', rows[1].ready === true && rows[1].status === '已备');
 check('1.6 AI 状态', rows[3].ai === true && rows[3].status === 'AI');
 check('1.7 空昵称兜底', rows[1].label === '玩家2');
 
@@ -55,9 +55,9 @@ var ctx = new Proxy({}, {
 var st = { W: 800, H: 400, room: view, page: 'LOBBY', cfg: view.config };
 var out = uiRender.render(ctx, st);
 var ids = (out.lobbyHits || []).map(function (b) { return b.id; });
-check('3.1 返回 lobbyHits', out.page === 'LOBBY' && ids.length >= 3);
-check('3.2 准备按钮', ids.indexOf('lobbyReady') >= 0);
-check('3.3 离开按钮', ids.indexOf('lobbyLeave') >= 0);
+check('3.1 返回 lobbyHits', out.page === 'LOBBY' && ids.length >= 2);
+check('3.2 房主看到开始（无准备）', ids.indexOf('lobbyStart') >= 0 && ids.indexOf('lobbyReady') < 0);
+check('3.3 不再有离开按钮', ids.indexOf('lobbyLeave') < 0);
 check('3.4 房主看到开始', ids.indexOf('lobbyStart') >= 0);
 check('3.5 非房主看不到开始', (function () {
   var v2 = JSON.parse(JSON.stringify(view)); v2.you = 1;
@@ -70,7 +70,7 @@ require('./mock-wx.js');
 var g = require('../game.js');
 g.__setRoomView(view);
 check('4.1 进 LOBBY', g.__page() === 'LOBBY');
-check('4.2 命中区暴露', g.__pageHits().length >= 3);
+check('4.2 命中区暴露', g.__pageHits().length >= 2);
 check('4.3 roomView 可读', g.__roomView() && g.__roomView().id === '123456');
 g.__setPage('HOME');
 check('4.4 回首页', g.__page() === 'HOME');

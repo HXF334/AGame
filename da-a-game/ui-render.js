@@ -1419,7 +1419,7 @@ function _cardBtn(ctx, x, y, w, h, glyph, label, opt) {
   ctx.fillStyle = 'rgba(255,255,255,0.06)';
   ctx.fill();
   ctx.restore();
-  var cy = y + h / 2, fs = Math.round(h * 0.30), r = h * 0.30;
+  var cy = y + h / 2, fs = Math.round(h * (opt.fs || 0.30)), r = h * 0.30;
   // [2026-11-17 用户] 页面按钮去掉左侧图标，文字在按钮内居中
   if (opt.noIcon) {
     text(ctx, label, x + w / 2, cy, fs, '#f6efdf', 'center', true);
@@ -1480,8 +1480,8 @@ function drawCreatePage(ctx, st) {
   var cfg = st.cfg || {};
   _pageBg(ctx, W, H);
   text(ctx, '创建房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.09, h: H * 0.055 };
-  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '返回', { noIcon: true });
+  var back = { id: 'createBack', x: W * 0.03, y: H * 0.045, w: W * 0.075, h: H * 0.055 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '返回', { noIcon: true, fs: 0.42 });
   var hits = [back];
 
   var px = W * 0.08, py = H * 0.175, pw = W * 0.84, ph = H * 0.560;
@@ -1492,7 +1492,7 @@ function drawCreatePage(ctx, st) {
   var step = pw * 0.132;
   var fsLabel = Math.round(H * 0.033);
   var fsValue = Math.round(H * 0.031);
-  var rowH = ph / 7.2;
+  var rowH = ph / 8.0;
 
   function chipLabel(key, v) {
     if (key === 'turnSeconds') return v === 0 ? '无限制' : v + 's';
@@ -1505,11 +1505,11 @@ function drawCreatePage(ctx, st) {
     { key: 'turnSeconds', label: '出牌时间', values: [0, 30, 60], max: 99, def: 0 }
   ];
   // [2026-11-17 用户] 房间号可修改；重复由服务端校验
-  var ridY = py + rowH * 0.42;
+  var ridY = py + rowH * 0.75;
   text(ctx, '房间号', labelX, ridY, fsLabel, 'rgba(246,239,223,0.88)', 'left', true);
   var rid = String(cfg.roomId || '');
   text(ctx, rid, optX, ridY, Math.round(H * 0.040), '#ffd98a', 'left', true);
-  var ridBtn = { id: 'roomIdEdit', x: optX + step * 2.55, y: ridY - H * 0.030, w: step * 1.15, h: H * 0.060 };
+  var ridBtn = { id: 'roomIdEdit', x: optX + step, y: ridY - H * 0.030, w: step * 0.92, h: H * 0.060 };
   _rr(ctx, ridBtn.x, ridBtn.y, ridBtn.w, ridBtn.h, H * 0.016);
   ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fill();
   ctx.strokeStyle = 'rgba(255,214,140,0.45)'; ctx.lineWidth = 2; ctx.stroke();
@@ -1518,7 +1518,7 @@ function drawCreatePage(ctx, st) {
 
   for (var r = 0; r < rows.length; r++) {
     var row = rows[r];
-    var y = py + rowH * (1.30 + r * 0.88);
+    var y = py + rowH * (1.75 + r * 0.95);
     text(ctx, row.label, labelX, y, fsLabel, 'rgba(246,239,223,0.88)', 'left', true);
     var cur = cfg[row.key];
     var custom = row.values.indexOf(cur) < 0;
@@ -1543,7 +1543,7 @@ function drawCreatePage(ctx, st) {
     { key: 'aiFill', label: '空位 AI 补齐' }
   ];
   for (var t2 = 0; t2 < toggles.length; t2++) {
-    var ty = py + rowH * (4.20 + t2 * 0.80);
+    var ty = py + rowH * (4.95 + t2 * 0.95);
     var on2 = !!cfg[toggles[t2].key];
     text(ctx, toggles[t2].label, labelX, ty, fsLabel, 'rgba(246,239,223,0.82)', 'left', false);
     _radio(ctx, optX, ty, H * 0.015, on2);
@@ -1603,8 +1603,8 @@ function drawJoinPage(ctx, st) {
   var digits = String(st.digits || '');
   _pageBg(ctx, W, H);
   text(ctx, '加入房间', W / 2, H * 0.075, Math.round(H * 0.058), '#ffd98a', 'center', true);
-  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.09, h: H * 0.055 };
-  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '返回', { noIcon: true });
+  var back = { id: 'joinBack', x: W * 0.03, y: H * 0.045, w: W * 0.075, h: H * 0.055 };
+  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '返回', { noIcon: true, fs: 0.42 });
   var hits = [back];
 
   var bw = W * 0.090, bh = H * 0.100, gap = W * 0.020;
@@ -1653,9 +1653,7 @@ function drawLobbyPage(ctx, st) {
   _pageBg(ctx, W, H);
   drawTable(ctx, m);
 
-  var back = { id: 'lobbyLeave', x: W * 0.20, y: H * 0.045, w: W * 0.09, h: H * 0.055 };
-  _cardBtn(ctx, back.x, back.y, back.w, back.h, '', '离开', { noIcon: true });
-  var hits = [back];
+  var hits = [];
 
   // [2026-11-17 用户] 等待页也要 ☰ 菜单（音乐/音效/退出）
   var mm = { menu: { iconX: W * 0.06, iconY: H * 0.075, iconR: H * 0.040 } };
@@ -1688,8 +1686,8 @@ function drawLobbyPage(ctx, st) {
     }
     text(ctx, nm, p.x, p.y + rr_ + H * 0.030, Math.round(H * 0.025), r.empty ? 'rgba(246,239,223,0.40)' : '#f6efdf', 'center', false);
     if (!r.empty) {
-      var tag = r.ready ? '已准备' : '未准备';
-      var tw = W * 0.095, th = H * 0.034;
+      var tag = r.ready ? '已备' : '未备';
+      var tw = W * 0.062, th = H * 0.030;
       var ty = p.y - rr_ - H * 0.050;
       _rr(ctx, p.x - tw / 2, ty, tw, th, th / 2);
       ctx.fillStyle = r.ready ? 'rgba(126,224,138,0.20)' : 'rgba(0,0,0,0.28)';
@@ -1703,19 +1701,15 @@ function drawLobbyPage(ctx, st) {
 
   // [2026-11-17 用户] 按钮整体居中：开始在上、准备在下，都水平居中
   var me = lobby.myRow(view);
-  var bw2 = W * 0.34, bh = H * 0.080;
-  if (lobby.canStart(view)) {
-    var sy = H * 0.795;
-    _cardBtn(ctx, (W - bw2) / 2, sy, bw2, bh, '', '开始', { noIcon: true });
-    hits.push({ id: 'lobbyStart', x: (W - bw2) / 2, y: sy, w: bw2, h: bh });
-    var ry = H * 0.885;
-    _cardBtn(ctx, (W - bw2) / 2, ry, bw2, bh, '', me && me.ready ? '取消准备' : '准备', { noIcon: true });
-    hits.push({ id: 'lobbyReady', x: (W - bw2) / 2, y: ry, w: bw2, h: bh });
+  // [2026-11-17 用户] 按钮放在单机「提示」的位置、同样大小；房主=开始，其他人=准备
+  var _bl = buttonLayout([{ id: 'lobbyAction', label: '开始', kind: 'other' }], m);
+  var bw2 = _bl[0].w, bh = _bl[0].h, by = _bl[0].y, bx2 = _bl[0].x;
+  if (lobby.isOwner(view)) {
+    _cardBtn(ctx, bx2, by, bw2, bh, '', '开始', { noIcon: true });
+    hits.push({ id: 'lobbyStart', x: bx2, y: by, w: bw2, h: bh });
   } else {
-    var ry2 = H * 0.855;
-    _cardBtn(ctx, (W - bw2) / 2, ry2, bw2, bh, '', me && me.ready ? '取消准备' : '准备', { noIcon: true });
-    hits.push({ id: 'lobbyReady', x: (W - bw2) / 2, y: ry2, w: bw2, h: bh });
-    text(ctx, '等待房主开始（空位可由 AI 补齐）', W / 2, ry2 - H * 0.040, Math.round(H * 0.022), 'rgba(246,239,223,0.50)', 'center', false);
+    _cardBtn(ctx, bx2, by, bw2, bh, '', me && me.ready ? '取消准备' : '准备', { noIcon: true });
+    hits.push({ id: 'lobbyReady', x: bx2, y: by, w: bw2, h: bh });
   }
   return hits;
 }
@@ -1818,9 +1812,10 @@ function render(ctx, st) {
   // [2026-11-17 用户] 联网对局：托管图标左侧显示房间号与局数
   if (st.netInfo) {
     var ni = st.netInfo;
-    var nx = autoIcon.x - autoIcon.r - H * 0.018;
-    text(ctx, '房间号：' + ni.roomId, nx, autoIcon.y - H * 0.016, Math.round(H * 0.023), 'rgba(246,239,223,0.82)', 'right', false);
-    text(ctx, (ni.round || 1) + '/' + (ni.rounds || 0) + '局', nx, autoIcon.y + H * 0.020, Math.round(H * 0.023), 'rgba(246,239,223,0.62)', 'right', false);
+    var NH = st.H;
+    var nx = autoIcon.x - autoIcon.r - NH * 0.018;
+    text(ctx, '房间号：' + ni.roomId, nx, autoIcon.y - NH * 0.016, Math.round(NH * 0.023), 'rgba(246,239,223,0.82)', 'right', false);
+    text(ctx, (ni.round || 1) + '/' + (ni.rounds || 0) + '局', nx, autoIcon.y + NH * 0.020, Math.round(NH * 0.023), 'rgba(246,239,223,0.62)', 'right', false);
   }
   drawMemo(ctx, st, m);
   var seatInfo = drawSeats(ctx, st, m);

@@ -11,7 +11,7 @@ function seatRows(view) {
       rows.push({ seat: s, empty: true, label: '空位', status: '等待加入', ready: false, ai: false, offline: false, owner: false, you: false, total: 0 });
       continue;
     }
-    var status = p.offline ? '离线' : (p.ai ? 'AI' : (p.ready ? '已准备' : '未准备'));
+    var status = p.offline ? '离线' : (p.ai ? 'AI' : (p.ready ? '已备' : '未备'));
     rows.push({
       seat: s,
       empty: false,
@@ -32,6 +32,11 @@ function myRow(view) {
   var rows = seatRows(view);
   for (var i = 0; i < rows.length; i++) if (rows[i].you) return rows[i];
   return null;
+}
+
+function isOwner(view) {
+  var r = myRow(view);
+  return !!(r && r.owner);
 }
 
 function canConfig(view) {
@@ -59,6 +64,7 @@ function statusText(view) {
 }
 
 module.exports = {
+  isOwner: isOwner,
   seatRows: seatRows,
   myRow: myRow,
   canConfig: canConfig,
