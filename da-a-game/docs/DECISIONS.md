@@ -617,3 +617,14 @@ ewRoomId(seed)\ 对 6 位种子原样返回，避免被取模改写。
 - **僵尸房**：`poll` 记 `lastSeen`（不改 `offline`）；`tickAllRooms` 删除 3 分钟无心跳或没有真人的房间；poll 在 seq 变化或距上次落库 >30s 时写库，避免心跳丢失。
 - **日志**：亮A 打「手上有 N 张该花色A（双A）」；旧 `gateSuit` 路径也补 `cardId`，与 `netSuit:*` 一致。
 - **验证**：`test-server-flow` 10/10、`test-online-client` 15/15、`test-net-play` 8/8、`test-ui-netgate` 8/8、`test-pages` 20/20；全量 134/134、`preflight --fast` 12/12；`game-server` 部署 37 files / 99.3 KB。
+
+## D-109 联网驱动收敛（A）+ 乐观显示（C）：状态变更只在服务端执行（2026-11-18）
+
+- **原则（用户定）**：不复刻单机逻辑；规则引擎只维护一份，客户端把「直接改状态」改成「发意图 → 收视图」。
+- **托管移到服务端**：`room.js` 新增 `setAuto/autoStep/autoDrive`；`tick` 用 `seatOf`；`gateTick` 的 `p.ai || p.offline` 全部加 `|| p.auto`；`AUTOPLAY` 只改 `me.auto`，决策与落子在同一个请求周期内完成（比客户端两跳更快）。客户端删除 `_netAutoStep` 与本地 `chooseAction`，只发 `AUTOPLAY{on}`；`_applyNetView` 用 `me.auto` 回填 `uiAutoPlay`。
+- **乐观显示**：`_netPrecheckPlay(ids)` 在 **克隆态** 跑一次 `transition`，非法直接提示（不上桌、不发请求）；合法才 `_netOptimisticPlay`（`uiPendingPlay`）并把牌临时放到桌面，渲染结束还原；服务端拒绝时 `_netClearPending` 回滚并提示；新视图到达即作废。
+  - 审计约束：这两行临时覆盖带 `[ui-pending]` 标记，`test-audit-ui` 1.6 排除标记行（仍然禁止 UI 真改 `table`）。
+- **延迟**：apply 直接返回新 view（`index.js` 已返回 `room: poll(...)`）；轮询 700→500ms；服务端 `autoDrive` 连续推进闸门/AI，不再等客户端下一次 poll。
+- **协议**：`ACTIONS` 新增 `AUTOPLAY`，`validateEnvelope` 要求 `payload.on` 为 boolean。
+- **测试**：`test-net-play` 扩到 12 断言（非法被预检拦住且不上桌、合法先上桌且仍发请求）；`test-protocol` 增 AUTOPLAY 两条；`test-audit-ui` 1.6 支持标记行；全量 134/134、preflight 12/12。
+- **部署**：`game-server` 37 files / 99.9 KB。

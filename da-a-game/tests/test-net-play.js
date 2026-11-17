@@ -77,5 +77,38 @@ g.uiClick('netIdPublic');
 check('8 身份信封带 choice', sent.length === 1 && sent[0].type === 'CHOOSE_IDENTITY' &&
   sent[0].payload && sent[0].payload.choice === 'PUBLIC', JSON.stringify(sent[0] || null));
 
+// [2026-11-18 用户] 乐观显示：合法的牌才「先上桌（确认中）」，非法的连发都不发。
+//   这里锁三件事：非法被本地预检拦住、合法先上桌、服务端拒绝时能回滚。
+var h7 = SB.C('H', 7), h8 = SB.C('H', 8);
+var st3 = SB.build({ handMap: { B: [h7, h8] } });
+(function trim3() {
+  var p = st3.players.filter(function (x) { return x.id === 'B'; })[0];
+  var keep = [], rest = [];
+  p.hand.forEach(function (c) { (c.id === h7.id || c.id === h8.id ? keep : rest).push(c); });
+  p.hand = keep;
+  st3.discarded = (st3.discarded || []).concat(rest);
+})();
+st3.phase = 'PLAY';
+st3.currentPlayer = 'B';
+st3.table = [SB.C('S', 14), SB.C('S', 14)];   // 桌上是对 A：♥7 单张管不上
+g.__setState(st3, { human: 'B', currentPlayer: 'B', clearLog: true });
+g.__setOnlineClient(fake);
+g.__setNet(true);
+g.__select([h7.id]);
+sent.length = 0;
+g.doPlay();
+check('9 非法牌被本地预检拦住（不发请求）', sent.length === 0, JSON.stringify(sent));
+check('10 非法牌不会乐观上桌', !(g.__pending() && g.__pending().cards));
+
+st3.table = [];
+g.__setState(st3, { human: 'B', currentPlayer: 'B', clearLog: true });
+g.__select([h7.id]);
+sent.length = 0;
+g.doPlay();
+check('11 合法牌先乐观上桌', !!(g.__pending() && g.__pending().cards && g.__pending().cards.length),
+  JSON.stringify(g.__pending()));
+check('12 乐观上桌后仍向服务端发牌', sent.length === 1 && sent[0].type === 'PLAY' &&
+  sent[0].payload.cardIds.length === 1, JSON.stringify(sent[0] || null));
+
 console.log('netplay: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

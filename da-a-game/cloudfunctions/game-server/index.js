@@ -45,6 +45,8 @@ async function ensureCollection() {
 function advanceRoom(room) {
   try { roomMod.gateTick(room, Date.now()); } catch (e) {}
   try { roomMod.autoAi(room); } catch (e) {}
+  // [2026-11-18 用户] 真人开了「托管」也由服务端连续推进（不再让客户端本地决策）
+  try { roomMod.autoDrive(room, Date.now()); } catch (e) {}
   return room;
 }
 

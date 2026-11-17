@@ -214,7 +214,7 @@ function handOf(room, id) {
 }
 function isAiSeat(room, id) {
   var p = seatPlayer(room, id);
-  return !p || p.ai || p.offline;
+  return !p || p.ai || p.offline || p.auto;
 }
 function humanCanGate(room) {
   var st = room.state;
@@ -222,14 +222,14 @@ function humanCanGate(room) {
   if (st.phase === 'LIANG_A') {
     for (i = 0; i < room.players.length; i++) {
       p = room.players[i]; id = seatId(p.seat);
-      if (!(p.ai || p.offline) && engine.canLiangA(st, id).ok) return true;
+      if (!(p.ai || p.offline || p.auto) && engine.canLiangA(st, id).ok) return true;
     }
     return false;
   }
   if (st.phase === 'FAN_A') {
     for (i = 0; i < room.players.length; i++) {
       p = room.players[i]; id = seatId(p.seat);
-      if (!(p.ai || p.offline) && engine.canFanA(st, id).ok) return true;
+      if (!(p.ai || p.offline || p.auto) && engine.canFanA(st, id).ok) return true;
     }
     return false;
   }
@@ -246,7 +246,7 @@ function aiGate(room) {
   if (st.phase === 'LIANG_A') {
     for (i = 0; i < room.players.length; i++) {
       p = room.players[i];
-      if (!(p.ai || p.offline)) continue;
+      if (!(p.ai || p.offline || p.auto)) continue;
       id = seatId(p.seat);
       if (!engine.canLiangA(st, id).ok) continue;
       hand = handOf(room, id);
@@ -260,7 +260,7 @@ function aiGate(room) {
     var mainSuit = st['主A'] && st['主A'].suit;
     for (i = 0; i < room.players.length; i++) {
       p = room.players[i];
-      if (!(p.ai || p.offline)) continue;
+      if (!(p.ai || p.offline || p.auto)) continue;
       id = seatId(p.seat);
       if (!engine.canFanA(st, id).ok) continue;
       hand = handOf(room, id);
@@ -326,7 +326,7 @@ function autoAi(room) {
     var cur = room.state.currentPlayer;
     if (!cur) break;
     var p = room.players.filter(function (x) { return SEATS[x.seat] === cur; })[0];
-    if (!p || !(p.ai || p.offline)) break;
+    if (!p || !(p.ai || p.offline || p.auto)) break;
     var act = ai.chooseAction(room.state, cur, { endgame: true });
     if (!act || !act.type) break;
     var env = { type: act.type, payload: { playerId: cur } };
@@ -371,6 +371,14 @@ function apply(room, env, actorId, now) {
   if (room.moveKeys.indexOf(key) >= 0) return { ok: false, error: 'DUPLICATE' };
 
   var payload = Object.assign({}, env.payload, { playerId: seatId(me.seat) });
+
+  // [2026-11-18 用户] 托管开关不是引擎动作：只改座位标记，随后由 autoDrive 连续推进
+  if (env.type === 'AUTOPLAY') {
+    me.auto = !!env.payload.on;
+    room.updatedAt = now || Date.now();
+    return { ok: true, room: room, seq: room.seq, auto: me.auto };
+  }
+
   var r = engine.transition(room.state, { type: env.type, payload: payload });
   if (!r.ok) {
     // [2026-11-18 用户] 失败时把服务端当前 phase 一起带回去，客户端日志能直接定位
@@ -392,6 +400,61 @@ function apply(room, env, actorId, now) {
 }
 
 // 超时托管：到点后由服务端 AI 代当前玩家走一步；返回是否真的走了
+function seatOf(room, id) {
+  for (var i = 0; i < room.players.length; i++) {
+    if (seatId(room.players[i].seat) === id) return room.players[i];
+  }
+  return null;
+}
+
+// [2026-11-18 用户] 托管改为服务端开关：客户端只发 AUTOPLAY on/off，
+//   由服务端用同一份 engine/ai.js 决策并落库，避免「客户端本地算一套」。
+function setAuto(room, openid, on, now) {
+  var me = findPlayer(room, openid);
+  if (!me) return { ok: false, error: 'NOT_IN_ROOM' };
+  me.auto = !!on;
+  room.updatedAt = now || Date.now();
+  return { ok: true, room: room };
+}
+
+// 托管/AI 走一步：不看 deadline，只看这个座位是否该由机器决定
+function autoStep(room, now) {
+  var t = now || Date.now();
+  if (room.status !== 'PLAYING') return { ok: true, acted: false, room: room };
+  var cur = room.state && room.state.currentPlayer;
+  if (!cur) return { ok: true, acted: false, room: room };
+  var me = seatOf(room, cur);
+  if (!me || !(me.auto || me.ai || me.offline)) return { ok: true, acted: false, room: room };
+  var act = ai.chooseAction(room.state, cur, { endgame: true });
+  var type = (act && act.type === 'PLAY') ? 'PLAY' : 'PASS';
+  var payload = { playerId: cur };
+  if (type === 'PLAY') payload.cardIds = act.cardIds || [];
+  var r = engine.transition(room.state, { type: type, payload: payload });
+  if (!r.ok) return { ok: true, acted: false, room: room, error: (r.error && r.error.type) || 'AI_REJECTED' };
+  room.state = r.state;
+  room.seq += 1;
+  room.updatedAt = t;
+  room.deadline = room.config.turnSeconds > 0 ? t + room.config.turnSeconds * 1000 : 0;
+  var ended = settle(room, t);
+  return { ok: true, acted: true, room: room, ended: ended, seq: room.seq };
+}
+
+// 连续推进，直到轮到「需要人决策」的座位（最多 40 步，防死循环）
+function autoDrive(room, now) {
+  var t = now || Date.now();
+  var steps = 0, acted = false;
+  while (steps < 40) {
+    var before = room.seq;
+    try { gateTick(room, t); } catch (e) {}
+    if (room.seq === before) { autoStep(room, t); }
+    if (room.seq === before) break;
+    acted = true;
+    steps += 1;
+    if (room.status !== 'PLAYING') break;
+  }
+  return { acted: acted, steps: steps, room: room };
+}
+
 function tick(room, now) {
   var t = now || Date.now();
   if (room.status !== 'PLAYING' || !room.deadline || t < room.deadline) {
@@ -399,10 +462,7 @@ function tick(room, now) {
   }
   var cur = room.state && room.state.currentPlayer;
   if (!cur) return { ok: true, acted: false, room: room };
-  var me = null;
-  for (var i = 0; i < room.players.length; i++) {
-    if (seatId(room.players[i].seat) === cur) { me = room.players[i]; break; }
-  }
+  var me = seatOf(room, cur);
   if (me) me.afk = (me.afk || 0) + 1;
   var act = ai.chooseAction(room.state, cur, { endgame: true });
   var type = (act && act.type === 'PLAY') ? 'PLAY' : 'PASS';
@@ -478,6 +538,9 @@ module.exports = {
   settle: settle,
   apply: apply,
   tick: tick,
+  setAuto: setAuto,
+  autoStep: autoStep,
+  autoDrive: autoDrive,
   advanceToPlay: advanceToPlay,
   autoAi: autoAi,
   gateTick: gateTick,

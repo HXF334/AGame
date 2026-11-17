@@ -200,6 +200,8 @@ var uiNetAutoBusy = false; // [2026-11-17 用户] 联网托管：正在等待上
 var uiNetDealFull = null;
 var uiNetDealUntil = 0;
 var uiNetDealSound = 0;
+// [2026-11-18 用户] 乐观显示：已发出、等服务器确认的那一手（只影响渲染，不进状态）
+var uiPendingPlay = null;
 // [2026-11-16 战绩页] 最近战绩面板状态
 var uiHistoryOpen = false;
 var uiHistoryConfirm = false;   // [2026-11-16] 清空二次确认
@@ -431,10 +433,26 @@ var uiAiTimer = 0;             // AI 等待计时（退出游戏时必须清掉�
 // [2026-11-06 用户] 托管: 开启后**本局持续**由 AI 代打, 直到用户取消;
 //   取消后**不得再自动出牌**(排队中的动作必须作废)。
 function _uiToggleAutoPlay() {
-  // [2026-11-17 用户] 联网也要托管：本地 AI 决策，动作仍发给服务端裁决
+  // [2026-11-18 用户] 联网托管：决策与落子都在服务端（同一请求周期），客户端只发开关
   uiAutoPlay = !uiAutoPlay;
-  log(uiAutoPlay ? '开启托管: AI 代打真人手牌(本局持续, 直到取消)' : '关闭托管: 恢复真人操作');
+  log(uiAutoPlay ? '开启托管: 由服务端 AI 代打(本局持续, 直到取消)' : '关闭托管: 恢复真人操作');
   selectedCards = [];
+  if (uiNet) {
+    _autoPlayCancelTimer();
+    if (uiAutoPlay) {
+      uiNetAutoBusy = true;
+      _netSend('AUTOPLAY', { on: true });
+    } else {
+      uiNetAutoBusy = false;
+      _netSend('AUTOPLAY', { on: false });
+      if (gameState && gameState.phase === PHASES.PLAY && currentPlayer === humanPlayer) {
+        uiTurnTick();
+        _uiClearTurnDisplay(currentPlayer);
+      }
+    }
+    if (ctx) draw();
+    return;
+  }
   if (uiAutoPlay) _autoPlaySchedule(500);
   else {
     _autoPlayCancelTimer();   // 取消 -> 排队中的动作作废(不许再自动出牌)
@@ -496,7 +514,8 @@ function _aiTraceLine(tr, who) {
 // AI 接管真人回合: 用引擎的 chooseAction 替真人做决策
 function _autoPlayTakeover() {
   if (!uiAutoPlay) return false;
-  if (uiNet) return _netAutoStep();
+  // [2026-11-18 用户] 联网不再本地决策（服务端 autoStep 接管），这里直接跳过
+  if (uiNet) return false;
   if (!gameState || gameState.phase !== PHASES.PLAY) return false;
   if (currentPlayer !== humanPlayer) return false;
   // [2026-11-08 23:36 用户] 手动标的敌友要影响托管的出牌 -> 把标记带给 AI
@@ -2196,10 +2215,21 @@ function _drawImpl() {
   } else if (uiNetDealFull && Date.now() >= uiNetDealUntil) {
     uiNetDealFull = null; uiNetDealUntil = 0; uiNetDealSound = 0;
   }
+  // [2026-11-18 用户] 乐观显示：自己刚出的牌立刻上桌（只是渲染层的临时覆盖，
+  //   状态仍以服务端 view 为准；失败会回滚并提示）。
+  var _pendRestore = null;
+  if (uiNet && uiPendingPlay && uiPendingPlay.cards && gameState && gameState.phase === PHASES.PLAY) {
+    var _meQ = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    if (_meQ) {
+      _pendRestore = { hand: _meQ.hand, table: gameState.table, last: gameState.lastPlayer };
+      var _idsQ = uiPendingPlay.cards.map(function (c) { return c.id; });
+      _meQ.hand = (_meQ.hand || []).filter(function (c) { return _idsQ.indexOf(c.id) < 0; });
+      gameState.table = uiPendingPlay.cards.slice(); // [ui-pending] 渲染层临时覆盖，不落状态
+    }
+  }
   var out = uiRender.render(ctx || uiRender.noopCtx(), {
     W: W, H: H,
-    gameState: gameState,
-    currentPlayer: currentPlayer,
+    gameState: gameState,    currentPlayer: currentPlayer,
     humanPlayer: uiObserver || humanPlayer,   // [2026-11-10] 观察者视角: 整屏切到该玩家
     // [2026-11-12 用户] 「切换视角后真人要跟着走」: 观察者视角下 humanPlayer 已变成被观察者,
     //   这里保留**真正拿手机的人**, 让 AI 标志跟着真实真人走(切到 AI 视角时被观察的 AI 也显示 AI)。
@@ -2272,6 +2302,13 @@ function _drawImpl() {
   });
   // 补间结束：把我的真实手牌放回去（渲染/命中都必须看到完整手牌）
   if (_dealRestore) { _dealRestore.p.hand = _dealRestore.hand; _dealRestore = null; }
+  if (_pendRestore) {
+    var _meR = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+    if (_meR) _meR.hand = _pendRestore.hand;
+    gameState.table = _pendRestore.table; // [ui-pending] 还原
+    gameState.lastPlayer = _pendRestore.last;
+    _pendRestore = null;
+  }
   btnLog = out.btnLog;
   btnStage = out.btnStage;
   handCardHitboxes = out.handHitboxes;
@@ -2401,13 +2438,18 @@ function doPlay() {
   if (uiNet) {
     if (!selectedCards.length) { showToast('请先选牌'); draw(); return; }
     if (currentPlayer !== humanPlayer) { showToast('还没轮到你出牌'); draw(); return; }
+    // [2026-11-18 用户] 本地只预检、不落子：非法直接拦住，合法先「乐观上桌（确认中）」，
+    //   真正的状态变更仍由服务端执行；服务端拒绝时回滚。
+    var _pre = _netPrecheckPlay(selectedCards);
+    if (!_pre.ok) { showToast(_pre.reason || '这手牌不能出'); draw(); return; }
     // [2026-11-18 用户] 出牌日志要能对上选中：把实际发出的牌也打出来
     var _meNowH = (gameState.players.filter(function (p) { return p.id === humanPlayer; })[0] || {}).hand || [];
     log('  联网出牌: ' + selectedCards.length + ' 张 ' + selectedCards.map(function (id) {
       var c = _meNowH.filter(function (x) { return x && x.id === id; })[0];
       return c ? cardDesc(c) : id;
     }).join(' '));
-    _netSend('PLAY', { playerId: humanPlayer, cardIds: selectedCards.slice() });
+    _netOptimisticPlay(_pre.cards);
+    _netSend('PLAY', { playerId: humanPlayer, cardIds: _pre.ids });
     return;
   }
   // [2026-11-03 用户] 别人出牌时真人可以**提前选牌**, 但**不能打出**
@@ -2507,6 +2549,9 @@ function doPlay() {
 function doPass() {
   if (uiNet) {
     if (currentPlayer !== humanPlayer) { showToast('还没轮到你'); draw(); return; }
+    // [2026-11-18 用户] 乐观显示：立刻标「不出」，失败回滚
+    uiPendingPlay = { pass: true, at: Date.now() };
+    draw();
     _netSend('PASS', { playerId: humanPlayer });
     return;
   }
@@ -2931,6 +2976,11 @@ function _applyNetView(view) {
   var st = netStateMod.toRender(view);
   if (!st) return;
   gameState = st;
+  // [2026-11-18 用户] 服务端视图到达：乐观显示作废（以服务端为准）
+  uiPendingPlay = null;
+  // 托管状态以服务端标记为准（刷新/换机后一致）
+  var _meAuto = st.players.filter(function (p) { return p.id === humanPlayer; })[0];
+  if (_meAuto) uiAutoPlay = !!_meAuto.auto;
   uiRoomView = view;   // [2026-11-17 用户] 房间号/局数/闸门倒计时都从最新视图取
   currentPlayer = st.currentPlayer || netStateMod.seatId(view.you == null ? 0 : view.you);
   _uiProjectPlays();
@@ -2995,49 +3045,57 @@ function _applyNetView(view) {
     }
   }
   uiNetPlaysLen = _plays.length;
-  // [2026-11-17 用户] 联网托管：轮到自己时按单机托管同一套 AI 决策
-  if (uiAutoPlay && currentPlayer === humanPlayer && !uiNetAutoBusy) _autoPlaySchedule(700);
   draw();
 }
 
 // [2026-11-17 用户] 联网托管走一步：决策用和单机相同的 chooseAction（本地只读自己的手牌与公开信息），
 //   真正的落子仍然交给服务端（发送 PLAY/PASS，由服务端校验并广播）。
-function _netAutoStep() {
-  if (!uiNet || !gameState || gameState.phase !== 'PLAY') return false;
-  if (currentPlayer !== humanPlayer || uiNetAutoBusy) return false;
-  var act = null;
-  try {
-    gameState.uiMarks = uiMarks;
-    act = chooseAction(gameState, humanPlayer, { endgame: true });
-  } catch (e) { act = null; }
-  if (!act || (act.type !== 'PLAY' && act.type !== 'PASS')) {
-    // 兜底：AI 决策失败时，用「提示」同一套穷举找一个合法手
-    var _me = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
-    var _ok = _me ? _bruteForceLegalPlays(_me, gameState.table || []) : [];
-    act = _ok.length ? { type: 'PLAY', cardIds: _ok[0].ids } : { type: 'PASS' };
-  }
-  uiNetAutoBusy = true;
-  var _done = function () { uiNetAutoBusy = false; };
-  if (act.type === 'PLAY') {
-    var ids = act.cardIds || [];
-    if (!ids.length) { uiNetAutoBusy = false; return false; }
-    log('  联网托管: AI 代打 ' + pn(humanPlayer) + ' 出牌 ' + ids.length + ' 张');
-    _netSend('PLAY', { playerId: humanPlayer, cardIds: ids });
-    setTimeout(_done, 400);
-    return true;
-  }
-  log('  联网托管: AI 代打 ' + pn(humanPlayer) + ' 不出');
-  _netSend('PASS', { playerId: humanPlayer });
-  setTimeout(_done, 400);
-  return true;
+// [2026-11-18 用户] 本地只读预检：在克隆态上跑一次 transition，判断这手牌是否合法。
+//   不修改真实状态、不发请求；合法才「乐观上桌」，最终仍由服务端裁决。
+function _netPrecheckPlay(ids) {
+  var cards = [];
+  var copy = ids.slice();
+  var me = gameState.players.filter(function (p) { return p.id === humanPlayer; })[0];
+  var pool = ((me && me.hand) || []).concat(gameState['底牌'] || []);
+  ids.forEach(function (id) {
+    var c = pool.filter(function (x) { return x && x.id === id; })[0];
+    if (c) cards.push(c);
+  });
+  var probe = null;
+  try { probe = JSON.parse(JSON.stringify(gameState)); } catch (e) { probe = null; }
+  if (!probe) return { ok: true, cards: cards, ids: copy };
+  var r = transition(probe, { type: ACTIONS.PLAY, payload: { playerId: humanPlayer, cardIds: ids.slice() } });
+  if (r && r.ok) return { ok: true, cards: cards, ids: copy };
+  var t = (r && r.error && (r.error.type || r.error.reason)) || 'INVALID';
+  var msg = '这手牌不能出';
+  if (t === 'CANNOT_BEAT') msg = '管不上桌面上的牌';
+  else if (t === 'INVALID_HAND' || t === 'BAD_HAND') msg = '牌型不合法';
+  else if (t === 'NOT_YOUR_TURN') msg = '还没轮到你出牌';
+  else if (t === 'MUST_FOLLOW' || t === 'WRONG_COUNT') msg = '张数/牌型对不上';
+  return { ok: false, reason: msg, ids: copy };
 }
 
-function _netSend(type, payload) {
-  if (!uiOnline) { showToast('未连接房间'); return; }
+// 乐观上桌：只记录「我出了这几张」，渲染时临时覆盖（见 _drawImpl）
+function _netOptimisticPlay(cards) {
+  if (!cards || !cards.length) return;
+  uiPendingPlay = { cards: cards.slice(), at: Date.now() };
+  selectedCards = [];
+  draw();
+}
+
+function _netClearPending() {
+  if (!uiPendingPlay) return;
+  uiPendingPlay = null;
+  draw();
+}
+
+function _netSend(type, payload) {  if (!uiOnline) { showToast('未连接房间'); return; }
   log('联网发送: ' + type + ' room=' + (uiOnline && uiOnline.roomId) + ' baseSeq=' + (uiOnline && uiOnline.seq)
     + (payload ? ' ' + JSON.stringify(payload) : ''));
   uiOnline.send(type, payload || {})['then'](function (r) {
     if (!r || !r.ok) {
+      // [2026-11-18 用户] 服务端拒绝 → 回滚乐观显示，提示原因
+      if (uiPendingPlay && (type === 'PLAY' || type === 'PASS')) _netClearPending();
       log('联网失败: ' + type + ' -> ' + ((r && r.error) || 'UNKNOWN')
         + (r && r.phase ? ' phase=' + r.phase : '')
         + (r && r.detail ? ' ' + r.detail : ''));
@@ -3070,7 +3128,7 @@ function _startRoomPolling() {
     uiOnline.poll()['catch'](function (e) {
       log('联网轮询失败: ' + ((e && (e.message || e.errMsg)) || e));
     });
-  }, 700);
+  }, uiNet ? 500 : 700);
 }
 
 function _enterLobby(view) {
@@ -3564,6 +3622,9 @@ if (typeof module !== 'undefined' && module.exports) {
   __observer: function () { return uiObserver; },
     // [2026-11-16] 测试钩子: 左上角菜单开合与下拉项命中区
     __selected: function () { return selectedCards; },
+    // [2026-11-18] 测试用：直接设定选中牌；读取乐观显示队列
+    __select: function (ids) { selectedCards = (ids || []).slice(); draw(); },
+    __pending: function () { return uiPendingPlay; },
     __menuOpen: function () { return uiMenuOpen; },
   __page: function () { return uiPage; },
   __setNet: function (v) { uiNet = !!v; draw(); },

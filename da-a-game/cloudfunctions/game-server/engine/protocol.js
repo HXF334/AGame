@@ -7,7 +7,7 @@
 var version = require('./version.js');
 
 var ACTIONS = ['PLAY', 'PASS', 'PUSH_WIND', 'LIANG_A', 'FAN_A', 'ADVANCE',
-  'REVEAL_BOTTOM', 'CHOOSE_IDENTITY'];
+  'REVEAL_BOTTOM', 'CHOOSE_IDENTITY', 'AUTOPLAY'];
 
 function isInt(n) {
   return typeof n === 'number' && isFinite(n) && Math.floor(n) === n;
@@ -67,6 +67,12 @@ function validateEnvelope(env) {
     var ci = env.payload || {};
     if (ci.choice !== 'PUBLIC' && ci.choice !== 'HIDDEN') {
       return { ok: false, code: 'BAD_PAYLOAD', message: 'CHOOSE_IDENTITY requires choice PUBLIC|HIDDEN' };
+    }
+  }
+  if (env.type === 'AUTOPLAY') {
+    var ap = env.payload || {};
+    if (typeof ap.on !== 'boolean') {
+      return { ok: false, code: 'BAD_PAYLOAD', message: 'AUTOPLAY requires payload.on boolean' };
     }
   }
   return { ok: true };
