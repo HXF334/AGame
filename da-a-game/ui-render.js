@@ -1565,8 +1565,10 @@ function drawCreatePage(ctx, st) {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, W, H);
     var bw2 = W * 0.84, bh2 = H * 0.56, bx2 = W * 0.08, by2 = H * 0.175;
-    _panel(ctx, bx2, by2, bw2, bh2, H * 0.028);
-    text(ctx, pr.label + '（1–' + pr.max + '）', bx2 + bw2 / 2, by2 + H * 0.065, Math.round(H * 0.036), '#ffd98a', 'center', true);
+    _rr(ctx, bx2, by2, bw2, bh2, H * 0.028);
+    ctx.fillStyle = 'rgba(10,32,22,0.97)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,214,140,0.60)'; ctx.lineWidth = 2; ctx.stroke();
+    text(ctx, pr.hint || (pr.label + '（1–' + pr.max + '）'), bx2 + bw2 / 2, by2 + H * 0.065, Math.round(H * 0.036), '#ffd98a', 'center', true);
     text(ctx, pr.text || '—', bx2 + bw2 / 2, by2 + H * 0.135, Math.round(H * 0.056), '#f6efdf', 'center', true);
     var ks = [['1','2','3'],['4','5','6'],['7','8','9'],['⌫','0','清空']];
     var kw = bw2 * 0.20, kh = H * 0.058, gx = bw2 * 0.06, gy = H * 0.009;

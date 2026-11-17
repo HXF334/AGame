@@ -45,6 +45,7 @@ function clampConfig(cfg) {
 }
 
 function newRoomId(seed) {
+  if (seed && /^\d{6}$/.test(String(seed))) return String(seed);
   var n = (seed || Date.now()) % 900000 + 100000;
   return String(n);
 }

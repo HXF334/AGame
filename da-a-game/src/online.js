@@ -56,7 +56,7 @@ function createClient(opt) {
   c.onUpdate = function (fn) { if (typeof fn === 'function') c.listeners.push(fn); return c; };
 
   c.createRoom = function (config, nick, avatar) {
-    return invoke('create', { config: config || {}, nick: nick || '', avatar: avatar || '' });
+    return invoke('create', { config: config || {}, roomId: (config && config.roomId) || '', nick: nick || '', avatar: avatar || '' });
   };
   c.joinRoom = function (roomId, nick, avatar) {
     c.roomId = String(roomId);

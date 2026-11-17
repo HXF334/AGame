@@ -2942,7 +2942,7 @@ function _netSettleReady() {
 var uiCreatePrompt = null; // [2026-11-17 用户] 画布内数字键盘浮层 {key,max,label,text}
 function _promptNumber(key, max, def, len) {
   var label = key === 'rounds' ? '局数' : (key === 'baseScore' ? '底分' : (key === 'turnSeconds' ? '出牌时间' : '房间号'));
-  uiCreatePrompt = { key: key, max: max || 99, def: def, len: len || 2, label: label, text: '' };
+  uiCreatePrompt = { key: key, max: max || 99, def: def, len: len || 2, label: label, text: '', hint: key === 'roomId' ? '输入 6 位房间号' : '' };
   log('打开自定义输入: ' + label);
   draw();
 }
